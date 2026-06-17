@@ -37,9 +37,20 @@ PRINT T2`);
   assert.match(msx, /2000 ' === FUNCTION SUM/);
 });
 
-test("255バイト超過は E_LINE_TOO_LONG", () => {
+test("分割不能な単一文字列(>255)は E_LINE_TOO_LONG", () => {
   const { diagnostics } = compile(`PRINT "${"x".repeat(300)}"`);
   assert.ok(diagnostics.some((d) => d.code === "E_LINE_TOO_LONG"));
+});
+
+test("長いPRINTは自動分割される（エラーにならない・各行≤255）", () => {
+  const parts = Array.from({ length: 50 }, (_, i) => `"part${i}"`).join("; ");
+  const { code, diagnostics } = compile(`PRINT ${parts}`);
+  assert.ok(!diagnostics.some((d) => d.code === "E_LINE_TOO_LONG"));
+  const printLines = code.filter((l) => /PRINT/.test(l.text));
+  assert.ok(printLines.length >= 2, "複数行に分割");
+  // 連続表示のため最後以外は末尾 ; で改行抑制
+  for (let i = 0; i < printLines.length - 1; i++)
+    assert.match(printLines[i].text, /;$/);
 });
 
 test("短い行は E_LINE_TOO_LONG にならない（キーワードは1バイト換算）", () => {

@@ -53,6 +53,63 @@ export function estimateMsxBytes(text: string): number {
   return total;
 }
 
+// 文字列を尊重して区切り文字でトップレベル分割
+function splitTop(text: string, sep: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inStr = false;
+  for (const ch of text) {
+    if (ch === '"') inStr = !inStr;
+    if (ch === sep && !inStr) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+// 長いPRINTを ; で分割（末尾 ; で改行抑制を維持）。docs/05 §5.12.2
+function splitPrint(seg: string): string[] {
+  const m = seg.match(/^PRINT\s+([\s\S]*)$/i);
+  if (!m) return [seg];
+  const endsSemi = m[1].trimEnd().endsWith(";");
+  const parts = splitTop(m[1], ";").map((s) => s.trim()).filter((s) => s !== "");
+  const chunks: string[][] = [];
+  let cur: string[] = [];
+  for (const p of parts) {
+    if (cur.length && estimateMsxBytes("PRINT " + [...cur, p].join(";") + ";") > 255) {
+      chunks.push(cur);
+      cur = [p];
+    } else cur.push(p);
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks.map(
+    (c, i) => "PRINT " + c.join(";") + (i < chunks.length - 1 ? ";" : endsSemi ? ";" : ""),
+  );
+}
+
+// 1行を255バイト以内へ自動分割。docs/05 §5.12.2
+// - 条件文(IF…THEN…)は安全に分割できないのでそのまま（必要なら E_LINE_TOO_LONG）
+// - それ以外は ":" 区切りを255以内で再パック、長いPRINTは ";" 分割
+export function splitLongLine(text: string): string[] {
+  if (estimateMsxBytes(text) <= 255) return [text];
+  if (/^\s*IF\b/i.test(text)) return [text];
+  const segs = splitTop(text, ":").map((s) => s.trim());
+  const expanded = segs.flatMap((s) => (estimateMsxBytes(s) > 255 ? splitPrint(s) : [s]));
+  const lines: string[] = [];
+  let cur = "";
+  for (const s of expanded) {
+    const cand = cur ? cur + ": " + s : s;
+    if (cur && estimateMsxBytes(cand) > 255) {
+      lines.push(cur);
+      cur = s;
+    } else cur = cand;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
 // ---- 変数収集 ----
 // 式中の変数名を集める（ユーザ関数呼び出し・組み込み関数は変数ではない）
 function collectExprVars(
@@ -167,7 +224,13 @@ function globalNamesOf(fn: FunctionDef): Set<string> {
   return g;
 }
 
-export function transform(program: Program): TransformResult {
+export interface TransformOptions {
+  lineMap?: Array<{ file: string; line: number }>; // 統合ソース行 → 由来（INCLUDE provenance）
+  sources?: string[]; // 取り込んだ全ファイル（先頭=エントリ）
+  source?: string; // エントリファイル名
+}
+
+export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
   const diagnostics: Diagnostic[] = [];
   const fail = (code: string, msg: string) =>
     diagnostics.push(error(code, ORIGIN, msg));
@@ -384,6 +447,7 @@ export function transform(program: Program): TransformResult {
     emitExpr,
     simpleStmtText,
     varNameMap,
+    opts,
   });
 }
 
@@ -867,7 +931,17 @@ function finishTransform(ctx: any): TransformResult {
   };
 
   // ブロックを行番号付与し、ラベル位置を解決
-  const numberBlock = (items: Item[], start: number): MsxLine[] => {
+  const numberBlock = (rawItems: Item[], start: number): MsxLine[] => {
+    // 255バイト超過行を自動分割（番号付与の前なのでラベル/GOSUBは正しく解決される）
+    const items: Item[] = [];
+    for (const it of rawItems) {
+      if (it.kind !== "line") {
+        items.push(it);
+        continue;
+      }
+      const pieces = splitLongLine(it.text);
+      for (const text of pieces) items.push({ kind: "line", text });
+    }
     let no = start;
     for (const it of items)
       if (it.kind === "line") {
@@ -945,6 +1019,8 @@ function finishTransform(ctx: any): TransformResult {
     { kind: "Continue" as const, fromLine: 0, targetLine: labelLine.get(lp.c) ?? 0, loopId: "" },
     { kind: "Break" as const, fromLine: 0, targetLine: labelLine.get(lp.b) ?? 0, loopId: "" },
   ]);
+  const lineMap = ctx.opts?.lineMap as Array<{ file: string; line: number }> | undefined;
+  const fileOf = (posLine: number): string | undefined => lineMap?.[posLine - 1]?.file;
   const globalVarMap = varNameMap.filter((v: any) => v.scope === "GLOBAL");
   const functions = program.functions
     .filter((fn: FunctionDef) => (variantKeys.get(fn.name) ?? []).length > 0)
@@ -961,11 +1037,12 @@ function finishTransform(ctx: any): TransformResult {
           actual,
         })),
       })),
+      sourceFile: fileOf(fn.pos.line),
     }));
   const map: MapTable = {
     version: "1.0",
-    source: "",
-    sources: [],
+    source: ctx.opts?.source ?? "",
+    sources: ctx.opts?.sources ?? [],
     globalVarMap,
     functions,
     controlFlow,

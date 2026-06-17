@@ -19,6 +19,7 @@ export interface FuncEntry {
   params: Array<{ name: string; byRef: boolean }>;
   localVarMap: VarNameEntry[];
   variants: VariantEntry[];
+  sourceFile?: string; // 由来ファイル（INCLUDE分割復元用 provenance, docs/06 §6.12）
 }
 
 export interface FlowEntry {

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { tokenize } from "../src/lexer/lexer.ts";
 import { parse } from "../src/parser/parser.ts";
 import { transform } from "../src/transform/transformer.ts";
+import { renderMsx } from "../src/transform/transformer.ts";
+import { reverse } from "../src/reverse/reverse.ts";
 import { resolveIncludes, resolvePath } from "../src/preprocess/include.ts";
 import { findNonSjis } from "../src/core/sjis.ts";
 
@@ -77,4 +79,43 @@ test("INCLUDE: 不在は E_INCLUDE_NOT_FOUND", () => {
 test("INCLUDE: 相対パス解決", () => {
   assert.equal(resolvePath("lib/main.msxb", "math.msxb"), "lib/math.msxb");
   assert.equal(resolvePath("lib/main.msxb", "../top.msxb"), "top.msxb");
+});
+
+test("INCLUDE provenance → 逆変換でファイル分割復元＋往復一致", () => {
+  const files: Record<string, string> = {
+    "main.msxb": `INCLUDE "math.msxb"\nGTOTAL = 0\nGTOTAL = DOUBLE(21)\nPRINT GTOTAL`,
+    "math.msxb": `FUNCTION DOUBLE(N)\n    RETURN N * 2\nEND FUNCTION`,
+  };
+  const fwd = (fs: Record<string, string>) => {
+    const inc = resolveIncludes("main.msxb", (p) => fs[p] ?? null);
+    assert.deepEqual(inc.diagnostics, []);
+    const { tokens } = tokenize(inc.source);
+    const { program } = parse(tokens);
+    const r = transform(program, {
+      lineMap: inc.lineMap,
+      sources: inc.sources,
+      source: "main.msxb",
+    });
+    return r;
+  };
+  const r1 = fwd(files);
+  assert.deepEqual(r1.diagnostics, []);
+  // 関数 DOUBLE の由来が math.msxb
+  assert.equal(r1.map.functions.find((f) => f.name === "DOUBLE")?.sourceFile, "math.msxb");
+
+  // 逆変換でファイル分割
+  const rev = reverse(r1.code, r1.map);
+  const paths = rev.files.map((f) => f.path).sort();
+  assert.deepEqual(paths, ["main.msxb", "math.msxb"]);
+  const main = rev.files.find((f) => f.path === "main.msxb")!;
+  const math = rev.files.find((f) => f.path === "math.msxb")!;
+  assert.match(main.source, /INCLUDE "math.msxb"/);
+  assert.match(math.source, /FUNCTION DOUBLE\(N\)/);
+  assert.ok(!/FUNCTION/.test(main.source), "関数はmainに出ない（math側へ分割）");
+
+  // 復元したファイル群を再度 include→変換 → MSX が一致
+  const fs2: Record<string, string> = {};
+  for (const f of rev.files) fs2[f.path] = f.source;
+  const r2 = fwd(fs2);
+  assert.equal(renderMsx(r1.code), renderMsx(r2.code), "往復でMSX一致");
 });

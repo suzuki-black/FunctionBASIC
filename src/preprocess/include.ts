@@ -6,9 +6,14 @@
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 
+export interface LineOrigin {
+  file: string;
+  line: number; // そのファイル内の行（1始まり）
+}
 export interface IncludeResult {
   source: string; // 統合済みソース
-  sources: string[]; // 取り込んだ全ファイル（provenance、出現順）
+  sources: string[]; // 取り込んだ全ファイル（provenance、出現順。先頭がエントリ）
+  lineMap: LineOrigin[]; // 統合ソースの行(1始まり) → 由来。lineMap[mergedLine-1]
   diagnostics: Diagnostic[];
 }
 
@@ -40,27 +45,34 @@ export function resolveIncludes(
   const sources: string[] = [];
   const diagnostics: Diagnostic[] = [];
 
-  const expand = (path: string, stack: string[]): string => {
+  const expand = (path: string, stack: string[]): { lines: string[]; map: LineOrigin[] } => {
     if (stack.includes(path)) {
       diagnostics.push(error("E_INCLUDE_CYCLE", ORIGIN, `INCLUDE が循環: ${path}`));
-      return "";
+      return { lines: [], map: [] };
     }
-    if (sources.includes(path)) return ""; // dedup（include 1回）
+    if (sources.includes(path)) return { lines: [], map: [] }; // dedup（include 1回）
     const content = read(path);
     if (content == null) {
       diagnostics.push(error("E_INCLUDE_NOT_FOUND", ORIGIN, `INCLUDE 先が見つかりません: ${path}`));
-      return "";
+      return { lines: [], map: [] };
     }
     sources.push(path);
-    const outLines: string[] = [];
-    for (const line of content.split("\n")) {
+    const lines: string[] = [];
+    const map: LineOrigin[] = [];
+    content.split("\n").forEach((line, idx) => {
       const m = line.match(/^\s*INCLUDE\s+"([^"]+)"\s*$/i);
-      if (m) outLines.push(expand(resolvePath(path, m[1]), [...stack, path]));
-      else outLines.push(line);
-    }
-    return outLines.join("\n");
+      if (m) {
+        const child = expand(resolvePath(path, m[1]), [...stack, path]);
+        lines.push(...child.lines);
+        map.push(...child.map);
+      } else {
+        lines.push(line);
+        map.push({ file: path, line: idx + 1 });
+      }
+    });
+    return { lines, map };
   };
 
-  const source = expand(normalize(entryPath), []);
-  return { source, sources, diagnostics };
+  const { lines, map } = expand(normalize(entryPath), []);
+  return { source: lines.join("\n"), sources, lineMap: map, diagnostics };
 }

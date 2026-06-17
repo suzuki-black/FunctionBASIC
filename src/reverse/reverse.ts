@@ -9,7 +9,8 @@ import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 
 export interface ReverseResult {
-  source: string;
+  source: string; // 先頭ファイル（単一ファイル時は全体）
+  files: Array<{ path: string; source: string }>; // INCLUDE分割復元
   diagnostics: Diagnostic[];
 }
 
@@ -277,26 +278,23 @@ export function reverse(code: MsxLine[], map: MapTable): ReverseResult {
   };
 
   // ---- MAIN ----
-  const lines: string[] = [];
-  lines.push(...reconstruct(mainLines, { scope: globalRev, keep: KEEP }));
+  const mainBlock = reconstruct(mainLines, { scope: globalRev, keep: KEEP });
 
-  // ---- 各関数 ----
-  for (const fn of map.functions) {
+  // ---- 各関数を個別ブロックに復元 ----
+  const funcBlock = (fn: FuncEntry): string[] => {
     const variant = fn.variants[0];
-    if (!variant) continue;
+    if (!variant) return [];
     const info = funcByEntry.get(variant.entryLine)!;
     const i = entryLines.indexOf(variant.entryLine);
     const end = entryLines[i + 1] ?? Infinity;
     const body = code.filter((l) => l.lineNo >= variant.entryLine && l.lineNo < end);
 
-    // スコープ: グローバル → ローカル → REF(actual→param) の優先
     const scope = new Map(globalRev);
     for (const [k, v] of info.localRev) scope.set(k, v);
     for (const [k, v] of info.refRev) scope.set(k, v);
     const keep = new Set(KEEP);
     keep.add(fn.retVar);
 
-    // 関数が参照するグローバル（GLOBAL宣言の復元）
     const usedGlobals = new Set<string>();
     for (const l of body)
       for (const m of l.text.matchAll(/[A-Za-z][A-Za-z0-9_]*[%!#$]?/g)) {
@@ -305,16 +303,54 @@ export function reverse(code: MsxLine[], map: MapTable): ReverseResult {
           usedGlobals.add(globalRev.get(id)!);
       }
 
-    const hdr = `FUNCTION ${fn.name}${fn.retSuffix}(${fn.params
-      .map((p) => (p.byRef ? "REF " : "") + p.name)
-      .join(", ")})`;
-    lines.push("");
-    lines.push(hdr);
-    for (const g of usedGlobals) lines.push(indent(1) + `GLOBAL ${g}`);
+    const out: string[] = [];
+    out.push(
+      `FUNCTION ${fn.name}${fn.retSuffix}(${fn.params
+        .map((p) => (p.byRef ? "REF " : "") + p.name)
+        .join(", ")})`,
+    );
+    for (const g of usedGlobals) out.push(indent(1) + `GLOBAL ${g}`);
     for (const s of reconstruct(body, { scope, keep, retVar: fn.retVar }))
-      lines.push(indent(1) + s);
-    lines.push("END FUNCTION");
+      out.push(indent(1) + s);
+    out.push("END FUNCTION");
+    return out;
+  };
+
+  // ---- ファイル分割（INCLUDE provenance）----
+  const sources = map.sources ?? [];
+  const multiFile = sources.length > 1;
+  const entry = sources[0] ?? map.source ?? "main.msxb";
+
+  const files: Array<{ path: string; source: string }> = [];
+  if (!multiFile) {
+    const lines = [...mainBlock];
+    for (const fn of map.functions) {
+      const b = funcBlock(fn);
+      if (b.length) lines.push("", ...b);
+    }
+    files.push({ path: entry, source: lines.join("\n") });
+  } else {
+    // ファイルごとに関数を振り分け（sourceFile 不明はエントリへ）
+    const byFile = new Map<string, FuncEntry[]>();
+    for (const fn of map.functions) {
+      const f = fn.sourceFile && sources.includes(fn.sourceFile) ? fn.sourceFile : entry;
+      (byFile.get(f) ?? byFile.set(f, []).get(f)!).push(fn);
+    }
+    for (const src of sources) {
+      const lines: string[] = [];
+      if (src === entry) {
+        for (const other of sources)
+          if (other !== entry) lines.push(`INCLUDE "${other}"`);
+        if (lines.length) lines.push("");
+        lines.push(...mainBlock);
+      }
+      for (const fn of byFile.get(src) ?? []) {
+        const b = funcBlock(fn);
+        if (b.length) lines.push("", ...b);
+      }
+      files.push({ path: src, source: lines.join("\n").replace(/^\n+/, "") });
+    }
   }
 
-  return { source: lines.join("\n"), diagnostics };
+  return { source: files[0]?.source ?? "", files, diagnostics };
 }

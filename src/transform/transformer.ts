@@ -15,6 +15,9 @@ import { error } from "../core/diagnostics.ts";
 import { hasError } from "../core/diagnostics.ts";
 import { isBuiltinFunction } from "../core/builtins.ts";
 import { NamePool } from "./names.ts";
+import { KEYWORDS } from "../lexer/keywords.ts";
+import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
+import type { MapTable } from "../core/maptable.ts";
 
 export interface MsxLine {
   lineNo: number;
@@ -24,9 +27,30 @@ export interface TransformResult {
   code: MsxLine[];
   diagnostics: Diagnostic[];
   varNameMap: Array<{ original: string; scope: string; msxName: string }>;
+  map: MapTable;
 }
 
 const ORIGIN = { line: 0, column: 0 };
+
+// トークン化後のおおよそのバイト長（キーワード/組み込みは1バイト）。docs/05 §5.12.1
+const ONE_BYTE = new Set<string>([
+  ...KEYWORDS,
+  ...BUILTIN_STATEMENTS,
+  ...BUILTIN_FUNCTIONS,
+  "GOTO",
+  "GOSUB",
+  "THEN",
+]);
+export function estimateMsxBytes(text: string): number {
+  const parts = text.match(/"[^"]*"|[A-Za-z][A-Za-z0-9_]*[%!#$]?|[^"A-Za-z]+/g) ?? [];
+  let total = 0;
+  for (const p of parts) {
+    if (p.startsWith('"')) total += Buffer.byteLength(p, "utf8");
+    else if (/^[A-Za-z]/.test(p) && ONE_BYTE.has(p.toUpperCase())) total += 1;
+    else total += Buffer.byteLength(p, "utf8");
+  }
+  return total;
+}
 
 // ---- 変数収集 ----
 // 式中の変数名を集める（ユーザ関数呼び出し・組み込み関数は変数ではない）
@@ -545,6 +569,7 @@ function finishTransform(ctx: any): TransformResult {
   let labelCounter = 0;
   const newLabel = (): number => ++labelCounter;
   const loopStack: { b: number; c: number }[] = [];
+  const emittedLoops: { b: number; c: number }[] = []; // controlFlow用
   const labelLine = new Map<number, number>(); // labelId → MSX行番号
   const entryLineOf = new Map<string, number>(); // variant key → 先頭行番号
 
@@ -675,6 +700,7 @@ function finishTransform(ctx: any): TransformResult {
           });
           const b = newLabel();
           const c = newLabel();
+          emittedLoops.push({ b, c });
           loopStack.push({ b, c });
           emitInto(s.body, sc, items);
           loopStack.pop();
@@ -687,6 +713,7 @@ function finishTransform(ctx: any): TransformResult {
           items.push({ kind: "line", text: `WHILE ${emitExpr(s.cond, sc)}` });
           const b = newLabel();
           const c = newLabel();
+          emittedLoops.push({ b, c });
           loopStack.push({ b, c });
           emitInto(s.body, sc, items);
           loopStack.pop();
@@ -757,7 +784,47 @@ function finishTransform(ctx: any): TransformResult {
       .replace(/@@L:(\d+)@@/g, (_, id) => String(labelLine.get(Number(id)) ?? 0));
   }
 
-  return { code: out, diagnostics, varNameMap };
+  // 1行255バイト制限の検査（docs/05 §5.12）。自動分割は将来、まずは検出。
+  for (const l of out) {
+    if (estimateMsxBytes(l.text) > 255)
+      fail(
+        "E_LINE_TOO_LONG",
+        `行 ${l.lineNo} が255バイトを超過しました（式の簡略化/分割が必要）`,
+      );
+  }
+
+  // ---- MapTable 構築（逆変換用）----
+  const controlFlow = emittedLoops.flatMap((lp) => [
+    { kind: "Continue" as const, fromLine: 0, targetLine: labelLine.get(lp.c) ?? 0, loopId: "" },
+    { kind: "Break" as const, fromLine: 0, targetLine: labelLine.get(lp.b) ?? 0, loopId: "" },
+  ]);
+  const globalVarMap = varNameMap.filter((v: any) => v.scope === "GLOBAL");
+  const functions = program.functions
+    .filter((fn: FunctionDef) => (variantKeys.get(fn.name) ?? []).length > 0)
+    .map((fn: FunctionDef) => ({
+      name: fn.name,
+      retSuffix: fn.retSuffix,
+      retVar: retVarOf.get(fn.name)!,
+      params: fn.params.map((p) => ({ name: p.name, byRef: p.byRef })),
+      localVarMap: varNameMap.filter((v: any) => v.scope === fn.name),
+      variants: (variantKeys.get(fn.name) ?? []).map((key: string) => ({
+        entryLine: entryLineOf.get(key) ?? 0,
+        refSubst: [...(variantSubst.get(key)?.entries() ?? [])].map(([param, actual]) => ({
+          param,
+          actual,
+        })),
+      })),
+    }));
+  const map: MapTable = {
+    version: "1.0",
+    source: "",
+    sources: [],
+    globalVarMap,
+    functions,
+    controlFlow,
+  };
+
+  return { code: out, diagnostics, varNameMap, map };
 }
 
 export function renderMsx(lines: MsxLine[]): string {

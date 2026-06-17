@@ -1,0 +1,65 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { tokenize } from "../src/lexer/lexer.ts";
+import { parse } from "../src/parser/parser.ts";
+import { transform, renderMsx } from "../src/transform/transformer.ts";
+
+const compile = (src: string) => {
+  const { tokens, diagnostics: ld } = tokenize(src);
+  const { program, diagnostics: pd } = parse(tokens);
+  const r = transform(program);
+  return { ...r, diagnostics: [...ld, ...pd, ...r.diagnostics], msx: renderMsx(r.code).replace(/\r/g, "") };
+};
+
+test("配列REF複数variant: 別配列ごとに本体を複製", () => {
+  const { msx, diagnostics } = compile(`FUNCTION SUM(REF A, N)
+    LET S = 0
+    FOR I = 1 TO N
+        LET S = S + A(I)
+    NEXT
+    RETURN S
+END FUNCTION
+DIM SCORE(10)
+DIM DAMAGE(5)
+LET T1 = SUM(REF SCORE, 10)
+LET T2 = SUM(REF DAMAGE, 5)
+PRINT T1
+PRINT T2`);
+  assert.deepEqual(diagnostics, []);
+  // SUM が SCORE版(A->A) と DAMAGE版(A->B) の2ブロックに複製される
+  assert.match(msx, /FUNCTION SUM \(A->A\)/);
+  assert.match(msx, /FUNCTION SUM \(A->B\)/);
+  // 各ブロックが対応する配列を直接参照（コピー無し。局所変数名は2文字割当）
+  assert.match(msx, /\+A\(/);
+  assert.match(msx, /\+B\(/);
+  // 1000番台と2000番台の別セグメント
+  assert.match(msx, /1000 ' === FUNCTION SUM/);
+  assert.match(msx, /2000 ' === FUNCTION SUM/);
+});
+
+test("255バイト超過は E_LINE_TOO_LONG", () => {
+  const { diagnostics } = compile(`PRINT "${"x".repeat(300)}"`);
+  assert.ok(diagnostics.some((d) => d.code === "E_LINE_TOO_LONG"));
+});
+
+test("短い行は E_LINE_TOO_LONG にならない（キーワードは1バイト換算）", () => {
+  const { diagnostics } = compile(`PRINT "hello"`);
+  assert.ok(!diagnostics.some((d) => d.code === "E_LINE_TOO_LONG"));
+});
+
+test("MapTable: グローバル/ローカル/variant/refSubst を保持", () => {
+  const { map } = compile(`FUNCTION F(REF X)
+    GLOBAL G
+    LET X = G
+    RETURN 0
+END FUNCTION
+G = 5
+F(POS)`);
+  assert.ok(map.globalVarMap.some((v) => v.original === "G"));
+  const f = map.functions.find((x) => x.name === "F");
+  assert.ok(f, "関数Fがマップにある");
+  assert.equal(f.params[0].name, "X");
+  assert.equal(f.params[0].byRef, true);
+  assert.equal(f.variants.length, 1);
+  assert.equal(f.variants[0].refSubst[0].param, "X");
+});

@@ -169,64 +169,109 @@ export function reverse(code: MsxLine[], map: MapTable): ReverseResult {
     return lhs ? `${lhs} = ${call}` : call;
   };
 
-  // 行ブロックを構造化文へ（FOR/WHILE/IF/呼び出し/インライン）
+  // 行ブロックを構造化文へ（範囲ベースで FOR/WHILE/IF を再ネスト）
   const reconstruct = (lines: MsxLine[], ctx: Ctx): string[] => {
     const out: string[] = [];
-    let depth = 0;
-    for (const l of lines) {
-      const t0 = l.text;
-      if (/^'\s*===/.test(t0)) continue; // ヘッダコメント
+    const noIdx = new Map<number, number>();
+    lines.forEach((l, k) => noIdx.set(l.lineNo, k));
+    const sub = (a: number, b: number) =>
+      reconstruct(lines.slice(a, b), ctx).map((s) => indent(1) + s);
+    // open/close キーワードの対応終端を探す
+    const matchEnd = (start: number, open: RegExp, close: RegExp): number => {
+      let d = 1;
+      for (let k = start + 1; k < lines.length; k++) {
+        const t = lines[k].text;
+        if (open.test(t)) d++;
+        else if (close.test(t)) {
+          d--;
+          if (d === 0) return k;
+        }
+      }
+      return lines.length - 1;
+    };
+
+    let i = 0;
+    while (i < lines.length) {
+      const t0 = lines[i].text;
+      if (/^'\s*===/.test(t0)) {
+        i++;
+        continue;
+      }
       const text = restoreNames(t0, ctx.scope, ctx.keep);
 
-      // コメント
       if (text.startsWith("'")) {
-        out.push(indent(depth) + text);
+        out.push(text);
+        i++;
         continue;
       }
-      // FOR / NEXT / WHILE / WEND
       if (/^FOR\s/.test(text)) {
-        out.push(indent(depth) + text);
-        depth++;
-        continue;
-      }
-      if (/^NEXT(\s|$)/.test(text)) {
-        depth = Math.max(0, depth - 1);
-        out.push(indent(depth) + "NEXT");
+        const e = matchEnd(i, /^FOR\s/, /^NEXT/);
+        out.push(text);
+        out.push(...sub(i + 1, e));
+        out.push("NEXT");
+        i = e + 1;
         continue;
       }
       if (/^WHILE\s/.test(text)) {
-        out.push(indent(depth) + text);
-        depth++;
+        const e = matchEnd(i, /^WHILE\s/, /^WEND/);
+        out.push(text);
+        out.push(...sub(i + 1, e));
+        out.push("WEND");
+        i = e + 1;
         continue;
       }
-      if (/^WEND$/.test(text)) {
-        depth = Math.max(0, depth - 1);
-        out.push(indent(depth) + "WEND");
+      if (text === "END") {
+        i++;
         continue;
       }
-      if (text === "END") continue; // MAIN末尾
+      // GOTO形式IF: IF NOT(cond) THEN <elseOrEnd>
+      const gif = text.match(/^IF\s+NOT\((.*)\)\s+THEN\s+(\d+)$/);
+      if (gif) {
+        const cond = gif[1];
+        const elseLine = Number(gif[2]);
+        const elseIdx = noIdx.get(elseLine) ?? lines.length;
+        // else 有無: elseIdx 直前が break/continue でない GOTO(>elseLine) なら else あり
+        const prev = lines[elseIdx - 1]?.text ?? "";
+        const gm = prev.match(/^GOTO\s+(\d+)$/);
+        const hasElse =
+          !!gm &&
+          Number(gm[1]) > elseLine &&
+          !continueTargets.has(Number(gm[1])) &&
+          !breakTargets.has(Number(gm[1]));
+        out.push(`IF ${cond} THEN`);
+        if (hasElse) {
+          const endLine = Number(gm![1]);
+          const endIdx = noIdx.get(endLine) ?? lines.length;
+          out.push(...sub(i + 1, elseIdx - 1)); // then（GOTO行は除く）
+          out.push("ELSE");
+          out.push(...sub(elseIdx, endIdx));
+          out.push("END IF");
+          i = endIdx;
+        } else {
+          out.push(...sub(i + 1, elseIdx));
+          out.push("END IF");
+          i = elseIdx;
+        }
+        continue;
+      }
       // 1行IF: IF cond THEN body
       const ifm = text.match(/^IF\s+(.*?)\s+THEN\s+(.*)$/);
-      if (ifm && !/^NOT\(/.test(ifm[1])) {
-        out.push(indent(depth) + `IF ${ifm[1]} THEN`);
-        for (const s of inlineSegs(splitColon(ifm[2]), ctx))
-          out.push(indent(depth + 1) + s);
-        out.push(indent(depth) + "END IF");
-        continue;
-      }
       if (ifm) {
-        out.push(indent(depth) + `' [REVERSE?] ${text}`);
-        warn(`GOTO形式IFの復元は未対応: ${text}`);
+        out.push(`IF ${ifm[1]} THEN`);
+        for (const s of inlineSegs(splitColon(ifm[2]), ctx)) out.push(indent(1) + s);
+        out.push("END IF");
+        i++;
         continue;
       }
       // 呼び出し（GOSUB含む）
       if (/\bGOSUB\s+\d+/.test(text)) {
-        out.push(indent(depth) + reconstructCall(splitColon(text), ctx));
+        out.push(reconstructCall(splitColon(text), ctx));
+        i++;
         continue;
       }
       // インライン文列
-      for (const s of inlineSegs(splitColon(text), ctx))
-        out.push(indent(depth) + s);
+      for (const s of inlineSegs(splitColon(text), ctx)) out.push(s);
+      i++;
     }
     return out;
   };

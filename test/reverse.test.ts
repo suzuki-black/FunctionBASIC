@@ -74,6 +74,35 @@ test("SCAN: 往復一致（BREAK/CONTINUE を GOTO から復元）", () => {
   assert.match(restored, /BREAK/);
 });
 
+test("GOTO形式IF/ELSE: 往復一致＋ブロックIF/ELSE復元", () => {
+  const { ok, restored, revDiag } = roundTrip(`LET X = 5
+IF X > 0 THEN
+    PRINT "POS"
+    LET F = 1
+ELSE
+    PRINT "NONPOS"
+END IF
+PRINT F`);
+  assert.deepEqual(revDiag, []);
+  assert.ok(ok, "往復一致");
+  assert.match(restored, /IF X>0 THEN/);
+  assert.match(restored, /ELSE/);
+  assert.match(restored, /END IF/);
+});
+
+test("ネストした IF in FOR: 往復一致", () => {
+  const { ok, revDiag } = roundTrip(`LET S = 0
+FOR I = 1 TO 5
+    IF I > 2 THEN
+        LET S = S + I
+        PRINT I
+    END IF
+NEXT
+PRINT S`);
+  assert.deepEqual(revDiag, []);
+  assert.ok(ok, "往復一致");
+});
+
 test("2文字名が元の変数名に戻る", () => {
   const { restored } = roundTrip(`FUNCTION DBL(N)
     LET RESULT = N * 2

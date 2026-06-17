@@ -18,6 +18,7 @@ import { NamePool } from "./names.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
+import { findNonSjis } from "../core/sjis.ts";
 
 export interface MsxLine {
   lineNo: number;
@@ -527,18 +528,64 @@ function finishTransform(ctx: any): TransformResult {
   };
 
   // パス: 全呼び出しを走査して variant を確定
+  // 式中の全ユーザ関数呼び出し（ネスト含む）を走査して variant 登録
+  const scanExpr = (e: Expr, sc: { func?: string }) => {
+    switch (e.type) {
+      case "CallExpr":
+        if (funcTable.has(e.name)) registerVariant(e.name, e.args, sc, e);
+        e.args.forEach((a) => scanExpr(a.expr, sc));
+        break;
+      case "Bin":
+        scanExpr(e.left, sc);
+        scanExpr(e.right, sc);
+        break;
+      case "Un":
+        scanExpr(e.operand, sc);
+        break;
+      case "ArrayRef":
+        e.indices.forEach((x) => scanExpr(x, sc));
+        break;
+      default:
+        break;
+    }
+  };
   const scanCalls = (stmts: Stmt[], func?: string) => {
     const sc = { func };
     for (const s of stmts) {
-      if (s.type === "Let" && s.expr.type === "CallExpr" && funcTable.has(s.expr.name)) {
-        registerVariant(s.expr.name, s.expr.args, sc, s.expr);
-      } else if (s.type === "Call" && funcTable.has(s.call.name)) {
-        registerVariant(s.call.name, s.call.args, sc, s.call);
-      } else if (s.type === "If") {
-        scanCalls(s.then, func);
-        if (s.else) scanCalls(s.else, func);
-      } else if (s.type === "For" || s.type === "While") {
-        scanCalls(s.body, func);
+      switch (s.type) {
+        case "Let":
+          if (s.target.type === "ArrayRef") s.target.indices.forEach((x) => scanExpr(x, sc));
+          scanExpr(s.expr, sc);
+          break;
+        case "Call":
+          scanExpr(s.call, sc);
+          break;
+        case "Return":
+          if (s.expr) scanExpr(s.expr, sc);
+          break;
+        case "Builtin":
+          s.parts.forEach((p) => p.kind === "expr" && scanExpr(p.expr, sc));
+          break;
+        case "Dim":
+          s.decls.forEach((d) => d.dims.forEach((x) => scanExpr(x, sc)));
+          break;
+        case "If":
+          scanExpr(s.cond, sc);
+          scanCalls(s.then, func);
+          if (s.else) scanCalls(s.else, func);
+          break;
+        case "For":
+          scanExpr(s.from, sc);
+          scanExpr(s.to, sc);
+          if (s.step) scanExpr(s.step, sc);
+          scanCalls(s.body, func);
+          break;
+        case "While":
+          scanExpr(s.cond, sc);
+          scanCalls(s.body, func);
+          break;
+        default:
+          break;
       }
     }
   };
@@ -601,6 +648,7 @@ function finishTransform(ctx: any): TransformResult {
   // else無し・本体が全てインライン可 → 1行IF
   const tryOneLineIf = (s: any, sc: any): string | null => {
     if (s.else) return null;
+    for (const t of s.then) if (stmtHasUserCall(t)) return null; // ネスト呼び出しはGOTO形式へ
     const parts: string[] = [];
     for (const t of s.then) {
       const txt = stmtToInline(t, sc);
@@ -635,8 +683,97 @@ function finishTransform(ctx: any): TransformResult {
     items.push({ kind: "line", text: segs.join(": ") });
   };
 
+  // ---- ネスト呼び出しの lowering（式中ユーザ関数呼び出し → 一時変数）----
+  let tempCounter = 0;
+  const exprHasUserCall = (e: Expr): boolean => {
+    switch (e.type) {
+      case "CallExpr":
+        return funcTable.has(e.name) || e.args.some((a) => exprHasUserCall(a.expr));
+      case "Bin":
+        return exprHasUserCall(e.left) || exprHasUserCall(e.right);
+      case "Un":
+        return exprHasUserCall(e.operand);
+      case "ArrayRef":
+        return e.indices.some(exprHasUserCall);
+      default:
+        return false;
+    }
+  };
+  const stmtHasUserCall = (s: Stmt): boolean => {
+    switch (s.type) {
+      case "Let":
+        return exprHasUserCall(s.expr) ||
+          (s.target.type === "ArrayRef" && s.target.indices.some(exprHasUserCall));
+      case "Return":
+        return !!s.expr && exprHasUserCall(s.expr);
+      case "Builtin":
+        return s.parts.some((p) => p.kind === "expr" && exprHasUserCall(p.expr));
+      case "Call":
+        return true;
+      default:
+        return false;
+    }
+  };
+  // 式を lowering: ユーザ呼び出しを一時変数へ（GOSUB列を items に前置）
+  const lowerExpr = (e: Expr, sc: any, items: Item[]): Expr => {
+    switch (e.type) {
+      case "Num":
+      case "Str":
+      case "Var":
+        return e;
+      case "ArrayRef":
+        return { ...e, indices: e.indices.map((x) => lowerExpr(x, sc, items)) };
+      case "Un":
+        return { ...e, operand: lowerExpr(e.operand, sc, items) };
+      case "Bin":
+        return { ...e, left: lowerExpr(e.left, sc, items), right: lowerExpr(e.right, sc, items) };
+      case "CallExpr": {
+        const args = e.args.map((a) => ({ ...a, expr: lowerExpr(a.expr, sc, items) }));
+        if (funcTable.has(e.name)) {
+          const fn = funcTable.get(e.name)!;
+          const t = `__T${++tempCounter}${fn.retSuffix}`;
+          const tMsx = resolveVar(t, sc); // 一時変数を割当
+          emitCall(items, e.name, args, e, tMsx, sc);
+          return { type: "Var", name: t };
+        }
+        return { ...e, args };
+      }
+    }
+  };
+  // 文のネスト呼び出しを前置 lowering（最外の whole-RHS / 文呼び出しは直接GOSUBのため温存）
+  const prelower = (s: Stmt, sc: any, items: Item[]): Stmt => {
+    const L = (e: Expr) => lowerExpr(e, sc, items);
+    switch (s.type) {
+      case "Let": {
+        const target =
+          s.target.type === "ArrayRef"
+            ? { ...s.target, indices: s.target.indices.map(L) }
+            : s.target;
+        // whole-RHS のユーザ呼び出しはノード identity を保つ（引数の lowering は emit 時）
+        if (s.expr.type === "CallExpr" && funcTable.has(s.expr.name))
+          return { ...s, target };
+        return { ...s, target, expr: L(s.expr) };
+      }
+      case "Call":
+        return s; // 文呼び出しもノード identity を保つ（引数 lowering は emit 時）
+      case "Return":
+        return s.expr ? { ...s, expr: L(s.expr) } : s;
+      case "Builtin":
+        return { ...s, parts: s.parts.map((p) => (p.kind === "expr" ? { kind: "expr", expr: L(p.expr) } : p)) };
+      case "If":
+        return { ...s, cond: L(s.cond) };
+      case "For":
+        return { ...s, from: L(s.from), to: L(s.to), step: s.step ? L(s.step) : undefined };
+      case "While":
+        return { ...s, cond: L(s.cond) };
+      default:
+        return s;
+    }
+  };
+
   const emitInto = (stmts: Stmt[], sc: any, items: Item[]) => {
-    for (const s of stmts) {
+    for (const s0 of stmts) {
+      const s = prelower(s0, sc, items);
       switch (s.type) {
         case "Global":
         case "Include":
@@ -645,13 +782,16 @@ function finishTransform(ctx: any): TransformResult {
           items.push({ kind: "line", text: simpleStmtText(s, sc)! });
           break;
         case "Let":
-          if (s.expr.type === "CallExpr" && funcTable.has(s.expr.name))
-            emitCall(items, s.expr.name, s.expr.args, s.expr, emitLValueText(s.target, sc), sc);
-          else items.push({ kind: "line", text: simpleStmtText(s, sc)! });
+          if (s.expr.type === "CallExpr" && funcTable.has(s.expr.name)) {
+            const args = s.expr.args.map((a) => ({ ...a, expr: lowerExpr(a.expr, sc, items) }));
+            emitCall(items, s.expr.name, args, s.expr, emitLValueText(s.target, sc), sc);
+          } else items.push({ kind: "line", text: simpleStmtText(s, sc)! });
           break;
-        case "Call":
-          emitCall(items, s.call.name, s.call.args, s.call, null, sc);
+        case "Call": {
+          const args = s.call.args.map((a) => ({ ...a, expr: lowerExpr(a.expr, sc, items) }));
+          emitCall(items, s.call.name, args, s.call, null, sc);
           break;
+        }
         case "Return":
         case "Dim":
         case "Builtin":
@@ -790,6 +930,13 @@ function finishTransform(ctx: any): TransformResult {
       fail(
         "E_LINE_TOO_LONG",
         `行 ${l.lineNo} が255バイトを超過しました（式の簡略化/分割が必要）`,
+      );
+    // Shift-JIS 表現不能文字の検査（docs/08 §8.6.4）
+    const bad = findNonSjis(l.text);
+    if (bad.length > 0)
+      fail(
+        "E_NON_SJIS",
+        `行 ${l.lineNo}: Shift-JISで表現できない文字 ${JSON.stringify(bad.join(""))}`,
       );
   }
 

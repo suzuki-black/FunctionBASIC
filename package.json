@@ -1,0 +1,14 @@
+{
+  "name": "functionbasic",
+  "version": "0.0.1",
+  "description": "構造化BASIC → MSX-BASIC 変換システム（コア）",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
+    "test:watch": "node --experimental-strip-types --test --watch \"test/**/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

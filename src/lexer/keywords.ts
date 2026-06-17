@@ -1,0 +1,37 @@
+// 構造化BASIC の予約語（構文キーワード＋語演算子）。docs/01・docs/03
+// 注: PRINT/INPUT/MID$ 等の「組み込み命令・関数」はここには含めず、IDENT として字句解析し、
+//     パーサが組み込み表（docs/12）で解決する。REM はコメントとして字句解析側で特別扱い。
+
+export const KEYWORDS: ReadonlySet<string> = new Set([
+  // 関数・制御構造
+  "FUNCTION",
+  "END",
+  "IF",
+  "THEN",
+  "ELSE",
+  "FOR",
+  "TO",
+  "STEP",
+  "NEXT",
+  "WHILE",
+  "WEND",
+  "RETURN",
+  "BREAK",
+  "CONTINUE",
+  // 宣言・引数
+  "LET",
+  "REF",
+  "GLOBAL",
+  "DIM",
+  "INCLUDE",
+  // 語演算子（docs/01 §1.11.2）
+  "AND",
+  "OR",
+  "NOT",
+  "XOR",
+  "EQV",
+  "IMP",
+  "MOD",
+]);
+
+export const isKeyword = (word: string): boolean => KEYWORDS.has(word.toUpperCase());

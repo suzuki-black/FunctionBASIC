@@ -1,9 +1,9 @@
 // 構造化BASIC エディタ（依存ゼロ）。コアは dist/ から読み込む。
-import { tokenize } from "../dist/lexer/lexer.js";
-import { parse } from "../dist/parser/parser.js";
-import { transform, renderMsx } from "../dist/transform/transformer.js";
-import { reverse } from "../dist/reverse/reverse.js";
-import { isBuiltin } from "../dist/core/builtins.js";
+import { tokenize } from "./core/lexer/lexer.js";
+import { parse } from "./core/parser/parser.js";
+import { transform, renderMsx } from "./core/transform/transformer.js";
+import { reverse } from "./core/reverse/reverse.js";
+import { isBuiltin } from "./core/core/builtins.js";
 
 const $ = (id) => document.getElementById(id);
 const srcEl = $("src");
@@ -145,7 +145,12 @@ function syncScroll() {
   gutterEl.scrollTop = srcEl.scrollTop;
 }
 
-// ---- 保存（ダウンロード）----
+// ---- プラットフォーム判定（Tauri デスクトップ or ブラウザ）----
+const tauri = () =>
+  typeof window !== "undefined" && window.__TAURI__ ? window.__TAURI__ : null;
+const isDesktop = () => !!tauri();
+
+// ブラウザ用ダウンロード（フォールバック）
 function download(name, content) {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const a = document.createElement("a");
@@ -157,12 +162,36 @@ function download(name, content) {
 function baseName() {
   return ($("filename").value || "game.msxb").replace(/\.msxb$/i, "");
 }
-function onSave() {
+async function onSave() {
   const r = compile(srcEl.value);
   const hasError = r.diags.some((d) => d.severity === "error");
   const base = baseName();
+
+  if (isDesktop()) {
+    // デスクトップ: Rust 側で Shift-JIS 保存（docs/08・10）
+    try {
+      const saved = await tauri().core.invoke("save_project", {
+        base,
+        source: srcEl.value,
+        mapJson: hasError ? "" : JSON.stringify(r.map, null, 1),
+        msx: hasError ? "" : r.msx,
+        hasError,
+      });
+      if (saved === false) return; // ダイアログでキャンセル
+      statusEl.className = hasError ? "err" : "ok";
+      statusEl.textContent = hasError
+        ? "誤りがあります。確認してください（変換前のみ保存）"
+        : "保存しました（.msxb / .map.json / .bas、Shift-JIS）";
+    } catch (e) {
+      statusEl.className = "err";
+      statusEl.textContent = "保存に失敗しました: " + (e?.message ?? e);
+    }
+    return;
+  }
+
+  // ブラウザ: UTF-8 ダウンロード（Shift-JIS化はデスクトップ版で）
   if (hasError) {
-    download(`${base}.msxb`, srcEl.value); // 変換前のみ
+    download(`${base}.msxb`, srcEl.value);
     statusEl.className = "err";
     statusEl.textContent = "誤りがあります。確認してください（変換前のみ保存）";
     return;

@@ -5,7 +5,7 @@ import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync, rmSync }
 import { join, dirname } from "node:path";
 
 const SRC = "src";
-const OUT = "dist";
+const OUT = "editor/core"; // エディタ(フロントエンド)に同梱する形でコアをビルド
 
 function walk(dir) {
   const out = [];

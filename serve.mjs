@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
-const ROOT = process.cwd();
+const ROOT = join(process.cwd(), "editor");
 const PORT = process.env.PORT || 8123;
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -17,7 +17,7 @@ const MIME = {
 createServer(async (req, res) => {
   try {
     let url = decodeURIComponent(req.url.split("?")[0]);
-    if (url === "/") url = "/editor/index.html";
+    if (url === "/") url = "/index.html";
     if (url.endsWith("/")) url += "index.html";
     const path = join(ROOT, normalize(url));
     if (!path.startsWith(ROOT)) {

@@ -1,7 +1,8 @@
 node_modules/
-dist/
+editor/core/
 *.log
 .DS_Store
 src-tauri/target/
 
-dist/
+editor/core/
+src-tauri/gen/

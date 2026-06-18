@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "構造化BASICエディタ",
+  "version": "0.1.0",
+  "identifier": "dev.functionbasic.editor",
+  "build": {
+    "frontendDist": "../editor",
+    "beforeBuildCommand": "node build.mjs",
+    "beforeDevCommand": "node build.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "構造化BASIC → MSX-BASIC エディタ",
+        "width": 1100,
+        "height": 800,
+        "minWidth": 700,
+        "minHeight": 500
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"]
+  },
+  "plugins": {}
+}

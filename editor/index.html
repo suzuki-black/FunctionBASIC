@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>構造化BASIC エディタ — MSX-BASIC 変換</title>
+<link rel="stylesheet" href="/editor/style.css" />
+</head>
+<body>
+  <div id="toolbar">
+    <span class="brand">構造化BASIC → MSX-BASIC</span>
+    <input id="filename" value="game.msxb" spellcheck="false" />
+    <button id="saveBtn" title="文法チェック→変換→保存">変換して保存</button>
+    <span class="spacer"></span>
+    <button id="reverseBtn" title="MSX-BASIC変換後を構造化へ逆変換">逆変換プレビュー</button>
+    <span class="fontctl">
+      文字
+      <button id="fontDown">A-</button>
+      <button id="fontUp">A+</button>
+    </span>
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" data-tab="structured">構造化BASIC</button>
+    <button class="tab" data-tab="msx">MSX-BASIC変換後（読み取り専用）</button>
+  </div>
+
+  <!-- 構造化BASIC編集 -->
+  <div id="structuredPane" class="pane">
+    <div id="gutter"></div>
+    <div id="editWrap">
+      <pre id="highlight" aria-hidden="true"></pre>
+      <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    </div>
+  </div>
+
+  <!-- 変換後プレビュー -->
+  <div id="msxPane" class="pane" hidden>
+    <div id="msxToolbar">
+      <span id="msxNote"></span>
+      <button id="copyBtn">📋 コピー</button>
+    </div>
+    <pre id="msxOut"></pre>
+  </div>
+
+  <div id="status">準備完了</div>
+
+  <script type="module" src="/editor/app.js"></script>
+</body>
+</html>

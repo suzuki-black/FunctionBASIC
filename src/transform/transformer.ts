@@ -42,13 +42,15 @@ const ONE_BYTE = new Set<string>([
   "GOSUB",
   "THEN",
 ]);
+// UTF-8 バイト長（Node/ブラウザ両対応）
+const utf8len = (s: string): number => new TextEncoder().encode(s).length;
 export function estimateMsxBytes(text: string): number {
   const parts = text.match(/"[^"]*"|[A-Za-z][A-Za-z0-9_]*[%!#$]?|[^"A-Za-z]+/g) ?? [];
   let total = 0;
   for (const p of parts) {
-    if (p.startsWith('"')) total += Buffer.byteLength(p, "utf8");
+    if (p.startsWith('"')) total += utf8len(p);
     else if (/^[A-Za-z]/.test(p) && ONE_BYTE.has(p.toUpperCase())) total += 1;
-    else total += Buffer.byteLength(p, "utf8");
+    else total += utf8len(p);
   }
   return total;
 }

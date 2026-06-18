@@ -6,7 +6,9 @@
   "private": true,
   "scripts": {
     "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
-    "test:watch": "node --experimental-strip-types --test --watch \"test/**/*.test.ts\""
+    "test:watch": "node --experimental-strip-types --test --watch \"test/**/*.test.ts\"",
+    "build": "node build.mjs",
+    "serve": "node build.mjs && node serve.mjs"
   },
   "engines": {
     "node": ">=22.6"

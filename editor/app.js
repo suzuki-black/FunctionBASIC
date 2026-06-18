@@ -86,13 +86,15 @@ function compile(src) {
   return { diags: [...ld, ...pd, ...t.diagnostics], msx: renderMsx(t.code), map: t.map, code: t.code };
 }
 
-// ---- ガター（行番号＋×）----
+// ---- ガター（行番号＋×＋ブックマーク）----
+const bookmarks = new Set();
 function renderGutter(lineCount, errsByLine) {
   let html = "";
   for (let i = 1; i <= lineCount; i++) {
     const e = errsByLine.get(i);
     const x = e ? `<span class="x" title="${esc(e.join("\n"))}">×</span>` : "";
-    html += `<div class="gl">${i}${x}</div>`;
+    const bm = bookmarks.has(i) ? `<span class="bm">★</span>` : "";
+    html += `<div class="gl" data-line="${i}">${bm}${i}${x}</div>`;
   }
   gutterEl.innerHTML = html;
 }
@@ -236,6 +238,205 @@ function setSource(text) {
   render();
 }
 
+// ============ +α 機能（JetBrains風ナビ・整形・ブックマーク・スニペット）============
+
+const lineStartsOf = (src) => {
+  const ls = [0];
+  for (let i = 0; i < src.length; i++) if (src[i] === "\n") ls.push(i + 1);
+  return ls;
+};
+const caretLine = () => srcEl.value.slice(0, srcEl.selectionStart).split("\n").length;
+function scrollToLine(line, col = 0) {
+  const ls = lineStartsOf(srcEl.value);
+  const off = (ls[line - 1] ?? srcEl.value.length) + col;
+  srcEl.focus();
+  srcEl.selectionStart = srcEl.selectionEnd = off;
+  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  srcEl.scrollTop = Math.max(0, (line - 1) * lh - srcEl.clientHeight / 2);
+  syncScroll();
+}
+
+// ---- トークン＋絶対オフセット ----
+function tokensAbs(src) {
+  const { tokens } = tokenize(src);
+  const ls = lineStartsOf(src);
+  return tokens
+    .filter((t) => t.kind !== "EOF")
+    .map((t) => {
+      const start = ls[t.pos.line - 1] + (t.pos.column - 1);
+      return { t, start, end: start + t.raw.length };
+    });
+}
+function identAtCaret() {
+  const c = srcEl.selectionStart;
+  const toks = tokensAbs(srcEl.value);
+  return toks.find((x) => x.t.kind === "IDENT" && c >= x.start && c <= x.end)?.t ?? null;
+}
+// 定義位置（関数定義 / 変数の最初の定義）を探す
+function findDefinition(name, src) {
+  const toks = tokensAbs(src).map((x) => x.t);
+  // 関数定義: FUNCTION の直後の IDENT
+  for (let i = 0; i < toks.length - 1; i++)
+    if (toks[i].kind === "KEYWORD" && toks[i].value === "FUNCTION" && toks[i + 1].value === name)
+      return toks[i + 1].pos;
+  // 変数定義: FOR/REF/GLOBAL/DIM の直後、または "=" の直前
+  const defKw = new Set(["FOR", "REF", "GLOBAL", "DIM"]);
+  let prev = null;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.kind === "NEWLINE") { prev = null; continue; }
+    if (t.kind === "IDENT" && t.value === name) {
+      const next = toks[i + 1];
+      if ((prev && prev.kind === "KEYWORD" && defKw.has(prev.value)) ||
+          (next && next.kind === "OP" && next.value === "="))
+        return t.pos;
+    }
+    prev = t;
+  }
+  // フォールバック: 最初の出現
+  const first = toks.find((t) => t.kind === "IDENT" && t.value === name);
+  return first ? first.pos : null;
+}
+
+// ---- ジャンプ履歴（戻る/進む）----
+const jumpBack = [];
+const jumpFwd = [];
+const recordJump = () => { jumpBack.push(srcEl.selectionStart); if (jumpBack.length > 100) jumpBack.shift(); jumpFwd.length = 0; };
+function goBack() {
+  if (!jumpBack.length) return;
+  jumpFwd.push(srcEl.selectionStart);
+  const off = jumpBack.pop();
+  const line = srcEl.value.slice(0, off).split("\n").length;
+  scrollToLine(line);
+  srcEl.selectionStart = srcEl.selectionEnd = off;
+}
+function goForward() {
+  if (!jumpFwd.length) return;
+  jumpBack.push(srcEl.selectionStart);
+  const off = jumpFwd.pop();
+  const line = srcEl.value.slice(0, off).split("\n").length;
+  scrollToLine(line);
+  srcEl.selectionStart = srcEl.selectionEnd = off;
+}
+
+// ---- 定義へ移動 / 使用箇所 ----
+function goToDefinition() {
+  const t = identAtCaret();
+  if (!t) { flash("識別子の上で実行してください"); return; }
+  const def = findDefinition(t.value, srcEl.value);
+  if (!def) { flash(`定義が見つかりません: ${t.value}`); return; }
+  recordJump();
+  scrollToLine(def.line, def.column - 1);
+  flash(`定義へ移動: ${t.value} (行 ${def.line})`);
+}
+let usage = { name: null, list: [], idx: 0 };
+function findUsages() {
+  const t = identAtCaret();
+  if (!t) { flash("識別子の上で実行してください"); return; }
+  const list = tokensAbs(srcEl.value).filter((x) => x.t.kind === "IDENT" && x.t.value === t.value);
+  if (usage.name !== t.value) usage = { name: t.value, list, idx: -1 };
+  usage.idx = (usage.idx + 1) % list.length;
+  const cur = list[usage.idx].t.pos;
+  recordJump();
+  scrollToLine(cur.line, cur.column - 1);
+  flash(`使用箇所 ${usage.idx + 1}/${list.length}: ${t.value}`);
+}
+function goToLine() {
+  const n = prompt("移動先のエディタ行番号:");
+  if (n == null) return;
+  const line = Math.max(1, Math.min(srcEl.value.split("\n").length, parseInt(n) || 1));
+  recordJump();
+  scrollToLine(line);
+}
+
+// ---- ブックマーク ----
+function toggleBookmark() {
+  const l = caretLine();
+  if (bookmarks.has(l)) bookmarks.delete(l); else bookmarks.add(l);
+  render();
+  flash(`ブックマーク ${bookmarks.has(l) ? "追加" : "解除"}: 行 ${l}`);
+}
+function nextBookmark() {
+  if (!bookmarks.size) return flash("ブックマークなし");
+  const cur = caretLine();
+  const sorted = [...bookmarks].sort((a, b) => a - b);
+  const next = sorted.find((l) => l > cur) ?? sorted[0];
+  recordJump();
+  scrollToLine(next);
+}
+
+// ---- 整形（大文字化。文字列/コメントは保持）----
+function formatSource(src) {
+  const { tokens } = tokenize(src);
+  const ls = lineStartsOf(src);
+  const off = (p) => ls[p.line - 1] + (p.column - 1);
+  let out = "";
+  let pos = 0;
+  for (const t of tokens) {
+    if (t.kind === "EOF") break;
+    const s = off(t.pos);
+    if (s > pos) { out += src.slice(pos, s); pos = s; }
+    if (t.kind === "NEWLINE") { out += t.raw; pos += t.raw.length; continue; }
+    out += t.kind === "KEYWORD" || t.kind === "IDENT" || t.kind === "NUMBER" ? t.value : t.raw;
+    pos = s + t.raw.length;
+  }
+  if (pos < src.length) out += src.slice(pos);
+  return out;
+}
+function onFormat() {
+  const c = srcEl.selectionStart;
+  srcEl.value = formatSource(srcEl.value);
+  srcEl.selectionStart = srcEl.selectionEnd = c;
+  render();
+  flash("整形しました（大文字化）");
+}
+
+// ---- スニペット（行頭の trigger + Tab で展開）----
+const SNIPPETS = {
+  FN: (ind) => [`FUNCTION NAME()`, `${ind}    `, `${ind}END FUNCTION`],
+  FOR: (ind) => [`FOR I = 1 TO 10`, `${ind}    `, `${ind}NEXT`],
+  IF: (ind) => [`IF  THEN`, `${ind}    `, `${ind}END IF`],
+  WHILE: (ind) => [`WHILE `, `${ind}    `, `${ind}WEND`],
+};
+function trySnippet() {
+  const c = srcEl.selectionStart;
+  const text = srcEl.value;
+  const lineStart = text.lastIndexOf("\n", c - 1) + 1;
+  const lineText = text.slice(lineStart, c);
+  const ind = (lineText.match(/^\s*/) || [""])[0];
+  const word = lineText.trim().toUpperCase();
+  const snip = SNIPPETS[word];
+  if (!snip || lineText.slice(ind.length) !== lineText.trim()) return false;
+  const lines = snip(ind);
+  const body = ind + lines.join("\n");
+  srcEl.setRangeText(body, lineStart, c, "end");
+  // 本体行（2行目）の末尾へキャレット
+  const caret = lineStart + (ind + lines[0]).length + 1 + (ind.length + 4);
+  srcEl.selectionStart = srcEl.selectionEnd = caret;
+  render();
+  return true;
+}
+
+// ---- 一時メッセージ ----
+let flashTimer = null;
+function flash(msg) {
+  statusEl.className = "";
+  statusEl.textContent = msg;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(render, 1800);
+}
+
+const SHORTCUTS = `キーボードショートカット
+  保存:                Ctrl/Cmd + S
+  整形(大文字化):       Ctrl/Cmd + Shift + F
+  定義へ移動:           Ctrl/Cmd + B
+  使用箇所(順送り):     Alt + F7
+  戻る / 進む:          Ctrl/Cmd + Alt + ← / →
+  行へ移動:             Ctrl/Cmd + G
+  ブックマーク 切替/次:  F11 / Shift + F11
+  スニペット:           行頭で fn/for/if/while + Tab
+  インデント:           Tab`;
+
 // ---- イベント ----
 let timer = null;
 srcEl.addEventListener("input", () => {
@@ -243,22 +444,36 @@ srcEl.addEventListener("input", () => {
   timer = setTimeout(render, 250);
 });
 srcEl.addEventListener("scroll", syncScroll);
-// Tab キーでインデント挿入
 srcEl.addEventListener("keydown", (e) => {
-  if (e.key === "Tab") {
+  const mod = e.metaKey || e.ctrlKey;
+  // Tab: スニペット展開 or インデント
+  if (e.key === "Tab" && !e.shiftKey) {
     e.preventDefault();
-    const s = srcEl.selectionStart;
-    const en = srcEl.selectionEnd;
+    if (trySnippet()) return;
+    const s = srcEl.selectionStart, en = srcEl.selectionEnd;
     srcEl.setRangeText("    ", s, en, "end");
     render();
+    return;
   }
-  if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-    e.preventDefault();
-    onSave();
-  }
+  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); onSave(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); onFormat(); return; }
+  if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); goToDefinition(); return; }
+  if (e.altKey && e.key === "F7") { e.preventDefault(); findUsages(); return; }
+  if (mod && e.altKey && e.key === "ArrowLeft") { e.preventDefault(); goBack(); return; }
+  if (mod && e.altKey && e.key === "ArrowRight") { e.preventDefault(); goForward(); return; }
+  if (mod && e.key.toLowerCase() === "g") { e.preventDefault(); goToLine(); return; }
+  if (e.key === "F11" && !e.shiftKey) { e.preventDefault(); toggleBookmark(); return; }
+  if (e.key === "F11" && e.shiftKey) { e.preventDefault(); nextBookmark(); return; }
+});
+// ガター行クリックで移動
+gutterEl.addEventListener("click", (e) => {
+  const gl = e.target.closest(".gl");
+  if (gl) { recordJump(); scrollToLine(parseInt(gl.dataset.line)); }
 });
 $("saveBtn").addEventListener("click", onSave);
+$("fmtBtn").addEventListener("click", onFormat);
 $("reverseBtn").addEventListener("click", onReverse);
+$("helpBtn").addEventListener("click", () => alert(SHORTCUTS));
 $("copyBtn").addEventListener("click", async () => {
   await navigator.clipboard.writeText(msxOut.textContent);
   msxNote.textContent = "コピーしました";

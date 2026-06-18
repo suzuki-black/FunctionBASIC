@@ -65,10 +65,12 @@ button:hover { background: #1177bb; }
   font-size: var(--font-size); line-height: var(--line); user-select: none;
   white-space: pre;
 }
-#gutter .gl { position: relative; }
+#gutter .gl { position: relative; cursor: pointer; }
+#gutter .gl:hover { color: #ccc; }
 #gutter .x {
   color: var(--err); position: absolute; right: -2px; cursor: help; font-weight: bold;
 }
+#gutter .bm { color: #e2c044; margin-right: 2px; font-size: 0.8em; }
 
 #editWrap { position: relative; flex: 1; min-width: 0; }
 #highlight, #src {

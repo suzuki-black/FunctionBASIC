@@ -366,10 +366,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       }
       case "CallExpr": {
         if (isUserFunc(e.name)) {
-          fail(
-            "E_NOT_IMPLEMENTED",
-            `式中のユーザ関数呼び出しは未対応です: ${e.name}()（代入の右辺全体なら可）`,
-          );
+          // 通常は prelower で一時変数へ lowering 済み。ここに来るのは内部不整合。
+          fail("E_INTERNAL", `式中のユーザ関数呼び出しの lowering 漏れ: ${e.name}()`);
           return "0";
         }
         // 組み込み関数 or 配列

@@ -48,6 +48,12 @@ test("数値: 10進・小数・16進(&H)", () => {
   assert.deepEqual(nums, ["12", "3.14", "&HFF"]);
 });
 
+test("数値: 指数表記 1E5 / 1.5E-3 / 2D+10", () => {
+  const { tokens } = tokenize(`A = 1E5 : B = 1.5E-3 : C = 2D+10`);
+  const nums = tokens.filter((t) => t.kind === "NUMBER").map((t) => t.value);
+  assert.deepEqual(nums, ["1E5", "1.5E-3", "2D+10"]);
+});
+
 test("演算子: 多文字比較・整数除算・べき乗", () => {
   const { tokens } = tokenize(`A <= B >= C <> D \\ E ^ F`);
   const ops = tokens.filter((t) => t.kind === "OP").map((t) => t.value);

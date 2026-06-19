@@ -205,6 +205,36 @@ async function onSave() {
   statusEl.textContent = "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で";
 }
 
+// ---- 再生（WebMSX、方式B。docs/10 §10.4）----
+const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
+async function openExternal(url) {
+  if (isDesktop()) {
+    try {
+      await tauri().core.invoke("plugin:opener|open_url", { url });
+      return;
+    } catch (e) {
+      /* fallthrough */
+    }
+  }
+  window.open(url, "_blank");
+}
+async function onPlayWebMSX() {
+  const r = compile(srcEl.value);
+  if (r.diags.some((d) => d.severity === "error")) {
+    statusEl.className = "err";
+    statusEl.textContent = "エラーがあるため実行できません";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(r.msx.replace(/\r/g, ""));
+  } catch (e) {
+    /* clipboard 不可でも続行 */
+  }
+  await openExternal(WEBMSX_URL);
+  statusEl.className = "ok";
+  statusEl.textContent = "変換結果をコピーしWebMSXを開きました（貼り付けて RUN）";
+}
+
 // ---- 逆変換プレビュー ----
 function onReverse() {
   const r = compile(srcEl.value);
@@ -428,6 +458,7 @@ function flash(msg) {
 
 const SHORTCUTS = `キーボードショートカット
   保存:                Ctrl/Cmd + S
+  WebMSXで実行:        Ctrl/Cmd + Enter
   整形(大文字化):       Ctrl/Cmd + Shift + F
   定義へ移動:           Ctrl/Cmd + B
   使用箇所(順送り):     Alt + F7
@@ -456,6 +487,7 @@ srcEl.addEventListener("keydown", (e) => {
     return;
   }
   if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); onSave(); return; }
+  if (mod && e.key === "Enter") { e.preventDefault(); onPlayWebMSX(); return; }
   if (mod && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); onFormat(); return; }
   if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); goToDefinition(); return; }
   if (e.altKey && e.key === "F7") { e.preventDefault(); findUsages(); return; }
@@ -472,6 +504,7 @@ gutterEl.addEventListener("click", (e) => {
 });
 $("saveBtn").addEventListener("click", onSave);
 $("fmtBtn").addEventListener("click", onFormat);
+$("playBtn").addEventListener("click", onPlayWebMSX);
 $("reverseBtn").addEventListener("click", onReverse);
 $("helpBtn").addEventListener("click", () => alert(SHORTCUTS));
 $("copyBtn").addEventListener("click", async () => {

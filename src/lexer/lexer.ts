@@ -126,7 +126,13 @@ export function tokenize(source: string): LexResult {
           raw += advance();
           while (i < n && isDigit(peek())) raw += advance();
         }
-        // 指数表記は今は未対応（必要なら拡張）
+        // 指数表記 1E5 / 1.5E-3 / 2D+10（MSXは E=単精度, D=倍精度）
+        const ex = peek().toUpperCase();
+        if ((ex === "E" || ex === "D") && /[0-9+\-]/.test(peek(1))) {
+          raw += advance(); // E/D
+          if (peek() === "+" || peek() === "-") raw += advance();
+          while (i < n && isDigit(peek())) raw += advance();
+        }
       }
       push("NUMBER", raw.toUpperCase(), raw, start);
       continue;

@@ -91,7 +91,7 @@ export function parse(tokens: Token[]): ParseResult {
     if (u.startsWith("&H")) return parseInt(u.slice(2), 16);
     if (u.startsWith("&O")) return parseInt(u.slice(2), 8);
     if (u.startsWith("&B")) return parseInt(u.slice(2), 2);
-    return parseFloat(u);
+    return parseFloat(u.replace("D", "E")); // 倍精度指数 D → E
   };
 
   // ---- 式 ----

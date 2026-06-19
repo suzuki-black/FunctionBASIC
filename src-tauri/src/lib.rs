@@ -271,16 +271,47 @@ mod tests {
 fn build_native_menu<R: tauri::Runtime>(
     handle: &tauri::AppHandle<R>,
 ) -> tauri::Result<tauri::menu::Menu<R>> {
-    use tauri::menu::{Menu, MenuItem, Submenu};
+    use tauri::menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, Submenu};
     let mi = |id: &str, label: &str| MenuItem::with_id(handle, id, label, true, None::<&str>);
 
-    // 標準メニュー（App/Edit/Window…＝コピー&ペースト・終了などを保持）をベースに追加する
-    let menu = Menu::default(handle)?;
+    // アプリメニュー（macOSでは左端・太字。リポジトリ名 FunctionBASIC を主張）
+    let about_meta = AboutMetadataBuilder::new()
+        .name(Some("FunctionBASIC"))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .comments(Some("構造化BASIC → MSX-BASIC 変換エディタ"))
+        .build();
+    let app = Submenu::with_items(
+        handle,
+        "FunctionBASIC",
+        true,
+        &[
+            &PredefinedMenuItem::about(handle, Some("FunctionBASICについて"), Some(about_meta))?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::quit(handle, Some("FunctionBASICを終了"))?,
+        ],
+    )?;
     let file = Submenu::with_items(
         handle,
         "ファイル",
         true,
         &[&mi("save", "変換して保存")?, &mi("dsk", "ディスク(.dsk)を保存…")?],
+    )?;
+    // 編集: 標準の取消/やり直し/コピペ等（ネイティブ編集を保持）＋ 整形
+    let edit = Submenu::with_items(
+        handle,
+        "編集",
+        true,
+        &[
+            &PredefinedMenuItem::undo(handle, None)?,
+            &PredefinedMenuItem::redo(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::cut(handle, None)?,
+            &PredefinedMenuItem::copy(handle, None)?,
+            &PredefinedMenuItem::paste(handle, None)?,
+            &PredefinedMenuItem::select_all(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &mi("format", "整形（大文字化）")?,
+        ],
     )?;
     let view = Submenu::with_items(
         handle,
@@ -290,7 +321,7 @@ fn build_native_menu<R: tauri::Runtime>(
             &mi("layout-tabs", "タブ表示")?,
             &mi("layout-msx", "2分割：ソース｜変換後")?,
             &mi("layout-run", "2分割：ソース｜実行")?,
-            &mi("format", "整形（大文字化）")?,
+            &PredefinedMenuItem::separator(handle)?,
             &mi("fontup", "文字を大きく")?,
             &mi("fontdown", "文字を小さく")?,
         ],
@@ -301,10 +332,18 @@ fn build_native_menu<R: tauri::Runtime>(
         true,
         &[&mi("run", "WebMSXで実行")?, &mi("reverse", "MSX→構造化に逆変換")?],
     )?;
-    menu.append(&file)?;
-    menu.append(&view)?;
-    menu.append(&run)?;
-    Ok(menu)
+    let window = Submenu::with_items(
+        handle,
+        "ウインドウ",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::close_window(handle, None)?,
+        ],
+    )?;
+
+    Menu::with_items(handle, &[&app, &file, &edit, &view, &run, &window])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

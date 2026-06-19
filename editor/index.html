@@ -35,9 +35,9 @@
     <div class="menu" data-menu="view">
       <span class="mtitle">表示</span>
       <div class="dropdown">
-        <div class="mi" data-act="layout-tabs" data-layout="tabs">タブ表示</div>
-        <div class="mi" data-act="layout-msx" data-layout="split-msx">2分割：ソース ｜ 変換後</div>
-        <div class="mi" data-act="layout-run" data-layout="split-run">2分割：ソース ｜ 実行</div>
+        <div class="mi" data-act="split-right">アクティブタブを右へ分割</div>
+        <div class="mi" data-act="merge">分割を統合</div>
+        <div class="mi" data-act="layout-reset">タブ配置をリセット</div>
         <div class="sep"></div>
         <div class="mi" data-act="fontup">文字を大きく</div>
         <div class="mi" data-act="fontdown">文字を小さく</div>
@@ -71,14 +71,13 @@
     </span>
   </div>
 
-  <!-- タブ（クリックで単一表示に切替。2分割は表示メニューから）-->
-  <div id="tabs">
-    <button class="tab active" data-tab="structured">構造化BASIC</button>
-    <button class="tab" data-tab="msx">MSX-BASIC変換後</button>
-    <button class="tab" data-tab="webmsx">実行 (WebMSX)</button>
+  <!-- タブ列（2グループ。ドラッグで並べ替え／グループ間移動＝分割・統合。JSが描画）-->
+  <div id="tabstrips">
+    <div id="stripA" class="tabstrip" data-group="A"></div>
+    <div id="stripB" class="tabstrip" data-group="B" hidden></div>
   </div>
 
-  <!-- ペイン群（タブ⇄2分割で切替）-->
+  <!-- ペイン群（統合=単一 / 分割=左右）-->
   <div id="panes">
     <!-- 構造化BASIC編集 -->
     <div id="structuredPane" class="pane">

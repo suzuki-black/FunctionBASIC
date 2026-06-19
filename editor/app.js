@@ -460,48 +460,121 @@ function onReverse() {
   }
 }
 
-// ---- タブ ----
-// レイアウト: "tabs"（単一表示） / "split-msx"（ソース｜変換後） / "split-run"（ソース｜実行）
-let layout = "tabs";
-let activeTab = "structured";
-function applyLayout() {
-  const sp = $("structuredPane");
-  const wp = $("webmsxPane");
-  $("panes").classList.toggle("split", layout !== "tabs");
-  if (layout === "tabs") {
-    sp.hidden = activeTab !== "structured";
-    msxPane.hidden = activeTab !== "msx";
-    wp.hidden = activeTab !== "webmsx";
-  } else if (layout === "split-msx") {
-    sp.hidden = false;
-    msxPane.hidden = false;
-    wp.hidden = true;
-  } else {
-    // split-run
-    sp.hidden = false;
-    msxPane.hidden = true;
-    wp.hidden = false;
+// ---- タブ（JetBrains方式: 2グループ。ドラッグで並べ替え＆グループ間移動=分割/統合。状態は永続化）----
+const TAB_LABEL = { structured: "構造化BASIC", msx: "MSX-BASIC変換後", webmsx: "実行 (WebMSX)" };
+const TAB_PANE = { structured: "structuredPane", msx: "msxPane", webmsx: "webmsxPane" };
+const ALL_TABS = ["structured", "msx", "webmsx"];
+const LAYOUT_KEY = "fbe-layout-v1";
+
+// groups.A=主(左) / groups.B=分割(右、空なら統合状態)。active=各グループの選択タブ。
+let groups = { A: ["structured", "msx", "webmsx"], B: [] };
+let active = { A: "structured", B: null };
+let dragTab = null;
+
+function saveLayout() {
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ groups, active }));
+  } catch (e) {
+    logErr("レイアウト保存", e);
   }
-  document
-    .querySelectorAll(".tab")
-    .forEach((t) => t.classList.toggle("active", layout === "tabs" && t.dataset.tab === activeTab));
-  document
-    .querySelectorAll("#menubar .mi[data-layout]")
-    .forEach((mi) => mi.classList.toggle("checked", mi.dataset.layout === layout));
 }
-function setTab(name) {
-  activeTab = name;
-  layout = "tabs";
-  applyLayout();
+function loadLayout() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null");
+    if (s && s.groups && Array.isArray(s.groups.A) && Array.isArray(s.groups.B)) {
+      const got = [...s.groups.A, ...s.groups.B].slice().sort().join(",");
+      if (got === ALL_TABS.slice().sort().join(",")) {
+        groups = s.groups;
+        active = s.active || { A: groups.A[0] || null, B: groups.B[0] || null };
+      }
+    }
+  } catch (e) {
+    logErr("レイアウト読込", e);
+  }
 }
-function setLayout(mode) {
-  layout = mode;
-  applyLayout();
+function resetLayout() {
+  groups = { A: ["structured", "msx", "webmsx"], B: [] };
+  active = { A: "structured", B: null };
+  renderTabs();
 }
-// 実行時に結果ペインを見せる: タブ表示なら実行タブへ、2分割中は split-run を維持/移行
+function normalizeGroups() {
+  // A を主グループに保つ: A が空で B が残れば繰り上げ
+  if (groups.A.length === 0 && groups.B.length > 0) {
+    groups.A = groups.B;
+    groups.B = [];
+    active.A = active.B;
+    active.B = null;
+  }
+  for (const g of ["A", "B"]) {
+    if (groups[g].length === 0) active[g] = null;
+    else if (!groups[g].includes(active[g])) active[g] = groups[g][0];
+  }
+}
+function renderStrip(g) {
+  const strip = $("strip" + g);
+  strip.innerHTML = "";
+  for (const id of groups[g]) {
+    const b = document.createElement("div");
+    b.className = "tab" + (active[g] === id ? " active" : "");
+    b.textContent = TAB_LABEL[id];
+    b.draggable = true;
+    b.dataset.tab = id;
+    b.dataset.group = g;
+    strip.appendChild(b);
+  }
+}
+function renderTabs() {
+  normalizeGroups();
+  const split = groups.B.length > 0;
+  $("panes").classList.toggle("split", split);
+  renderStrip("A");
+  renderStrip("B");
+  $("stripB").hidden = !split;
+  for (const id of ALL_TABS) {
+    const pane = $(TAB_PANE[id]);
+    if (active.A === id) {
+      pane.hidden = false;
+      pane.style.order = "0";
+    } else if (active.B === id) {
+      pane.hidden = false;
+      pane.style.order = "1";
+    } else {
+      pane.hidden = true;
+    }
+  }
+  saveLayout();
+}
+function moveTab(id, from, to, idx) {
+  const origIdx = groups[from].indexOf(id);
+  if (origIdx < 0) return;
+  groups[from] = groups[from].filter((x) => x !== id);
+  if (from === to && origIdx < idx) idx--; // 同一グループ内: 抜いた分を補正
+  const arr = groups[to];
+  arr.splice(Math.max(0, Math.min(idx, arr.length)), 0, id);
+  active[to] = id;
+  renderTabs();
+}
+function dropIndex(strip, x) {
+  const tabs = [...strip.querySelectorAll(".tab")];
+  for (let i = 0; i < tabs.length; i++) {
+    const r = tabs[i].getBoundingClientRect();
+    if (x < r.left + r.width / 2) return i;
+  }
+  return tabs.length;
+}
+function splitActiveRight() {
+  if (groups.A.length >= 2 && active.A) moveTab(active.A, "A", "B", groups.B.length);
+}
+function mergeAll() {
+  groups.A = [...groups.A, ...groups.B];
+  groups.B = [];
+  renderTabs();
+}
+// 実行時に WebMSX タブをそのグループでアクティブにする
 function revealRun() {
-  if (layout === "tabs") setTab("webmsx");
-  else setLayout("split-run");
+  const g = groups.A.includes("webmsx") ? "A" : "B";
+  active[g] = "webmsx";
+  renderTabs();
 }
 
 // ---- フォントサイズ ----
@@ -764,9 +837,9 @@ function runAction(act) {
     case "fwd": return goForward();
     case "bm": return toggleBookmark();
     case "bmnext": return nextBookmark();
-    case "layout-tabs": return setLayout("tabs");
-    case "layout-msx": return setLayout("split-msx");
-    case "layout-run": return setLayout("split-run");
+    case "split-right": return splitActiveRight();
+    case "merge": return mergeAll();
+    case "layout-reset": return resetLayout();
     case "fontup": return setFont(1);
     case "fontdown": return setFont(-1);
     case "run": return onPlayWebMSX();
@@ -816,9 +889,53 @@ $("copyBtn").addEventListener("click", async () => {
 });
 $("fontUp").addEventListener("click", () => setFont(1));
 $("fontDown").addEventListener("click", () => setFont(-1));
-document.querySelectorAll(".tab").forEach((t) =>
-  t.addEventListener("click", () => setTab(t.dataset.tab)),
-);
+
+// タブ: クリックで選択、ドラッグで並べ替え／グループ間移動（分割・統合）
+$("tabstrips").addEventListener("click", (e) => {
+  const t = e.target.closest(".tab");
+  if (!t) return;
+  active[t.dataset.group] = t.dataset.tab;
+  renderTabs();
+});
+$("tabstrips").addEventListener("dragstart", (e) => {
+  const t = e.target.closest(".tab");
+  if (!t) return;
+  dragTab = { id: t.dataset.tab, from: t.dataset.group };
+  e.dataTransfer.effectAllowed = "move";
+  try {
+    e.dataTransfer.setData("text/plain", t.dataset.tab);
+  } catch (_) {}
+});
+["A", "B"].forEach((g) => {
+  const strip = $("strip" + g);
+  strip.addEventListener("dragover", (e) => {
+    if (dragTab) {
+      e.preventDefault();
+      strip.classList.add("dropping");
+    }
+  });
+  strip.addEventListener("dragleave", () => strip.classList.remove("dropping"));
+  strip.addEventListener("drop", (e) => {
+    e.preventDefault();
+    strip.classList.remove("dropping");
+    if (!dragTab) return;
+    moveTab(dragTab.id, dragTab.from, g, dropIndex(strip, e.clientX));
+    dragTab = null;
+  });
+});
+// ペイン領域へのドロップ: 右60%へ落とすと分割(→B)、左へ落とすと統合(→A)
+const panesEl = $("panes");
+panesEl.addEventListener("dragover", (e) => {
+  if (dragTab) e.preventDefault();
+});
+panesEl.addEventListener("drop", (e) => {
+  e.preventDefault();
+  if (!dragTab) return;
+  const r = panesEl.getBoundingClientRect();
+  const to = e.clientX - r.left > r.width * 0.6 ? "B" : "A";
+  moveTab(dragTab.id, dragTab.from, to, groups[to].length);
+  dragTab = null;
+});
 
 // OSネイティブメニュー（Tauri）のクリックを runAction に流す（アプリ内メニューと共通）
 if (isDesktop()) {
@@ -832,6 +949,7 @@ if (isDesktop()) {
 
 // 起動
 log("起動: desktop=", isDesktop(), " secureContext=", window.isSecureContext, " url=", location.href);
-applyLayout();
+loadLayout();
+renderTabs();
 setSource(SAMPLE);
 log("起動完了: サンプル読込・初回変換OK");

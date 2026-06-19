@@ -318,9 +318,9 @@ fn build_native_menu<R: tauri::Runtime>(
         "表示",
         true,
         &[
-            &mi("layout-tabs", "タブ表示")?,
-            &mi("layout-msx", "2分割：ソース｜変換後")?,
-            &mi("layout-run", "2分割：ソース｜実行")?,
+            &mi("split-right", "アクティブタブを右へ分割")?,
+            &mi("merge", "分割を統合")?,
+            &mi("layout-reset", "タブ配置をリセット")?,
             &PredefinedMenuItem::separator(handle)?,
             &mi("fontup", "文字を大きく")?,
             &mi("fontdown", "文字を小さく")?,

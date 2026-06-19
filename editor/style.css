@@ -26,7 +26,7 @@ body {
   flex-direction: column;
 }
 
-#toolbar, #tabs, #status, #msxToolbar {
+#toolbar, #status, #msxToolbar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -73,12 +73,21 @@ button:hover { background: #1177bb; }
 .fontctl { color: #aaa; font-size: 12px; }
 .fontctl button { background: #444; padding: 3px 7px; }
 
-#tabs { padding: 0; }
+/* タブ列（2グループ） */
+#tabstrips { display: flex; background: var(--bg2); border-bottom: 1px solid #333; }
+.tabstrip { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
+.tabstrip[hidden] { display: none; }
+.tabstrip.dropping { background: rgba(14, 99, 156, 0.18); }
+#stripB { border-left: 1px solid #333; }
 .tab {
-  background: transparent; color: #aaa; border-radius: 0;
+  background: transparent; color: #aaa; border: none; border-radius: 0;
   border-bottom: 2px solid transparent; padding: 8px 14px;
+  white-space: nowrap; cursor: pointer; font-family: var(--mono); font-size: 13px;
+  user-select: none;
 }
+.tab:hover { color: #ccc; background: rgba(255,255,255,0.04); }
 .tab.active { color: #fff; border-bottom-color: #0e639c; background: var(--bg); }
+.tab[draggable="true"]:active { cursor: grabbing; }
 
 /* ペイン群: 既定は単一表示(タブ)、.split で左右2分割 */
 #panes { flex: 1; min-height: 0; display: flex; flex-direction: column; }

@@ -17,8 +17,10 @@ fn write_sjis(path: std::path::PathBuf, text: &str) -> Result<(), String> {
 // 保存（docs/08 §8.3）。
 // - エラーあり: 変換前 .msxb のみ（Shift-JIS）
 // - エラーなし: .msxb / .bas を Shift-JIS、.map.json を UTF-8(JSON標準) で保存
+// 同期コマンドはメインスレッドで実行され、ダイアログの blocking 呼出で
+// メインスレッドが止まり UI が固まる。async にしてワーカースレッドで走らせる。
 #[tauri::command]
-fn save_project(
+async fn save_project(
     app: tauri::AppHandle,
     base: String,
     source: String,
@@ -183,8 +185,13 @@ struct DskResult {
 }
 
 // 変換後 BASIC を ASCII(Shift-JIS) のディスクファイルにして .dsk を保存。
+// async: 保存ダイアログの blocking 呼出でメインスレッドを固めないため。
 #[tauri::command]
-fn save_dsk(app: tauri::AppHandle, base: String, msx: String) -> Result<Option<DskResult>, String> {
+async fn save_dsk(
+    app: tauri::AppHandle,
+    base: String,
+    msx: String,
+) -> Result<Option<DskResult>, String> {
     // MSX の ASCII セーブ形式に合わせ CRLF 改行＋末尾 EOF(0x1A)。
     let body = msx.replace("\r\n", "\n").replace('\r', "\n");
     let crlf = body.split('\n').collect::<Vec<_>>().join("\r\n");

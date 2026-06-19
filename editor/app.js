@@ -154,12 +154,27 @@ function renderGutter(lineCount, errsByLine) {
   gutterEl.innerHTML = html;
 }
 
-// ---- レンダー（入力のたび）----
-function render() {
-  const src = srcEl.value;
-  hlEl.innerHTML = highlightHtml(src);
+// ---- 軽い更新：シンタックスハイライトのみ（入力ごとに即時反映）----
+// 表示文字は透明テキストエリア背後のハイライト層なので、これを即時更新しないと
+// 「入力中は文字が見えない」状態になる。重い変換とは分離してここだけ毎打鍵で回す。
+function paintHighlight() {
+  hlEl.innerHTML = highlightHtml(srcEl.value);
   syncScroll();
+}
+// 連続入力時に1フレーム1回へ間引く（高速タイプ/長文ペーストでも詰まらない）
+let hlScheduled = false;
+function scheduleHighlight() {
+  if (hlScheduled) return;
+  hlScheduled = true;
+  requestAnimationFrame(() => {
+    hlScheduled = false;
+    paintHighlight();
+  });
+}
 
+// ---- 重い更新：変換・診断・プレビュー・ステータス（入力停止後にデバウンス実行）----
+function renderHeavy() {
+  const src = srcEl.value;
   const r = compile(src);
   last = r;
   const errsByLine = new Map();
@@ -176,7 +191,7 @@ function render() {
   // 変換後プレビュー（エラー無し時のみ）
   if (errorCount === 0) {
     msxPane.classList.remove("error");
-    msxNote.textContent = "WebMSX等に貼り付けて実行できます";
+    msxNote.textContent = "▶ WebMSX で実行できます";
     msxOut.textContent = r.msx.replace(/\r/g, "");
   } else {
     msxPane.classList.add("error");
@@ -193,6 +208,12 @@ function render() {
     const warn = r.diags.length;
     statusEl.textContent = warn ? `OK（警告 ${warn} 件）` : "OK";
   }
+}
+
+// 全更新（整形・読込・タブ切替など、入力以外のタイミング用）
+function render() {
+  paintHighlight();
+  renderHeavy();
 }
 
 // ---- スクロール同期 ----
@@ -647,8 +668,9 @@ const SHORTCUTS = `キーボードショートカット
 // ---- イベント ----
 let timer = null;
 srcEl.addEventListener("input", () => {
+  scheduleHighlight(); // 即時（次フレーム）に見た目を反映＝入力遅延をなくす
   clearTimeout(timer);
-  timer = setTimeout(render, 250);
+  timer = setTimeout(renderHeavy, 250); // 重い変換・診断は停止後に
 });
 srcEl.addEventListener("scroll", syncScroll);
 srcEl.addEventListener("keydown", (e) => {

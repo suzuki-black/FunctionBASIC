@@ -14,6 +14,51 @@ const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
 
+// ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
+const log = (...a) => console.log("[editor]", ...a);
+const logErr = (label, e) => console.error("[editor]", label, e);
+function setStatus(kind, msg) {
+  statusEl.className = kind; // "" | "ok" | "err"
+  statusEl.textContent = msg;
+  log("status:", kind || "info", msg);
+}
+// 想定外の失敗もコンソールに必ず残す
+window.addEventListener("error", (e) =>
+  console.error("[editor] uncaught", e.message, e.filename + ":" + e.lineno),
+);
+window.addEventListener("unhandledrejection", (e) =>
+  console.error("[editor] unhandledrejection", e.reason),
+);
+
+// ---- 堅牢なクリップボードコピー（secure context 不可でも execCommand で代替）----
+function execCopy(text) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    logErr("execCommand copy 失敗", e);
+    return false;
+  }
+}
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      logErr("clipboard API 失敗 → execCommand へフォールバック", e);
+    }
+  }
+  return execCopy(text);
+}
+
 const SAMPLE = `' 配列の中から最初に 0 を見つけて返す
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
@@ -207,32 +252,43 @@ async function onSave() {
 
 // ---- 再生（WebMSX、方式B。docs/10 §10.4）----
 const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
-async function openExternal(url) {
-  if (isDesktop()) {
-    try {
-      await tauri().core.invoke("plugin:opener|open_url", { url });
-      return;
-    } catch (e) {
-      /* fallthrough */
-    }
-  }
-  window.open(url, "_blank");
-}
 async function onPlayWebMSX() {
+  log("WebMSX 実行: 開始");
   const r = compile(srcEl.value);
   if (r.diags.some((d) => d.severity === "error")) {
-    statusEl.className = "err";
-    statusEl.textContent = "エラーがあるため実行できません";
+    setStatus("err", "エラーがあるため実行できません");
     return;
   }
-  try {
-    await navigator.clipboard.writeText(r.msx.replace(/\r/g, ""));
-  } catch (e) {
-    /* clipboard 不可でも続行 */
+  const text = r.msx.replace(/\r/g, "");
+
+  // 1) 先にコピー（execCommand は同期で確実。クリック有効性を消費しない）
+  const copied = execCopy(text);
+  if (!copied) logErr("コピー", "execCommand が false");
+
+  // 2) WebMSX を開く（クリック直後・同期 → ポップアップブロックを回避）
+  let opened = false;
+  if (isDesktop()) {
+    try {
+      await tauri().core.invoke("plugin:opener|open_url", { url: WEBMSX_URL });
+      opened = true;
+    } catch (e) {
+      logErr("opener プラグイン失敗 → window.open へ", e);
+      opened = !!window.open(WEBMSX_URL, "_blank");
+    }
+  } else {
+    const w = window.open(WEBMSX_URL, "_blank");
+    opened = !!w; // noopener を付けると成功でも null になるため付けない
+    if (!opened) logErr("window.open", "ブロックされた可能性（ポップアップ許可が必要）");
   }
-  await openExternal(WEBMSX_URL);
-  statusEl.className = "ok";
-  statusEl.textContent = "変換結果をコピーしWebMSXを開きました（貼り付けて RUN）";
+  log("WebMSX 実行: copied=", copied, "opened=", opened, "desktop=", isDesktop());
+
+  // 3) 結果メッセージ（失敗時は手段を案内）
+  if (copied && opened) setStatus("ok", "変換結果をコピーしWebMSXを開きました（貼り付けて RUN）");
+  else if (copied && !opened)
+    setStatus("err", `コピー済。ポップアップがブロックされました → 手動で ${WEBMSX_URL} を開いて貼り付け`);
+  else if (!copied && opened)
+    setStatus("err", "WebMSXを開きました。「MSX-BASIC変換後」タブの📋コピーで本文をコピーしてください");
+  else setStatus("err", `自動化に失敗。変換後タブからコピーし、${WEBMSX_URL} を手動で開いてください`);
 }
 
 // ---- 逆変換プレビュー ----
@@ -508,8 +564,9 @@ $("playBtn").addEventListener("click", onPlayWebMSX);
 $("reverseBtn").addEventListener("click", onReverse);
 $("helpBtn").addEventListener("click", () => alert(SHORTCUTS));
 $("copyBtn").addEventListener("click", async () => {
-  await navigator.clipboard.writeText(msxOut.textContent);
-  msxNote.textContent = "コピーしました";
+  const ok = await copyText(msxOut.textContent);
+  msxNote.textContent = ok ? "コピーしました" : "コピーに失敗（手動で選択してコピー）";
+  log("MSXコピー:", ok);
 });
 $("fontUp").addEventListener("click", () => setFont(1));
 $("fontDown").addEventListener("click", () => setFont(-1));
@@ -518,4 +575,6 @@ document.querySelectorAll(".tab").forEach((t) =>
 );
 
 // 起動
+log("起動: desktop=", isDesktop(), " secureContext=", window.isSecureContext, " url=", location.href);
 setSource(SAMPLE);
+log("起動完了: サンプル読込・初回変換OK");

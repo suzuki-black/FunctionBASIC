@@ -7,16 +7,64 @@
 <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
+  <!-- メニューバー（テキストエディタ風）。OSネイティブメニューと同じ操作を提供 -->
+  <div id="menubar">
+    <div class="menu" data-menu="file">
+      <span class="mtitle">ファイル</span>
+      <div class="dropdown">
+        <div class="mi" data-act="save">変換して保存<span class="sc">Ctrl/Cmd+S</span></div>
+        <div class="mi" data-act="dsk">ディスク(.dsk)を保存…</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="edit">
+      <span class="mtitle">編集</span>
+      <div class="dropdown">
+        <div class="mi" data-act="format">整形（大文字化）<span class="sc">Ctrl/Cmd+Shift+F</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="def">定義へ移動<span class="sc">Ctrl/Cmd+B</span></div>
+        <div class="mi" data-act="usages">使用箇所（順送り）<span class="sc">Alt+F7</span></div>
+        <div class="mi" data-act="goline">行へ移動…<span class="sc">Ctrl/Cmd+G</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="back">戻る<span class="sc">Ctrl/Cmd+Alt+←</span></div>
+        <div class="mi" data-act="fwd">進む<span class="sc">Ctrl/Cmd+Alt+→</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="bm">ブックマーク切替<span class="sc">F11</span></div>
+        <div class="mi" data-act="bmnext">次のブックマーク<span class="sc">Shift+F11</span></div>
+      </div>
+    </div>
+    <div class="menu" data-menu="view">
+      <span class="mtitle">表示</span>
+      <div class="dropdown">
+        <div class="mi" data-act="layout-tabs" data-layout="tabs">タブ表示</div>
+        <div class="mi" data-act="layout-msx" data-layout="split-msx">2分割：ソース ｜ 変換後</div>
+        <div class="mi" data-act="layout-run" data-layout="split-run">2分割：ソース ｜ 実行</div>
+        <div class="sep"></div>
+        <div class="mi" data-act="fontup">文字を大きく</div>
+        <div class="mi" data-act="fontdown">文字を小さく</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="run">
+      <span class="mtitle">実行</span>
+      <div class="dropdown">
+        <div class="mi" data-act="run">▶ WebMSXで実行<span class="sc">Ctrl/Cmd+Enter</span></div>
+        <div class="mi" data-act="reverse">MSX→構造化に逆変換</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="help">
+      <span class="mtitle">ヘルプ</span>
+      <div class="dropdown">
+        <div class="mi" data-act="help">キーボードショートカット…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ツールバー（よく使う操作のクイックアクセスのみ）-->
   <div id="toolbar">
     <span class="brand">構造化BASIC → MSX-BASIC</span>
     <input id="filename" value="game.msxb" spellcheck="false" />
     <button id="saveBtn" title="文法チェック→変換→保存 (Ctrl/Cmd+S)">変換して保存</button>
-    <button id="fmtBtn" title="キーワード/変数名を大文字化・整形 (Ctrl/Cmd+Shift+F)">整形</button>
-    <button id="playBtn" title="WebMSXで自動実行（ロード→RUNまで自動。Ctrl/Cmd+Enter）">▶ WebMSX</button>
-    <button id="dskBtn" title="実ディスクイメージ(.dsk)を保存（openMSX/実機/配布用）">💿 .dsk保存</button>
+    <button id="playBtn" title="WebMSXで自動実行 (Ctrl/Cmd+Enter)">▶ WebMSX</button>
     <span class="spacer"></span>
-    <button id="reverseBtn" title="MSX-BASIC変換後を構造化へ逆変換">逆変換</button>
-    <button id="helpBtn" title="キーボードショートカット">?</button>
     <span class="fontctl">
       文字
       <button id="fontDown">A-</button>
@@ -24,34 +72,38 @@
     </span>
   </div>
 
+  <!-- タブ（クリックで単一表示に切替。2分割は表示メニューから）-->
   <div id="tabs">
     <button class="tab active" data-tab="structured">構造化BASIC</button>
-    <button class="tab" data-tab="msx">MSX-BASIC変換後（読み取り専用）</button>
+    <button class="tab" data-tab="msx">MSX-BASIC変換後</button>
     <button class="tab" data-tab="webmsx">実行 (WebMSX)</button>
   </div>
 
-  <!-- 構造化BASIC編集 -->
-  <div id="structuredPane" class="pane">
-    <div id="gutter"></div>
-    <div id="editWrap">
-      <pre id="highlight" aria-hidden="true"></pre>
-      <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+  <!-- ペイン群（タブ⇄2分割で切替）-->
+  <div id="panes">
+    <!-- 構造化BASIC編集 -->
+    <div id="structuredPane" class="pane">
+      <div id="gutter"></div>
+      <div id="editWrap">
+        <pre id="highlight" aria-hidden="true"></pre>
+        <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      </div>
     </div>
-  </div>
 
-  <!-- 変換後プレビュー -->
-  <div id="msxPane" class="pane" hidden>
-    <div id="msxToolbar">
-      <span id="msxNote"></span>
-      <button id="copyBtn">📋 コピー</button>
+    <!-- 変換後プレビュー -->
+    <div id="msxPane" class="pane" hidden>
+      <div id="msxToolbar">
+        <span id="msxNote"></span>
+        <button id="copyBtn">📋 コピー</button>
+      </div>
+      <pre id="msxOut"></pre>
     </div>
-    <pre id="msxOut"></pre>
-  </div>
 
-  <!-- 実行（アプリ内 WebMSX。▶を押すと src を差し替えて同一画面で再実行）-->
-  <div id="webmsxPane" class="pane" hidden>
-    <div id="webmsxNote">▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します</div>
-    <iframe id="webmsxFrame" title="WebMSX" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
+    <!-- 実行（アプリ内 WebMSX。▶を押すと src を差し替えて同一画面で再実行）-->
+    <div id="webmsxPane" class="pane" hidden>
+      <div id="webmsxNote">▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します</div>
+      <iframe id="webmsxFrame" title="WebMSX" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
+    </div>
   </div>
 
   <div id="status">準備完了</div>

@@ -265,12 +265,59 @@ mod tests {
     }
 }
 
+// OSネイティブメニューを構築。クリックで menu-action イベントをフロントへ送り、
+// アプリ内メニューと同じ runAction() に流す。ショートカットはフロントの keydown が
+// 一手に担うため、二重発火を避けてここではアクセラレータを付けない。
+fn build_native_menu<R: tauri::Runtime>(
+    handle: &tauri::AppHandle<R>,
+) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{Menu, MenuItem, Submenu};
+    let mi = |id: &str, label: &str| MenuItem::with_id(handle, id, label, true, None::<&str>);
+
+    // 標準メニュー（App/Edit/Window…＝コピー&ペースト・終了などを保持）をベースに追加する
+    let menu = Menu::default(handle)?;
+    let file = Submenu::with_items(
+        handle,
+        "ファイル",
+        true,
+        &[&mi("save", "変換して保存")?, &mi("dsk", "ディスク(.dsk)を保存…")?],
+    )?;
+    let view = Submenu::with_items(
+        handle,
+        "表示",
+        true,
+        &[
+            &mi("layout-tabs", "タブ表示")?,
+            &mi("layout-msx", "2分割：ソース｜変換後")?,
+            &mi("layout-run", "2分割：ソース｜実行")?,
+            &mi("format", "整形（大文字化）")?,
+            &mi("fontup", "文字を大きく")?,
+            &mi("fontdown", "文字を小さく")?,
+        ],
+    )?;
+    let run = Submenu::with_items(
+        handle,
+        "実行",
+        true,
+        &[&mi("run", "WebMSXで実行")?, &mi("reverse", "MSX→構造化に逆変換")?],
+    )?;
+    menu.append(&file)?;
+    menu.append(&view)?;
+    menu.append(&run)?;
+    Ok(menu)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Emitter;
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .menu(|handle| build_native_menu(handle))
+        .on_menu_event(|app, event| {
+            let _ = app.emit("menu-action", event.id().0.as_str());
+        })
         .invoke_handler(tauri::generate_handler![
             save_project,
             launch_native_player,

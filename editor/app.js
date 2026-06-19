@@ -405,7 +405,7 @@ async function onPlayWebMSX() {
   const frame = $("webmsxFrame");
   frame.src = "about:blank"; // 同一URLでも確実にリロードさせる
   frame.src = url;
-  setTab("webmsx");
+  revealRun();
 
   const note = stripped > 0 ? `（日本語等${stripped}字は実行用に除去）` : "";
   setStatus("ok", `アプリ内WebMSXで実行（RUN"${name}"）${note}`);
@@ -461,11 +461,47 @@ function onReverse() {
 }
 
 // ---- タブ ----
+// レイアウト: "tabs"（単一表示） / "split-msx"（ソース｜変換後） / "split-run"（ソース｜実行）
+let layout = "tabs";
+let activeTab = "structured";
+function applyLayout() {
+  const sp = $("structuredPane");
+  const wp = $("webmsxPane");
+  $("panes").classList.toggle("split", layout !== "tabs");
+  if (layout === "tabs") {
+    sp.hidden = activeTab !== "structured";
+    msxPane.hidden = activeTab !== "msx";
+    wp.hidden = activeTab !== "webmsx";
+  } else if (layout === "split-msx") {
+    sp.hidden = false;
+    msxPane.hidden = false;
+    wp.hidden = true;
+  } else {
+    // split-run
+    sp.hidden = false;
+    msxPane.hidden = true;
+    wp.hidden = false;
+  }
+  document
+    .querySelectorAll(".tab")
+    .forEach((t) => t.classList.toggle("active", layout === "tabs" && t.dataset.tab === activeTab));
+  document
+    .querySelectorAll("#menubar .mi[data-layout]")
+    .forEach((mi) => mi.classList.toggle("checked", mi.dataset.layout === layout));
+}
 function setTab(name) {
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-  $("structuredPane").hidden = name !== "structured";
-  msxPane.hidden = name !== "msx";
-  $("webmsxPane").hidden = name !== "webmsx";
+  activeTab = name;
+  layout = "tabs";
+  applyLayout();
+}
+function setLayout(mode) {
+  layout = mode;
+  applyLayout();
+}
+// 実行時に結果ペインを見せる: タブ表示なら実行タブへ、2分割中は split-run を維持/移行
+function revealRun() {
+  if (layout === "tabs") setTab("webmsx");
+  else setLayout("split-run");
 }
 
 // ---- フォントサイズ ----
@@ -715,12 +751,64 @@ gutterEl.addEventListener("click", (e) => {
   const gl = e.target.closest(".gl");
   if (gl) { recordJump(); scrollToLine(parseInt(gl.dataset.line)); }
 });
+// ---- アクション・ディスパッチャ（メニューバー / OSネイティブメニュー 共通）----
+function runAction(act) {
+  switch (act) {
+    case "save": return onSave();
+    case "dsk": return onMakeDsk();
+    case "format": return onFormat();
+    case "def": return goToDefinition();
+    case "usages": return findUsages();
+    case "goline": return goToLine();
+    case "back": return goBack();
+    case "fwd": return goForward();
+    case "bm": return toggleBookmark();
+    case "bmnext": return nextBookmark();
+    case "layout-tabs": return setLayout("tabs");
+    case "layout-msx": return setLayout("split-msx");
+    case "layout-run": return setLayout("split-run");
+    case "fontup": return setFont(1);
+    case "fontdown": return setFont(-1);
+    case "run": return onPlayWebMSX();
+    case "reverse": return onReverse();
+    case "help": return alert(SHORTCUTS);
+    default: logErr("runAction", "未知のアクション: " + act);
+  }
+}
+
+// ---- メニューバー操作（クリックで開閉、開いている時はホバーで切替、外側クリック/Escで閉じる）----
+const menubar = $("menubar");
+function closeMenus() {
+  menubar.querySelectorAll(".menu.open").forEach((m) => m.classList.remove("open"));
+}
+menubar.querySelectorAll(".menu").forEach((menu) => {
+  menu.querySelector(".mtitle").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = menu.classList.contains("open");
+    closeMenus();
+    if (!wasOpen) menu.classList.add("open");
+  });
+  menu.addEventListener("mouseenter", () => {
+    if (menubar.querySelector(".menu.open")) {
+      closeMenus();
+      menu.classList.add("open");
+    }
+  });
+});
+menubar.querySelectorAll(".mi").forEach((mi) => {
+  mi.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeMenus();
+    runAction(mi.dataset.act);
+  });
+});
+document.addEventListener("click", closeMenus);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeMenus();
+});
+
 $("saveBtn").addEventListener("click", onSave);
-$("fmtBtn").addEventListener("click", onFormat);
 $("playBtn").addEventListener("click", onPlayWebMSX);
-$("dskBtn").addEventListener("click", onMakeDsk);
-$("reverseBtn").addEventListener("click", onReverse);
-$("helpBtn").addEventListener("click", () => alert(SHORTCUTS));
 $("copyBtn").addEventListener("click", async () => {
   const ok = await copyText(msxOut.textContent);
   msxNote.textContent = ok ? "コピーしました" : "コピーに失敗（手動で選択してコピー）";
@@ -732,7 +820,18 @@ document.querySelectorAll(".tab").forEach((t) =>
   t.addEventListener("click", () => setTab(t.dataset.tab)),
 );
 
+// OSネイティブメニュー（Tauri）のクリックを runAction に流す（アプリ内メニューと共通）
+if (isDesktop()) {
+  try {
+    tauri().event.listen("menu-action", (e) => runAction(e.payload));
+    log("ネイティブメニュー: リスナ登録");
+  } catch (e) {
+    logErr("ネイティブメニュー listen 失敗", e);
+  }
+}
+
 // 起動
 log("起動: desktop=", isDesktop(), " secureContext=", window.isSecureContext, " url=", location.href);
+applyLayout();
 setSource(SAMPLE);
 log("起動完了: サンプル読込・初回変換OK");

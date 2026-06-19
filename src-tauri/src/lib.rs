@@ -1,4 +1,5 @@
 // Tauri デスクトップ側コマンド。docs/10 §10.4
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
 // Shift-JIS で書き出す（docs/08 §8.6）。表現不能文字があればエラー。
@@ -39,6 +40,13 @@ fn save_project(
     Ok(true)
 }
 
+// WebView の execCommand/clipboard は WKWebView で不安定なため、
+// デスクトップではクリップボード書き込みを OS 側（Tauri公式プラグイン）で行う。
+#[tauri::command]
+fn set_clipboard(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
 // 方式A: ネイティブMSXプレイヤーに .bas を渡して起動（Windows専用想定）
 #[tauri::command]
 fn launch_native_player(player_path: String, bas_path: String) -> Result<(), String> {
@@ -54,7 +62,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![save_project, launch_native_player])
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .invoke_handler(tauri::generate_handler![
+            save_project,
+            launch_native_player,
+            set_clipboard
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

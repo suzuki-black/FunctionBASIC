@@ -48,6 +48,16 @@ function execCopy(text) {
   }
 }
 async function copyText(text) {
+  // デスクトップ(Tauri)は WebView の execCommand/clipboard が不安定なので
+  // OS 側（Rust の clipboard プラグイン）で確実に書き込む。
+  if (isDesktop()) {
+    try {
+      await tauri().core.invoke("set_clipboard", { text });
+      return true;
+    } catch (e) {
+      logErr("set_clipboard 失敗 → Web手段へフォールバック", e);
+    }
+  }
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
@@ -261,13 +271,11 @@ async function onPlayWebMSX() {
   }
   const text = r.msx.replace(/\r/g, "");
 
-  // 1) 先にコピー（execCommand は同期で確実。クリック有効性を消費しない）
-  const copied = execCopy(text);
-  if (!copied) logErr("コピー", "execCommand が false");
-
-  // 2) WebMSX を開く（クリック直後・同期 → ポップアップブロックを回避）
+  let copied = false;
   let opened = false;
   if (isDesktop()) {
+    // デスクトップ: opener はジェスチャ不要。OS側で確実にコピー → URLを開く。
+    copied = await copyText(text);
     try {
       await tauri().core.invoke("plugin:opener|open_url", { url: WEBMSX_URL });
       opened = true;
@@ -276,6 +284,9 @@ async function onPlayWebMSX() {
       opened = !!window.open(WEBMSX_URL, "_blank");
     }
   } else {
+    // ブラウザ: コピーを同期で先に（クリック有効性を維持）→ 直後に open。
+    copied = execCopy(text);
+    if (!copied) logErr("コピー", "execCommand が false");
     const w = window.open(WEBMSX_URL, "_blank");
     opened = !!w; // noopener を付けると成功でも null になるため付けない
     if (!opened) logErr("window.open", "ブロックされた可能性（ポップアップ許可が必要）");

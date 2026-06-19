@@ -262,6 +262,19 @@ async function onSave() {
 
 // ---- 再生（WebMSX、方式B。docs/10 §10.4）----
 const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
+
+// WebMSX は貼り付けを「MSXキーボードからの打鍵」として流し込むため、
+// MSXキーに無い非ASCII文字（日本語コメント等）は入力できず打鍵が破綻する。
+// → WebMSX へ渡すテキストは ASCII(制御は改行/タブのみ) に整える。保存する .bas は原文を維持。
+function asciiForWebMSX(msx) {
+  let stripped = 0;
+  const out = msx.replace(/[^\t\n\x20-\x7E]/g, () => {
+    stripped++;
+    return "";
+  });
+  return { out, stripped };
+}
+
 async function onPlayWebMSX() {
   log("WebMSX 実行: 開始");
   const r = compile(srcEl.value);
@@ -269,7 +282,8 @@ async function onPlayWebMSX() {
     setStatus("err", "エラーがあるため実行できません");
     return;
   }
-  const text = r.msx.replace(/\r/g, "");
+  const { out: text, stripped } = asciiForWebMSX(r.msx.replace(/\r/g, ""));
+  if (stripped > 0) log(`WebMSX 実行: 非ASCII ${stripped} 文字を除去（MSX打鍵不可のため）`);
 
   let copied = false;
   let opened = false;
@@ -294,12 +308,48 @@ async function onPlayWebMSX() {
   log("WebMSX 実行: copied=", copied, "opened=", opened, "desktop=", isDesktop());
 
   // 3) 結果メッセージ（失敗時は手段を案内）
-  if (copied && opened) setStatus("ok", "変換結果をコピーしWebMSXを開きました（貼り付けて RUN）");
+  const note = stripped > 0 ? `（日本語等${stripped}文字はWebMSX打鍵不可のため除去）` : "";
+  if (copied && opened) setStatus("ok", `変換結果をコピーしWebMSXを開きました（貼り付けて RUN）${note}`);
   else if (copied && !opened)
     setStatus("err", `コピー済。ポップアップがブロックされました → 手動で ${WEBMSX_URL} を開いて貼り付け`);
   else if (!copied && opened)
     setStatus("err", "WebMSXを開きました。「MSX-BASIC変換後」タブの📋コピーで本文をコピーしてください");
   else setStatus("err", `自動化に失敗。変換後タブからコピーし、${WEBMSX_URL} を手動で開いてください`);
+}
+
+// ---- 再生（WebMSX、方式B＝ディスクイメージ。打鍵を経由せず確実）----
+// FAT12 の .dsk を生成 → WebMSX にドラッグ → RUN"NAME.BAS"。日本語コメントも化けない。
+async function onMakeDsk() {
+  log("ディスク作成: 開始");
+  const r = compile(srcEl.value);
+  if (r.diags.some((d) => d.severity === "error")) {
+    setStatus("err", "エラーがあるためディスクを作成できません");
+    return;
+  }
+  const base = baseName();
+  if (!isDesktop()) {
+    setStatus("err", "ディスク(.dsk)作成はデスクトップ版で利用できます");
+    return;
+  }
+  try {
+    const res = await tauri().core.invoke("save_dsk", { base, msx: r.msx });
+    if (!res) {
+      setStatus("", "ディスク作成をキャンセルしました");
+      return; // 保存ダイアログでキャンセル
+    }
+    // WebMSX も開く（任意）。失敗してもディスクは出来ている。
+    try {
+      await tauri().core.invoke("plugin:opener|open_url", { url: WEBMSX_URL });
+    } catch (e) {
+      logErr("opener", e);
+      window.open(WEBMSX_URL, "_blank");
+    }
+    log("ディスク作成: 完了", res.path);
+    setStatus("ok", `ディスク作成: ${res.path} → WebMSXにドラッグ後 RUN"${res.load_name}"`);
+  } catch (e) {
+    logErr("save_dsk", e);
+    setStatus("err", "ディスク作成に失敗: " + (e?.message ?? e));
+  }
 }
 
 // ---- 逆変換プレビュー ----
@@ -572,6 +622,7 @@ gutterEl.addEventListener("click", (e) => {
 $("saveBtn").addEventListener("click", onSave);
 $("fmtBtn").addEventListener("click", onFormat);
 $("playBtn").addEventListener("click", onPlayWebMSX);
+$("dskBtn").addEventListener("click", onMakeDsk);
 $("reverseBtn").addEventListener("click", onReverse);
 $("helpBtn").addEventListener("click", () => alert(SHORTCUTS));
 $("copyBtn").addEventListener("click", async () => {

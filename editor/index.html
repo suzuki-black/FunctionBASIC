@@ -10,50 +10,53 @@
   <!-- メニューバー（テキストエディタ風）。OSネイティブメニューと同じ操作を提供 -->
   <div id="menubar">
     <div class="menu" data-menu="file">
-      <span class="mtitle">ファイル</span>
+      <span class="mtitle" data-i18n="m.file">ファイル</span>
       <div class="dropdown">
-        <div class="mi" data-act="save">変換して保存<span class="sc">Ctrl/Cmd+S</span></div>
-        <div class="mi" data-act="dsk">ディスク(.dsk)を保存…</div>
+        <div class="mi" data-act="save"><span data-i18n="save">変換して保存</span><span class="sc">Ctrl/Cmd+S</span></div>
+        <div class="mi" data-act="dsk"><span data-i18n="dsk">ディスク(.dsk)を保存…</span></div>
       </div>
     </div>
     <div class="menu" data-menu="edit">
-      <span class="mtitle">編集</span>
+      <span class="mtitle" data-i18n="m.edit">編集</span>
       <div class="dropdown">
-        <div class="mi" data-act="format">整形（大文字化）<span class="sc">Ctrl/Cmd+Shift+F</span></div>
+        <div class="mi" data-act="format"><span data-i18n="format">整形（大文字化）</span><span class="sc">Ctrl/Cmd+Shift+F</span></div>
         <div class="sep"></div>
-        <div class="mi" data-act="def">定義へ移動<span class="sc">Ctrl/Cmd+B</span></div>
-        <div class="mi" data-act="usages">使用箇所（順送り）<span class="sc">Alt+F7</span></div>
-        <div class="mi" data-act="goline">行へ移動…<span class="sc">Ctrl/Cmd+G</span></div>
+        <div class="mi" data-act="def"><span data-i18n="def">定義へ移動</span><span class="sc">Ctrl/Cmd+B</span></div>
+        <div class="mi" data-act="usages"><span data-i18n="usages">使用箇所（順送り）</span><span class="sc">Alt+F7</span></div>
+        <div class="mi" data-act="goline"><span data-i18n="goline">行へ移動…</span><span class="sc">Ctrl/Cmd+G</span></div>
         <div class="sep"></div>
-        <div class="mi" data-act="back">戻る<span class="sc">Ctrl/Cmd+Alt+←</span></div>
-        <div class="mi" data-act="fwd">進む<span class="sc">Ctrl/Cmd+Alt+→</span></div>
+        <div class="mi" data-act="back"><span data-i18n="back">戻る</span><span class="sc">Ctrl/Cmd+Alt+←</span></div>
+        <div class="mi" data-act="fwd"><span data-i18n="fwd">進む</span><span class="sc">Ctrl/Cmd+Alt+→</span></div>
         <div class="sep"></div>
-        <div class="mi" data-act="bm">ブックマーク切替<span class="sc">F11</span></div>
-        <div class="mi" data-act="bmnext">次のブックマーク<span class="sc">Shift+F11</span></div>
+        <div class="mi" data-act="bm"><span data-i18n="bm">ブックマーク切替</span><span class="sc">F11</span></div>
+        <div class="mi" data-act="bmnext"><span data-i18n="bmnext">次のブックマーク</span><span class="sc">Shift+F11</span></div>
       </div>
     </div>
     <div class="menu" data-menu="view">
-      <span class="mtitle">表示</span>
+      <span class="mtitle" data-i18n="m.view">表示</span>
       <div class="dropdown">
-        <div class="mi" data-act="split-right">アクティブタブを右へ分割</div>
-        <div class="mi" data-act="merge">分割を統合</div>
-        <div class="mi" data-act="layout-reset">タブ配置をリセット</div>
+        <div class="mi" data-act="split-right"><span data-i18n="splitright">アクティブタブを右へ分割</span></div>
+        <div class="mi" data-act="merge"><span data-i18n="merge">分割を統合</span></div>
+        <div class="mi" data-act="layout-reset"><span data-i18n="reset">タブ配置をリセット</span></div>
         <div class="sep"></div>
-        <div class="mi" data-act="fontup">文字を大きく</div>
-        <div class="mi" data-act="fontdown">文字を小さく</div>
+        <div class="mi" data-act="fontup"><span data-i18n="fontup">文字を大きく</span></div>
+        <div class="mi" data-act="fontdown"><span data-i18n="fontdown">文字を小さく</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="lang-ja" data-lang="ja"><span>日本語</span></div>
+        <div class="mi" data-act="lang-en" data-lang="en"><span>English</span></div>
       </div>
     </div>
     <div class="menu" data-menu="run">
-      <span class="mtitle">実行</span>
+      <span class="mtitle" data-i18n="m.run">実行</span>
       <div class="dropdown">
-        <div class="mi" data-act="run">▶ WebMSXで実行<span class="sc">Ctrl/Cmd+Enter</span></div>
-        <div class="mi" data-act="reverse">MSX→構造化に逆変換</div>
+        <div class="mi" data-act="run"><span data-i18n="runmsx">▶ WebMSXで実行</span><span class="sc">Ctrl/Cmd+Enter</span></div>
+        <div class="mi" data-act="reverse"><span data-i18n="reverse">MSX→構造化に逆変換</span></div>
       </div>
     </div>
     <div class="menu" data-menu="help">
-      <span class="mtitle">ヘルプ</span>
+      <span class="mtitle" data-i18n="m.help">ヘルプ</span>
       <div class="dropdown">
-        <div class="mi" data-act="help">キーボードショートカット…</div>
+        <div class="mi" data-act="help"><span data-i18n="helpsc">キーボードショートカット…</span></div>
       </div>
     </div>
   </div>
@@ -61,11 +64,11 @@
   <!-- ツールバー（よく使う操作のクイックアクセスのみ）-->
   <div id="toolbar">
     <input id="filename" value="game.msxb" spellcheck="false" />
-    <button id="saveBtn" title="文法チェック→変換→保存 (Ctrl/Cmd+S)">変換して保存</button>
-    <button id="playBtn" title="WebMSXで自動実行 (Ctrl/Cmd+Enter)">▶ WebMSX</button>
+    <button id="saveBtn" data-i18n="tb.save" title="文法チェック→変換→保存 (Ctrl/Cmd+S)">変換して保存</button>
+    <button id="playBtn" data-i18n="tb.play" title="WebMSXで自動実行 (Ctrl/Cmd+Enter)">▶ WebMSX</button>
     <span class="spacer"></span>
     <span class="fontctl">
-      文字
+      <span data-i18n="tb.font">文字</span>
       <button id="fontDown">A-</button>
       <button id="fontUp">A+</button>
     </span>
@@ -92,19 +95,19 @@
     <div id="msxPane" class="pane" hidden>
       <div id="msxToolbar">
         <span id="msxNote"></span>
-        <button id="copyBtn">📋 コピー</button>
+        <button id="copyBtn" data-i18n="note.copy">📋 コピー</button>
       </div>
       <pre id="msxOut"></pre>
     </div>
 
     <!-- 実行（アプリ内 WebMSX。▶を押すと src を差し替えて同一画面で再実行）-->
     <div id="webmsxPane" class="pane" hidden>
-      <div id="webmsxNote">▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します</div>
+      <div id="webmsxNote" data-i18n="note.webmsx">▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します</div>
       <iframe id="webmsxFrame" title="WebMSX" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
     </div>
   </div>
 
-  <div id="status">準備完了</div>
+  <div id="status" data-i18n="ready">準備完了</div>
 
   <script type="module" src="./app.js"></script>
 </body>

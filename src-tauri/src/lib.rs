@@ -270,36 +270,51 @@ mod tests {
 // 一手に担うため、二重発火を避けてここではアクセラレータを付けない。
 fn build_native_menu<R: tauri::Runtime>(
     handle: &tauri::AppHandle<R>,
+    lang: &str,
 ) -> tauri::Result<tauri::menu::Menu<R>> {
     use tauri::menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, Submenu};
-    let mi = |id: &str, label: &str| MenuItem::with_id(handle, id, label, true, None::<&str>);
+    let ja = lang != "en";
+    let l = |j: &'static str, e: &'static str| if ja { j } else { e };
+    let mi = |id: &str, j: &'static str, e: &'static str| {
+        MenuItem::with_id(handle, id, l(j, e), true, None::<&str>)
+    };
 
     // アプリメニュー（macOSでは左端・太字。リポジトリ名 FunctionBASIC を主張）
     let about_meta = AboutMetadataBuilder::new()
         .name(Some("FunctionBASIC"))
         .version(Some(env!("CARGO_PKG_VERSION")))
-        .comments(Some("構造化BASIC → MSX-BASIC 変換エディタ"))
+        .comments(Some(l(
+            "構造化BASIC → MSX-BASIC 変換エディタ",
+            "Structured BASIC → MSX-BASIC converter/editor",
+        )))
         .build();
     let app = Submenu::with_items(
         handle,
         "FunctionBASIC",
         true,
         &[
-            &PredefinedMenuItem::about(handle, Some("FunctionBASICについて"), Some(about_meta))?,
+            &PredefinedMenuItem::about(
+                handle,
+                Some(l("FunctionBASICについて", "About FunctionBASIC")),
+                Some(about_meta),
+            )?,
             &PredefinedMenuItem::separator(handle)?,
-            &PredefinedMenuItem::quit(handle, Some("FunctionBASICを終了"))?,
+            &PredefinedMenuItem::quit(handle, Some(l("FunctionBASICを終了", "Quit FunctionBASIC")))?,
         ],
     )?;
     let file = Submenu::with_items(
         handle,
-        "ファイル",
+        l("ファイル", "File"),
         true,
-        &[&mi("save", "変換して保存")?, &mi("dsk", "ディスク(.dsk)を保存…")?],
+        &[
+            &mi("save", "変換して保存", "Convert & Save")?,
+            &mi("dsk", "ディスク(.dsk)を保存…", "Save Disk (.dsk)…")?,
+        ],
     )?;
     // 編集: 標準の取消/やり直し/コピペ等（ネイティブ編集を保持）＋ 整形
     let edit = Submenu::with_items(
         handle,
-        "編集",
+        l("編集", "Edit"),
         true,
         &[
             &PredefinedMenuItem::undo(handle, None)?,
@@ -310,31 +325,37 @@ fn build_native_menu<R: tauri::Runtime>(
             &PredefinedMenuItem::paste(handle, None)?,
             &PredefinedMenuItem::select_all(handle, None)?,
             &PredefinedMenuItem::separator(handle)?,
-            &mi("format", "整形（大文字化）")?,
+            &mi("format", "整形（大文字化）", "Format (Uppercase)")?,
         ],
     )?;
     let view = Submenu::with_items(
         handle,
-        "表示",
+        l("表示", "View"),
         true,
         &[
-            &mi("split-right", "アクティブタブを右へ分割")?,
-            &mi("merge", "分割を統合")?,
-            &mi("layout-reset", "タブ配置をリセット")?,
+            &mi("split-right", "アクティブタブを右へ分割", "Split Active Tab Right")?,
+            &mi("merge", "分割を統合", "Unsplit (Merge)")?,
+            &mi("layout-reset", "タブ配置をリセット", "Reset Tab Layout")?,
             &PredefinedMenuItem::separator(handle)?,
-            &mi("fontup", "文字を大きく")?,
-            &mi("fontdown", "文字を小さく")?,
+            &mi("fontup", "文字を大きく", "Increase Font")?,
+            &mi("fontdown", "文字を小さく", "Decrease Font")?,
+            &PredefinedMenuItem::separator(handle)?,
+            &mi("lang-ja", "日本語", "日本語")?,
+            &mi("lang-en", "English", "English")?,
         ],
     )?;
     let run = Submenu::with_items(
         handle,
-        "実行",
+        l("実行", "Run"),
         true,
-        &[&mi("run", "WebMSXで実行")?, &mi("reverse", "MSX→構造化に逆変換")?],
+        &[
+            &mi("run", "WebMSXで実行", "Run in WebMSX")?,
+            &mi("reverse", "MSX→構造化に逆変換", "Reverse: MSX → Structured")?,
+        ],
     )?;
     let window = Submenu::with_items(
         handle,
-        "ウインドウ",
+        l("ウインドウ", "Window"),
         true,
         &[
             &PredefinedMenuItem::minimize(handle, None)?,
@@ -346,6 +367,14 @@ fn build_native_menu<R: tauri::Runtime>(
     Menu::with_items(handle, &[&app, &file, &edit, &view, &run, &window])
 }
 
+// 言語切替: ネイティブメニューを作り直して差し替える。
+#[tauri::command]
+fn set_menu_lang(app: tauri::AppHandle, lang: String) -> Result<(), String> {
+    let menu = build_native_menu(&app, &lang).map_err(|e| e.to_string())?;
+    app.set_menu(menu).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::Emitter;
@@ -353,7 +382,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .menu(|handle| build_native_menu(handle))
+        .menu(|handle| build_native_menu(handle, "ja"))
         .on_menu_event(|app, event| {
             let _ = app.emit("menu-action", event.id().0.as_str());
         })
@@ -361,7 +390,8 @@ pub fn run() {
             save_project,
             launch_native_player,
             set_clipboard,
-            save_dsk
+            save_dsk,
+            set_menu_lang
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

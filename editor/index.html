@@ -27,6 +27,7 @@
   <div id="tabs">
     <button class="tab active" data-tab="structured">構造化BASIC</button>
     <button class="tab" data-tab="msx">MSX-BASIC変換後（読み取り専用）</button>
+    <button class="tab" data-tab="webmsx">実行 (WebMSX)</button>
   </div>
 
   <!-- 構造化BASIC編集 -->
@@ -45,6 +46,12 @@
       <button id="copyBtn">📋 コピー</button>
     </div>
     <pre id="msxOut"></pre>
+  </div>
+
+  <!-- 実行（アプリ内 WebMSX。▶を押すと src を差し替えて同一画面で再実行）-->
+  <div id="webmsxPane" class="pane" hidden>
+    <div id="webmsxNote">▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します</div>
+    <iframe id="webmsxFrame" title="WebMSX" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
   </div>
 
   <div id="status">準備完了</div>

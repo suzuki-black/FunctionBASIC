@@ -320,29 +320,50 @@ function crc32(bytes) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-// 無圧縮(store)ZIP に1ファイルを収める
-function zipStore(name, data) {
+// 1ファイルZIPを組み立てる。method=0:無圧縮(store) / 8:DEFLATE。
+// crc/usize は非圧縮データ基準、csize は payload(格納する実バイト)基準。
+function zipEntry(name, data, payload, method) {
   const nameB = new TextEncoder().encode(name);
   const crc = crc32(data);
-  const n = data.length;
+  const usize = data.length;
+  const csize = payload.length;
   const a = [];
   const p16 = (v) => a.push(v & 0xff, (v >>> 8) & 0xff);
   const p32 = (v) => a.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
   // local file header
-  p32(0x04034b50); p16(20); p16(0); p16(0); p16(0); p16(0x21);
-  p32(crc); p32(n); p32(n); p16(nameB.length); p16(0);
+  p32(0x04034b50); p16(20); p16(0); p16(method); p16(0); p16(0x21);
+  p32(crc); p32(csize); p32(usize); p16(nameB.length); p16(0);
   for (const b of nameB) a.push(b);
-  for (const b of data) a.push(b);
+  for (const b of payload) a.push(b);
   const cdOffset = a.length;
   // central directory
-  p32(0x02014b50); p16(20); p16(20); p16(0); p16(0); p16(0); p16(0x21);
-  p32(crc); p32(n); p32(n);
+  p32(0x02014b50); p16(20); p16(20); p16(0); p16(method); p16(0); p16(0x21);
+  p32(crc); p32(csize); p32(usize);
   p16(nameB.length); p16(0); p16(0); p16(0); p16(0); p32(0); p32(0);
   for (const b of nameB) a.push(b);
   const cdSize = a.length - cdOffset;
   // end of central directory
   p32(0x06054b50); p16(0); p16(0); p16(1); p16(1); p32(cdSize); p32(cdOffset); p16(0);
   return Uint8Array.from(a);
+}
+
+// ZIP は raw DEFLATE（zlibヘッダ無し）を格納する。ブラウザ標準の CompressionStream を使用。
+async function deflateRaw(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// 1ファイルZIP。DEFLATEで縮むなら圧縮、使えない/逆効果なら無圧縮(store)。
+async function zipForWebmsx(name, data) {
+  if (typeof CompressionStream !== "undefined") {
+    try {
+      const def = await deflateRaw(data);
+      if (def.length < data.length) return zipEntry(name, data, def, 8);
+    } catch (e) {
+      logErr("deflate 失敗 → store にフォールバック", e);
+    }
+  }
+  return zipEntry(name, data, data, 0);
 }
 
 function toBase64(u8) {
@@ -353,10 +374,11 @@ function toBase64(u8) {
   return btoa(s);
 }
 
-// 変換後プログラム → WebMSX 自動実行 URL
-function webmsxAutorunUrl(name, asciiProgram) {
+// 変換後プログラム → WebMSX 自動実行 URL（DEFLATEでURLを圧縮）
+async function webmsxAutorunUrl(name, asciiProgram) {
   const data = new TextEncoder().encode(asciiProgram); // ASCII のみ
-  const dataUrl = "data:application/zip;base64," + toBase64(zipStore(name, data));
+  const zip = await zipForWebmsx(name, data);
+  const dataUrl = "data:application/zip;base64," + toBase64(zip);
   return (
     `${WEBMSX_URL}?DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
     `&BASIC_RUN=${name}`
@@ -375,26 +397,18 @@ async function onPlayWebMSX() {
   const { out, stripped } = asciiForWebMSX(body);
   const program = out.split("\n").join("\r\n") + "\x1a";
   const name = diskFileName(baseName());
-  const url = webmsxAutorunUrl(name, program);
+  const url = await webmsxAutorunUrl(name, program);
   log(`WebMSX 実行: URL長=${url.length} name=${name} stripped=${stripped}`);
 
-  let opened = false;
-  if (isDesktop()) {
-    try {
-      await tauri().core.invoke("plugin:opener|open_url", { url });
-      opened = true;
-    } catch (e) {
-      logErr("opener プラグイン失敗 → window.open へ", e);
-      opened = !!window.open(url, "_blank");
-    }
-  } else {
-    opened = !!window.open(url, "_blank");
-    if (!opened) logErr("window.open", "ブロックされた可能性（ポップアップ許可が必要）");
-  }
+  // アプリ内 iframe の src を差し替えて同一画面で再実行（新タブ/別ウィンドウを開かない）。
+  // src を毎回付け替えることで WebMSX がリロード→自動ロード→自動RUN する。
+  const frame = $("webmsxFrame");
+  frame.src = "about:blank"; // 同一URLでも確実にリロードさせる
+  frame.src = url;
+  setTab("webmsx");
 
   const note = stripped > 0 ? `（日本語等${stripped}字は実行用に除去）` : "";
-  if (opened) setStatus("ok", `WebMSXで自動実行しました（RUN"${name}"）${note}`);
-  else setStatus("err", "WebMSXを開けませんでした（ポップアップ許可が必要かもしれません）");
+  setStatus("ok", `アプリ内WebMSXで実行（RUN"${name}"）${note}`);
 }
 
 // ---- 再生（WebMSX、方式B＝ディスクイメージ。打鍵を経由せず確実）----
@@ -451,6 +465,7 @@ function setTab(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   $("structuredPane").hidden = name !== "structured";
   msxPane.hidden = name !== "msx";
+  $("webmsxPane").hidden = name !== "webmsx";
 }
 
 // ---- フォントサイズ ----

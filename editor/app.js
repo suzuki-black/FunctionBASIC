@@ -260,12 +260,15 @@ async function onSave() {
   statusEl.textContent = "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で";
 }
 
-// ---- 再生（WebMSX、方式B。docs/10 §10.4）----
+// ---- 再生（WebMSX、1クリック自動実行。docs/10 §10.4）----
+// WebMSX の URL パラメータ（DISKA_FILES_URL + BASIC_RUN）を使い、プログラムを
+// data: URL の ZIP で直接渡して「自動ロード→自動RUN」させる。同梱せずリンクのみ
+// なのでライセンス清潔。localhost/CORS/ドラッグ/保存ダイアログ/手動RUN すべて不要。
 const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
 
-// WebMSX は貼り付けを「MSXキーボードからの打鍵」として流し込むため、
-// MSXキーに無い非ASCII文字（日本語コメント等）は入力できず打鍵が破綻する。
-// → WebMSX へ渡すテキストは ASCII(制御は改行/タブのみ) に整える。保存する .bas は原文を維持。
+// WebMSX へ渡すプログラムは MSX 上で打鍵されないが、ディスク内ファイル名・URL を
+// 確実にするため ASCII(改行/タブのみ) に整える。日本語コメント等は実行に不要。
+// 完全な原文（Shift-JIS）は 💿 ディスク(.dsk) 保存側で保持する。
 function asciiForWebMSX(msx) {
   let stripped = 0;
   const out = msx.replace(/[^\t\n\x20-\x7E]/g, () => {
@@ -275,6 +278,70 @@ function asciiForWebMSX(msx) {
   return { out, stripped };
 }
 
+// base から 8.3 形式のディスク内ファイル名（拡張子 .BAS）
+function diskFileName(base) {
+  let n = "";
+  for (const c of base) {
+    if (n.length >= 8) break;
+    if (/[A-Za-z0-9]/.test(c)) n += c.toUpperCase();
+  }
+  return (n || "PROG") + ".BAS";
+}
+
+// CRC-32（ZIP 用）
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    let c = (crc ^ bytes[i]) & 0xff;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crc = (crc >>> 8) ^ c;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+// 無圧縮(store)ZIP に1ファイルを収める
+function zipStore(name, data) {
+  const nameB = new TextEncoder().encode(name);
+  const crc = crc32(data);
+  const n = data.length;
+  const a = [];
+  const p16 = (v) => a.push(v & 0xff, (v >>> 8) & 0xff);
+  const p32 = (v) => a.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
+  // local file header
+  p32(0x04034b50); p16(20); p16(0); p16(0); p16(0); p16(0x21);
+  p32(crc); p32(n); p32(n); p16(nameB.length); p16(0);
+  for (const b of nameB) a.push(b);
+  for (const b of data) a.push(b);
+  const cdOffset = a.length;
+  // central directory
+  p32(0x02014b50); p16(20); p16(20); p16(0); p16(0); p16(0); p16(0x21);
+  p32(crc); p32(n); p32(n);
+  p16(nameB.length); p16(0); p16(0); p16(0); p16(0); p32(0); p32(0);
+  for (const b of nameB) a.push(b);
+  const cdSize = a.length - cdOffset;
+  // end of central directory
+  p32(0x06054b50); p16(0); p16(0); p16(1); p16(1); p32(cdSize); p32(cdOffset); p16(0);
+  return Uint8Array.from(a);
+}
+
+function toBase64(u8) {
+  let s = "";
+  for (let i = 0; i < u8.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+
+// 変換後プログラム → WebMSX 自動実行 URL
+function webmsxAutorunUrl(name, asciiProgram) {
+  const data = new TextEncoder().encode(asciiProgram); // ASCII のみ
+  const dataUrl = "data:application/zip;base64," + toBase64(zipStore(name, data));
+  return (
+    `${WEBMSX_URL}?DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
+    `&BASIC_RUN=${name}`
+  );
+}
+
 async function onPlayWebMSX() {
   log("WebMSX 実行: 開始");
   const r = compile(srcEl.value);
@@ -282,39 +349,31 @@ async function onPlayWebMSX() {
     setStatus("err", "エラーがあるため実行できません");
     return;
   }
-  const { out: text, stripped } = asciiForWebMSX(r.msx.replace(/\r/g, ""));
-  if (stripped > 0) log(`WebMSX 実行: 非ASCII ${stripped} 文字を除去（MSX打鍵不可のため）`);
+  // MSX の ASCII セーブ形式に合わせ CRLF＋EOF(0x1A)
+  const body = r.msx.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const { out, stripped } = asciiForWebMSX(body);
+  const program = out.split("\n").join("\r\n") + "\x1a";
+  const name = diskFileName(baseName());
+  const url = webmsxAutorunUrl(name, program);
+  log(`WebMSX 実行: URL長=${url.length} name=${name} stripped=${stripped}`);
 
-  let copied = false;
   let opened = false;
   if (isDesktop()) {
-    // デスクトップ: opener はジェスチャ不要。OS側で確実にコピー → URLを開く。
-    copied = await copyText(text);
     try {
-      await tauri().core.invoke("plugin:opener|open_url", { url: WEBMSX_URL });
+      await tauri().core.invoke("plugin:opener|open_url", { url });
       opened = true;
     } catch (e) {
       logErr("opener プラグイン失敗 → window.open へ", e);
-      opened = !!window.open(WEBMSX_URL, "_blank");
+      opened = !!window.open(url, "_blank");
     }
   } else {
-    // ブラウザ: コピーを同期で先に（クリック有効性を維持）→ 直後に open。
-    copied = execCopy(text);
-    if (!copied) logErr("コピー", "execCommand が false");
-    const w = window.open(WEBMSX_URL, "_blank");
-    opened = !!w; // noopener を付けると成功でも null になるため付けない
+    opened = !!window.open(url, "_blank");
     if (!opened) logErr("window.open", "ブロックされた可能性（ポップアップ許可が必要）");
   }
-  log("WebMSX 実行: copied=", copied, "opened=", opened, "desktop=", isDesktop());
 
-  // 3) 結果メッセージ（失敗時は手段を案内）
-  const note = stripped > 0 ? `（日本語等${stripped}文字はWebMSX打鍵不可のため除去）` : "";
-  if (copied && opened) setStatus("ok", `変換結果をコピーしWebMSXを開きました（貼り付けて RUN）${note}`);
-  else if (copied && !opened)
-    setStatus("err", `コピー済。ポップアップがブロックされました → 手動で ${WEBMSX_URL} を開いて貼り付け`);
-  else if (!copied && opened)
-    setStatus("err", "WebMSXを開きました。「MSX-BASIC変換後」タブの📋コピーで本文をコピーしてください");
-  else setStatus("err", `自動化に失敗。変換後タブからコピーし、${WEBMSX_URL} を手動で開いてください`);
+  const note = stripped > 0 ? `（日本語等${stripped}字は実行用に除去）` : "";
+  if (opened) setStatus("ok", `WebMSXで自動実行しました（RUN"${name}"）${note}`);
+  else setStatus("err", "WebMSXを開けませんでした（ポップアップ許可が必要かもしれません）");
 }
 
 // ---- 再生（WebMSX、方式B＝ディスクイメージ。打鍵を経由せず確実）----

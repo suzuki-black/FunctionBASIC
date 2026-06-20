@@ -43,8 +43,10 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 - **Long, readable variable names (name-length extension)** — MSX-BASIC only distinguishes the first two characters of a name, so it normally forces cryptic identifiers. FunctionBASIC removes that limit: write descriptive names like `PLAYER_SCORE` or `ENEMY_X`, and the transpiler assigns each one a unique MSX-legal name automatically.
 - **Instant execution** — one click runs the converted program inside an embedded webMSX, loading and `RUN`-ning automatically.
 - **All in one editor** — syntax highlighting, live conversion preview, error markers, formatting, JetBrains-style navigation, draggable split tabs, an in-app menu bar, a native OS menu, and Japanese / English UI.
+- **Multi-file projects (`INCLUDE`)** — a preprocessor expands `INCLUDE`d files into a single program, with duplicate-include de-duplication and circular-include detection.
+- **255-byte line auto-splitting** — generated lines that exceed MSX's 255-byte limit are automatically repacked across `:`/`;` boundaries (unsplittable lines, e.g. some `IF…THEN`, are flagged instead of silently truncated).
 - **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX, real hardware, or distribution.
-- **Reverse transpilation** — turn existing MSX-BASIC back into Structured BASIC.
+- **Reverse transpilation** — turn existing MSX-BASIC back into Structured BASIC (and restore the original file split where possible).
 - **Target machines** — built-ins are aware of MSX1 / MSX2 / MSX2+ / turboR (turboR by default), and the built-in table is editable.
 
 ---
@@ -150,11 +152,15 @@ PRINT "GAME OVER"
 
 FunctionBASIC is early and developing. Planned directions (no fixed dates):
 
-- **Language growth** — richer Structured BASIC: `SELECT/CASE`, more string helpers, constants, and ergonomic improvements.
+- **Windows support** — the desktop app is built with Tauri to target both Windows and macOS; package, sign, and test the Windows build (development so far has been on macOS).
+- **Native MSX playback** — run on a native emulator in addition to the embedded webMSX: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script (Windows / macOS), and integrate a native Windows MSX player.
+- **Settings screen** — an in-app settings UI to edit the webMSX URL, the built-in command/function table (with reset to defaults), the target machine, and native-player / emulator paths.
+- **Language growth** — richer Structured BASIC: `SELECT/CASE`, more string helpers, constants, local arrays, and ergonomic improvements.
 - **MSX2 graphics** — first-class helpers for MSX2 screen modes, palettes, and sprites.
 - **Sound** — BGM and SE helpers (PSG, and where available FM/SCC).
 - **AI integration** — tighter "describe it, generate it, convert it, run it" flow with Claude.
-- **Tooling** — expanding CI (GitHub Actions already runs the core tests) to full desktop (Tauri) builds, signed desktop binaries, an in-app settings screen, and editor folding / large-file performance.
+- **Editor** — code folding and large-file performance (likely a CodeMirror-based editor), beyond today's lightweight zero-dependency editor.
+- **Tooling** — expanding CI (GitHub Actions already runs the core tests) to full desktop (Tauri) builds, signed / notarized desktop binaries, and release packaging.
 
 Tracked work and ideas live in the issue tracker. Suggestions are welcome.
 
@@ -219,8 +225,10 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **長く読みやすい変数名（名前長の拡張）** — MSX-BASICは名前の先頭2文字しか区別しないため、本来は暗号的な名前を強いられます。FunctionBASICはこの制限を撤廃：`PLAYER_SCORE` や `ENEMY_X` のような説明的な名前を書け、変換器が各変数へ一意なMSX有効名を自動割り当てします。
 - **即時実行** — 埋め込み webMSX に変換結果を流し込み、自動でロード＆`RUN`。ワンクリック。
 - **エディタ内で完結** — シンタックスハイライト、ライブ変換プレビュー、エラー表示、整形、JetBrains風ナビゲーション、ドラッグ可能な分割タブ、アプリ内メニューバー、OSネイティブメニュー、日本語/英語UI。
+- **複数ファイル（`INCLUDE`）** — プリプロセッサが `INCLUDE` を展開して1つのプログラムへ統合。二重 include の重複排除、循環 include の検出付き。
+- **255バイト行の自動分割** — MSXの255バイト制限を超える生成行を `:`/`;` 境界で自動的に再パック（分割できない行＝一部の `IF…THEN` 等は黙って切り捨てず警告）。
 - **実ディスク書き出し** — openMSX・実機・配布用に 720&nbsp;KB FAT12 の `.dsk` を生成。
-- **逆変換** — 既存のMSX-BASICを構造化BASICへ戻す。
+- **逆変換** — 既存のMSX-BASICを構造化BASICへ戻す（可能な範囲で元のファイル分割も復元）。
 - **対象機種** — 組み込み関数は MSX1 / MSX2 / MSX2+ / turboR を考慮（既定 turboR）。組み込み表は編集可能。
 
 ---
@@ -326,11 +334,15 @@ PRINT "GAME OVER"
 
 FunctionBASIC はまだ初期段階で、発展途上です。予定している方向性（時期は未定）：
 
-- **言語の拡張** — より豊かな構造化BASIC：`SELECT/CASE`、文字列ヘルパの充実、定数、使い勝手の改善。
+- **Windows対応** — デスクトップ版は Tauri で Windows / macOS 両対応を想定。Windowsビルドのパッケージング・署名・動作確認（これまでの開発は macOS 中心）。
+- **ネイティブMSXプレイヤー対応** — 埋め込み webMSX に加え、ネイティブエミュレータでの実行：生成した `.dsk` を openMSX に自動マウントし Tcl スクリプトで `RUN`（Windows / macOS）、および Windows のネイティブMSXプレイヤー連携。
+- **設定画面** — アプリ内設定UIで、webMSX URL、組み込み命令・関数表（既定へのリセット付き）、対象機種、ネイティブプレイヤー／エミュレータのパスを編集。
+- **言語の拡張** — より豊かな構造化BASIC：`SELECT/CASE`、文字列ヘルパの充実、定数、ローカル配列、使い勝手の改善。
 - **MSX2グラフィック対応** — MSX2のスクリーンモード・パレット・スプライトの一級サポート。
 - **BGM/SE対応** — サウンドのヘルパ（PSG、可能なら FM/SCC）。
 - **AI生成との統合** — Claude との「説明する→生成する→変換する→実行する」流れをより緊密に。
-- **ツール整備** — CI（GitHub Actions、コアのテストは導入済み）をデスクトップ(Tauri)フルビルドへ拡張、デスクトップ版の署名、アプリ内設定画面、エディタの折りたたみ・大規模ファイル性能。
+- **エディタ** — コードの折りたたみと大規模ファイル性能（CodeMirrorベースのエディタを想定）。現状の軽量・依存ゼロエディタを発展。
+- **ツール整備** — CI（GitHub Actions、コアのテストは導入済み）をデスクトップ(Tauri)フルビルドへ拡張、署名・公証済みバイナリ、リリースパッケージング。
 
 作業項目やアイデアは Issue で管理しています。提案を歓迎します。
 

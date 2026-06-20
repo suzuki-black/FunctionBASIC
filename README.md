@@ -40,6 +40,7 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 - **Structured BASIC language** — `FUNCTION`, freely nestable `IF/FOR/WHILE` blocks, local-by-default variables, `GLOBAL`, `REF` parameters, `BREAK`/`CONTINUE`, `RETURN`, and arrays (including arrays by reference).
 - **Automatic transpilation** to MSX-BASIC — line numbering, two-letter variable allocation, function-to-`GOSUB` expansion, return-value handling, and 255-byte line auto-splitting.
+- **Long, readable variable names (name-length extension)** — MSX-BASIC only distinguishes the first two characters of a name, so it normally forces cryptic identifiers. FunctionBASIC removes that limit: write descriptive names like `PLAYER_SCORE` or `ENEMY_X`, and the transpiler assigns each one a unique MSX-legal name automatically.
 - **Instant execution** — one click runs the converted program inside an embedded webMSX, loading and `RUN`-ning automatically.
 - **All in one editor** — syntax highlighting, live conversion preview, error markers, formatting, JetBrains-style navigation, draggable split tabs, an in-app menu bar, a native OS menu, and Japanese / English UI.
 - **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX, real hardware, or distribution.
@@ -73,7 +74,7 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 ## Transpiler Rules
 
 - **Line numbering** — `MAIN` (your top-level code) starts at 100; each function gets its own 1000-step segment (1000, 2000, …). Comments mark each segment.
-- **Variable names** — identifiers are mapped to MSX's two-significant-character variables (with `%` `!` `#` `$` type suffixes). `_` is not used in output names.
+- **Variable names (length extension)** — MSX-BASIC treats only the first two characters of a name as significant (`COUNT` and `COUNTER` collide) and rejects `_`, which normally forces 1–2 letter names. FunctionBASIC lets you use long, descriptive identifiers and a name allocator maps each variable to a unique, first-two-characters-distinct MSX name. Pools are per type — `%` integer, `!` single, `#` double, `$` string, roughly 960 names each, with reserved words (`IF`, `TO`, `ON`, `OR`, `FN`, …) excluded — and locals whose lifetimes do not overlap reuse names across functions. `_` never appears in output names; if a type's pool is exhausted, conversion reports `E_VAR_NAMES_EXHAUSTED`.
 - **Function expansion** — every `FUNCTION` becomes a `GOSUB` block; calls become `GOSUB <line>` and the call site reads the result variable afterward.
 - **Return values** — a function's return value is assigned to a dedicated internal variable, which the caller copies immediately after the `GOSUB`.
 - **Internal variable naming** — locals, loop counters, and return variables are allocated from a fixed two-letter pool so they never collide; recursion is rejected (call cycles are detected) because fixed names cannot re-enter.
@@ -215,6 +216,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 - **構造化BASIC言語** — `FUNCTION`、自由に入れ子可能な `IF/FOR/WHILE`、既定ローカル変数、`GLOBAL`、`REF` 参照引数、`BREAK`/`CONTINUE`、`RETURN`、配列（配列の参照渡しを含む）。
 - **自動変換** — 行番号付与、2文字変数の割り当て、関数の `GOSUB` 展開、戻り値の処理、255バイト行の自動分割。
+- **長く読みやすい変数名（名前長の拡張）** — MSX-BASICは名前の先頭2文字しか区別しないため、本来は暗号的な名前を強いられます。FunctionBASICはこの制限を撤廃：`PLAYER_SCORE` や `ENEMY_X` のような説明的な名前を書け、変換器が各変数へ一意なMSX有効名を自動割り当てします。
 - **即時実行** — 埋め込み webMSX に変換結果を流し込み、自動でロード＆`RUN`。ワンクリック。
 - **エディタ内で完結** — シンタックスハイライト、ライブ変換プレビュー、エラー表示、整形、JetBrains風ナビゲーション、ドラッグ可能な分割タブ、アプリ内メニューバー、OSネイティブメニュー、日本語/英語UI。
 - **実ディスク書き出し** — openMSX・実機・配布用に 720&nbsp;KB FAT12 の `.dsk` を生成。
@@ -248,7 +250,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 ## 変換ルール
 
 - **行番号の付与** — `MAIN`（トップレベルのコード）は 100 から。各関数は 1000 刻みの専用セグメント（1000, 2000, …）。各セグメントはコメントで明示。
-- **変数名の変換** — 識別子はMSXの「先頭2文字のみ有効」な変数（`%` `!` `#` `$` 型サフィックス付き）へ写像。出力名に `_` は使いません。
+- **変数名の変換（長さ拡張）** — MSXは名前の**先頭2文字しか区別せず**（`COUNT` と `COUNTER` は衝突）、`_` も使えないため、本来は1〜2文字の名前を強いられます。FunctionBASICでは長い説明的な名前を書け、名前アロケータが各変数へ**先頭2文字で一意なMSX名**を割り当てます。プールは型別（`%`整数 `!`単精度 `#`倍精度 `$`文字列で各約960個、`IF`/`TO`/`ON`/`OR`/`FN` 等の予約語は除外）で、生存区間が重ならないローカルは関数をまたいで名前を再利用します。出力名に `_` は出ません。型のプールを使い切った場合は `E_VAR_NAMES_EXHAUSTED` を報告します。
 - **関数の展開（GOSUB化）** — すべての `FUNCTION` は `GOSUB` ブロックに。呼び出しは `GOSUB <行>` になり、直後に結果変数を読み取ります。
 - **戻り値の扱い** — 戻り値は専用の内部変数へ代入し、呼び出し側が `GOSUB` 直後にコピーします。
 - **内部変数の命名規則** — ローカル・ループ変数・戻り値変数は固定の2文字プールから割り当て、衝突しません。固定名は再入できないため再帰は禁止（呼び出し循環を検出してエラー）。

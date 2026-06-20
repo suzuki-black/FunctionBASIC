@@ -138,7 +138,7 @@ Generated MSX-BASIC:
 1030 NEXT <br>
 1040 E=0: RETURN
 
-**2. Multicolour cat from two overlapping sprites (MSX2)** — MSX hardware sprites are a single colour each, so a classic trick is to stack two sprites at the same position to get more colours. This moves a cat (a white face sprite over an orange body sprite) with the cursor / joystick. Full, convert-tested source: [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb).
+**2. Multicolour cat from two overlapping sprites (MSX2)** — MSX hardware sprites are a single colour each, so a classic trick is to stack two sprites at the same position to get more colours. A cat (a white face sprite over an orange body sprite) bounces around the screen on its own. Full, convert-tested source: [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb).
 
 The heart of it — one cat is two sprites drawn at the same spot, then moved:
 
@@ -342,7 +342,7 @@ PRINT "FOUND="; RESULT; " AT "; POS
 1030 NEXT <br>
 1040 E=0: RETURN
 
-**2. 2枚重ねスプライトの多色猫（MSX2）** — MSXのハードウェアスプライトは1枚＝1色なので、同じ位置に2枚重ねて多色にするのが定番技です。白い顔スプライトをオレンジの体スプライトに重ねた猫を、カーソル／ジョイスティックで動かします。変換確認済みの全ソース：[`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)。
+**2. 2枚重ねスプライトの多色猫（MSX2）** — MSXのハードウェアスプライトは1枚＝1色なので、同じ位置に2枚重ねて多色にするのが定番技です。白い顔スプライトをオレンジの体スプライトに重ねた猫が、画面内を自分で跳ね回ります。変換確認済みの全ソース：[`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)。
 
 肝は「1匹の猫＝同じ位置に2枚のスプライト」を描いて動かすこと：
 

@@ -1,8 +1,10 @@
 ' ============================================================
-'  Moving cat — two overlapping MSX2 sprites make it multicolour
+'  Bouncing cat — two overlapping MSX2 sprites make it multicolour
 '  MSX2 or later. SCREEN 5 with 16x16 sprites.
 '  Plane 0 (front) = white face, plane 1 (behind) = orange body,
 '  drawn at the SAME position so the two colours combine.
+'  The cat moves by itself and bounces off the screen edges.
+'  Press the space bar (trigger) to stop.
 ' ============================================================
 
 ' Read 32 bytes of DATA into sprite pattern N.
@@ -15,20 +17,11 @@ FUNCTION BUILD_SPRITE(N)
     SPRITE$(N) = PAT$
 END FUNCTION
 
-' Keep V within [LO, HI].
-FUNCTION CLAMP(V, LO, HI)
-    IF V < LO THEN
-        RETURN LO
-    END IF
-    IF V > HI THEN
-        RETURN HI
-    END IF
-    RETURN V
-END FUNCTION
-
 ' ---------------- MAIN ----------------
 GLOBAL CATX
 GLOBAL CATY
+GLOBAL DX
+GLOBAL DY
 
 SCREEN 5, 2                 ' MSX2: 16x16 sprites
 COLOR 15, 4, 4
@@ -40,28 +33,27 @@ BUILD_SPRITE(1)            ' body         (DATA block 2)
 
 CATX = 120
 CATY = 90
+DX = 3
+DY = 2
 
 WHILE 1
     ' One cat = two sprites at the same spot, in two colours.
     PUT SPRITE 0, (CATX, CATY), 15, 0     ' front: white face
     PUT SPRITE 1, (CATX, CATY), 9, 1      ' behind: orange body
 
-    DIR = STICK(0)                        ' 0 = none, 1..8 = eight directions
-    IF DIR = 2 OR DIR = 3 OR DIR = 4 THEN
-        CATX = CATX + 2
+    ' move, and bounce off the edges
+    CATX = CATX + DX
+    CATY = CATY + DY
+    IF CATX < 0 OR CATX > 240 THEN
+        DX = 0 - DX
     END IF
-    IF DIR = 6 OR DIR = 7 OR DIR = 8 THEN
-        CATX = CATX - 2
-    END IF
-    IF DIR = 8 OR DIR = 1 OR DIR = 2 THEN
-        CATY = CATY - 2
-    END IF
-    IF DIR = 4 OR DIR = 5 OR DIR = 6 THEN
-        CATY = CATY + 2
+    IF CATY < 0 OR CATY > 176 THEN
+        DY = 0 - DY
     END IF
 
-    CATX = CLAMP(CATX, 0, 240)
-    CATY = CLAMP(CATY, 0, 195)
+    ' small delay so the motion is visible (raise this number to slow the cat down)
+    FOR T = 1 TO 200
+    NEXT T
 
     IF STRIG(0) THEN
         BREAK

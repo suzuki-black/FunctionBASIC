@@ -1015,6 +1015,11 @@ function finishTransform(ctx: any): TransformResult {
         },
       ];
       emitInto(fn.body, sc, items);
+      // 関数末尾が明示 RETURN でなければ補う（戻り値の無い手続き等。無いと GOSUB が落ちる）
+      const last = fn.body[fn.body.length - 1];
+      if (!last || last.type !== "Return") {
+        items.push({ kind: "line", text: "RETURN" });
+      }
       const lines = numberBlock(items, seg);
       entryLineOf.set(key, seg);
       out.push(...lines);

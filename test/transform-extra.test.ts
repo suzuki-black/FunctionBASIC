@@ -108,3 +108,16 @@ C = 3
 R = (A + B) * C`);
   assert.match(msx, /\([A-Z]+\+[A-Z]+\)\*/); // (..+..)* の括弧が残る
 });
+
+test("戻り値の無い手続きFUNCTIONの末尾にRETURNが補われる", () => {
+  const { msx, diagnostics } = compile(`FUNCTION SETUP()
+    GLOBAL X
+    X = 5
+END FUNCTION
+SETUP()
+PRINT X`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  // 関数ブロックの最後が RETURN で終わる（GOSUB が落ちない）
+  const fnPart = msx.slice(msx.indexOf("=== FUNCTION SETUP"));
+  assert.match(fnPart.trim(), /RETURN\s*$/);
+});

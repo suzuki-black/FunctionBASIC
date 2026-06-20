@@ -1,10 +1,14 @@
 ' ============================================================
 '  MSX2 audio/visual coverage test (FunctionBASIC, chunk 1)
-'  Exercises the MSX2 graphics / sprite / screen / sound / clock
-'  command set so the transpiler is verified end to end.
-'  Not meant to be pretty — it is a coverage program: every line
-'  must survive transpilation with built-in names kept and only
-'  user variables renamed.
+'  A bouncing cat over a drawn night scene. It exercises the MSX2
+'  graphics / sprite / screen / sound / clock command set so the
+'  transpiler is verified end to end -- but it also actually runs:
+'  a still backdrop with a cat sprite gliding across it.
+'
+'  Sound is kept clean: a one-shot SOUND boot beep BEFORE the music
+'  starts (so SOUND and PLAY never fight the PSG), then looping BGM
+'  on channels A/B via PLAY, and a bounce blip on the free channel C
+'  (also via PLAY).
 '  MSX2 or later.
 ' ============================================================
 
@@ -17,10 +21,10 @@ FUNCTION MAKE_PALETTE()
     COLOR=(15, 7, 7, 7)            ' 15 -> white
 END FUNCTION
 
-' ---- draw the static scene onto whichever page is active ----
-FUNCTION DRAW_SCENE()
+' ---- draw the still backdrop onto the active page ----
+FUNCTION DRAW_BACKDROP()
     CLS
-    LINE (0, 0)-(255, 211), 1, BF          ' fill background (box fill)
+    LINE (0, 0)-(255, 211), 1, BF          ' fill the sky (box fill)
     LINE (0, 150)-(255, 211), 4, BF        ' grass strip
     CIRCLE (210, 30), 18, 15                ' moon
     PAINT (210, 30), 15, 15                 ' fill it (border colour 15)
@@ -39,67 +43,74 @@ FUNCTION LOAD_SPRITE(N)
     SPRITE$(N) = PAT$
 END FUNCTION
 
-' ---- a short blip on PSG channel A (sound effect) ----
-FUNCTION BLIP(PITCH)
-    SOUND 0, PITCH                  ' tone period low byte
-    SOUND 1, 0                      ' tone period high byte
-    SOUND 7, &HBE                   ' mixer: channel A tone on
+' ---- a one-shot boot beep, straight to the PSG (SOUND), no PLAY yet ----
+FUNCTION BOOT_BEEP()
+    SOUND 7, &HB8                   ' mixer: tones A/B/C on, noise off
+    SOUND 0, &H40                   ' channel A tone period (low byte)
+    SOUND 1, 1                      ' channel A tone period (high byte)
     SOUND 8, 15                     ' channel A volume = max
-    FOR W = 1 TO 60
+    FOR W = 1 TO 400
     NEXT W
     SOUND 8, 0                      ' silence
+END FUNCTION
+
+' ---- a bounce blip on the free channel C, queued via PLAY ----
+FUNCTION BLIP()
+    PLAY "", "", "V15 L32 O5 E"          ' empty A/B keep the BGM; C beeps
 END FUNCTION
 
 ' ---------------- MAIN ----------------
 GLOBAL SKYCOL
 
-SCREEN 5                           ' MSX2 256x212, 16 colours
+SCREEN 5, 2                        ' MSX2 256x212, 16 colours; ,2 = 16x16 sprites
 WIDTH 32
-SET PAGE 0, 0                      ' draw + display page 0 to start
 MAKE_PALETTE()
 COLOR 15, 1, 1
+
+' Stay on page 0 for everything (sprites live in the active page's tables,
+' so we keep one page to avoid disturbing them). We still exercise COPY by
+' stashing a backup of the finished backdrop onto the off-screen page 1.
+SET PAGE 0, 0                      ' display + draw page 0
+DRAW_BACKDROP()
+COPY (0, 0)-(255, 211), 0 TO (0, 0), 1   ' backup the backdrop to page 1
 
 RESTORE
 LOAD_SPRITE(0)                     ' face overlay
 LOAD_SPRITE(1)                     ' body
+' (colours are given per-plane on the PUT SPRITE calls below, exactly like
+'  the proven examples/cat-sprite.msxb -- two planes stacked make it 2-colour)
 
-COLOR SPRITE(0) = 15               ' face white
-COLOR SPRITE(1) = 8                ' body orange
-
-' kick off background music; PLAY also has a function form (PLAY(n))
-PLAY "T140 O4 L8 CEGEC", "T140 O3 L4 CGCG"
+BOOT_BEEP()                        ' SOUND-driven beep (no music running yet)
+PLAY "T140 O4 L8 CEGEC", "T140 O3 L4 CGCG"   ' looping BGM on channels A+B
 
 CATX = 40
-DX = 3
+DX = 2
 TIME = 0                           ' reset the jiffy clock (system variable)
 
 WHILE 1
-    ' double buffer: build the next frame on the hidden page, then flip
-    SET PAGE 1, 0
-    DRAW_SCENE()
-    PUT SPRITE 0, (CATX, 120), 15, 0
-    PUT SPRITE 1, (CATX, 120), 8, 1
-    SET PAGE 1, 1
-    COPY (0, 0)-(255, 211), 1 TO (0, 0), 0   ' keep page 0 mirrored
+    ' sprites are hardware-composited over the displayed page, so the cat
+    ' simply moves -- no redraw or page flipping needed for it.
+    PUT SPRITE 0, (CATX, 116), 15, 0     ' front: white face
+    PUT SPRITE 1, (CATX, 116), 9, 1      ' behind: orange body
 
     CATX = CATX + DX
     IF CATX > 220 THEN
         CATX = 220
         DX = 0 - DX
-        BLIP(150)
+        BLIP()
     END IF
     IF CATX < 16 THEN
         CATX = 16
         DX = 0 - DX
-        BLIP(80)
+        BLIP()
     END IF
 
-    ' pace the loop with the system clock (~1 frame), not a dummy FOR
+    ' pace the loop with the system clock, not a dummy FOR
     T0 = TIME
-    WHILE TIME - T0 < 2
+    WHILE TIME - T0 < 3
     WEND
 
-    ' restart the tune once the PSG queue has drained (PLAY as function)
+    ' keep the music looping (PLAY as a function: anything still queued?)
     IF PLAY(0) = 0 THEN
         PLAY "T140 O4 L8 CEGEC", "T140 O3 L4 CGCG"
     END IF

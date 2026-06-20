@@ -28,7 +28,13 @@ test("例: cat-sprite.msxb はエラーなしで変換される", () => {
 });
 
 test("例: msx2-graphics-sound.msxb はエラーなしで変換される", () => {
-  assert.deepEqual(errorsOf("msx2-graphics-sound.msxb"), []);
+  const { msx, diagnostics } = compileExample("msx2-graphics-sound.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  // ダブルバッファ: SET PAGE <表示>,<描画> のピンポン（隠しページに描いて表示を切替）
+  assert.match(msx, /SET PAGE 1-[A-Z]+,[A-Z]+/); // 隠しページへ描画
+  assert.match(msx, /SET PAGE ([A-Z]+),\1/); // 描いたページを表示
+  // SE は空きチャンネルC へ PLAY で流す（BGM の SOUND 直叩きと衝突しない）
+  assert.match(msx, /PLAY "","","V15 L32 O5 G"/);
 });
 
 test("例: msx2-coverage.msxb はMSX2 命令を保持してエラーなしで変換される", () => {
@@ -39,13 +45,13 @@ test("例: msx2-coverage.msxb はMSX2 命令を保持してエラーなしで変
     /COLOR=NEW/,
     /COLOR=\(1,0,0,2\)/,
     /LINE \(0,0\)-\(255,211\),1,BF/,
-    /COLOR SPRITE\(0\)=15/,
-    /SET PAGE 1,1/,
-    /COPY \(0,0\)-\(255,211\),1 TO \(0,0\),0/,
+    /SET PAGE 0,0/,
+    /COPY \(0,0\)-\(255,211\),0 TO \(0,0\),1/,
     /=POINT\(10,10\)/,
     /PLAY\(0\)=0/,
     /\bTIME=0\b/,
-    /SOUND 7,&HBE/,
+    /SOUND 7,&HB8/,
+    /PLAY "","","V15 L32 O5 E"/,
   ])
     assert.match(msx, re, `保持されるべき: ${re}`);
 });

@@ -1,4 +1,4 @@
-// 依存ゼロの静的サーバ（エディタ開発用）。`npm run serve` → http://localhost:8123/editor/
+// 依存ゼロの静的サーバ（エディタ開発用）。`npm run serve` → http://localhost:8123/
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
@@ -30,4 +30,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }).end("Not Found");
   }
-}).listen(PORT, () => console.log(`serving ${ROOT} → http://localhost:${PORT}/editor/`));
+}).listen(PORT, () => console.log(`serving ${ROOT} → http://localhost:${PORT}/`));

@@ -1,40 +1,36 @@
 ' ============================================================
 '  MSX2 graphics + BGM/SE showcase (FunctionBASIC)
-'  - SCREEN 5 (MSX2, 256x212 / 16 colours from a 512 palette)
-'  - COLOR=(n,r,g,b) custom palette, COLOR=NEW to reset
-'  - LINE / CIRCLE / PAINT / POINT graphics primitives
-'  - SET PAGE for double buffering (draw hidden, then show)
-'  - COPY for VRAM block transfer
-'  - PLAY for background music, SOUND for a sound effect
+'  - SCREEN 5, custom palette via COLOR=(n,r,g,b)
+'  - LINE / CIRCLE / PAINT / POINT primitives
+'  - SET PAGE double buffering. NOTE the argument order is
+'      SET PAGE <display page>, <active/draw page>
+'    so we draw on the hidden page, then flip it into view.
+'  - PLAY for looping BGM, plus a blip SE on a *free* PSG channel
+'    (channel C) so it never fights the music on channel A.
 '  MSX2 or later.
 ' ============================================================
 
-' Set up a small custom palette (colour 1 = deep blue background).
+' Custom palette: (colour number, R, G, B), each 0..7.
 FUNCTION SETUP_PALETTE()
-    COLOR=(1, 0, 0, 3)        ' colour 1 -> dark blue
-    COLOR=(4, 1, 6, 1)        ' colour 4 -> grass green
-    COLOR=(8, 7, 2, 0)        ' colour 8 -> warm orange
+    COLOR=(1, 0, 0, 3)        ' 1 -> deep blue (background)
+    COLOR=(4, 1, 6, 1)        ' 4 -> grass green
+    COLOR=(8, 7, 4, 0)        ' 8 -> warm orange (the sun)
 END FUNCTION
 
-' Draw one frame of the scene onto the current (hidden) page.
+' Draw one frame onto whichever page is currently the active page.
 FUNCTION DRAW_SCENE(CX)
     CLS
     LINE (0, 150)-(255, 211), 4, BF      ' ground
-    CIRCLE (CX, 90), 20, 8               ' a moving sun
+    CIRCLE (CX, 90), 20, 8               ' the sun
     PAINT (CX, 90), 8                     ' fill it
-    ' read a pixel back just to show POINT works
     GLOBAL HITCOL
-    HITCOL = POINT(CX, 90)
+    HITCOL = POINT(CX, 90)               ' read a pixel back (POINT)
 END FUNCTION
 
-' Play a short blip as a sound effect on PSG channel A.
+' A short blip on PSG channel C, queued through PLAY (not SOUND), so it
+' shares the music engine and never clobbers the BGM on channel A.
 FUNCTION BLIP()
-    SOUND 0, 100         ' channel A frequency (low byte)
-    SOUND 1, 1           ' channel A frequency (high byte)
-    SOUND 8, 15          ' channel A volume = max
-    FOR W = 1 TO 80
-    NEXT W
-    SOUND 8, 0           ' volume off
+    PLAY "", "", "V15 L32 O5 G"          ' empty A/B keep the BGM; C beeps
 END FUNCTION
 
 ' ---------------- MAIN ----------------
@@ -44,18 +40,17 @@ SCREEN 5
 COLOR 15, 1, 1
 SETUP_PALETTE()
 
-' Background music loops in the PSG queue while we animate.
-PLAY "T120 O4 L8 CDEFGAB O5 C"
+PLAY "T120 O4 L8 CDEFGAB O5 C"     ' looping background music (channel A)
 
 X = 30
 DX = 4
+PG = 0                              ' the page we will draw on this frame
 
 WHILE 1
-    ' double buffer: draw on the off-screen page, then flip it to view
-    SET PAGE 1, 0          ' write page 1, display page 0
+    PG = 1 - PG
+    SET PAGE 1 - PG, PG            ' show the finished page, draw on the hidden one
     DRAW_SCENE(X)
-    SET PAGE 1, 1          ' now display page 1
-    COPY (0, 0)-(255, 211), 1 TO (0, 0), 0   ' keep page 0 in sync
+    SET PAGE PG, PG               ' flip: now display the page we just drew
 
     X = X + DX
     IF X > 225 THEN
@@ -69,11 +64,11 @@ WHILE 1
         BLIP()
     END IF
 
-    ' wait for the music buffer (PLAY as a function: voices still queued?)
+    ' small delay so the motion is visible (raise to slow the sun down)
     FOR T = 1 TO 150
     NEXT T
 
-    ' restart the tune when it has drained
+    ' restart the tune once the channel-A queue has drained (PLAY function)
     IF PLAY(0) = 0 THEN
         PLAY "T120 O4 L8 CDEFGAB O5 C"
     END IF

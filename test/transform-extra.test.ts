@@ -117,6 +117,15 @@ COPY (0,0)-(15,15) TO (100,100)`);
   assert.match(msx, /COPY \(0,0\)-\(15,15\) TO \(100,100\)/);
 });
 
+test("MSX2: COLOR SPRITE(n)= は SPRITE を改名せず保持する", () => {
+  const { msx, diagnostics } = compile(`SCREEN 5, 2
+COLOR SPRITE(0) = 15
+COLOR SPRITE(1) = 8`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /COLOR SPRITE\(0\)=15/);
+  assert.match(msx, /COLOR SPRITE\(1\)=8/);
+});
+
 test("MSX2: POINT 関数は改名されず素通しされる", () => {
   const { msx, diagnostics } = compile(`SCREEN 5
 C = POINT(10, 20)

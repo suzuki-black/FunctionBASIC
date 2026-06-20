@@ -57,7 +57,8 @@ const indent = (d: number): string => "    ".repeat(d);
 
 export function reverse(code: MsxLine[], map: MapTable): ReverseResult {
   const diagnostics: Diagnostic[] = [];
-  const warn = (m: string) => diagnostics.push(warning("W_REVERSE_PARTIAL", { line: 0, column: 0 }, m));
+  const warnGoto = (target: string) =>
+    diagnostics.push(warning("W_REVERSE_PARTIAL_GOTO", { line: 0, column: 0 }, { target }));
 
   // 索引
   const globalRev = new Map<string, string>();
@@ -111,7 +112,7 @@ export function reverse(code: MsxLine[], map: MapTable): ReverseResult {
       if (g) {
         const r = gotoTarget(Number(g[1]));
         out.push(r ?? `' [REVERSE?] GOTO ${g[1]}`);
-        if (!r) warn(`GOTO ${g[1]} を復元できません`);
+        if (!r) warnGoto(g[1]);
         continue;
       }
       // retVar=expr (: RETURN) → RETURN expr

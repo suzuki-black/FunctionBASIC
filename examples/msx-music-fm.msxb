@@ -1,0 +1,39 @@
+' ============================================================
+'  MSX-MUSIC (FM) demo via the CALL extended statement.
+'
+'  `CALL <name>` (and its short form `_<name>`) is how MSX reaches
+'  cartridge / built-in extensions. MSX-MUSIC and MSX-AUDIO are
+'  driven this way. The transpiler passes these through verbatim:
+'  the extension name (MUSIC / AUDIO / …) is never renamed, only
+'  your own variables are.
+'
+'  REQUIRES a machine with MSX-MUSIC (FM-PAC, or built-in FM on an
+'  MSX2+/turbo R). On a plain MSX2 without FM, CALL MUSIC errors.
+' ============================================================
+
+' A short three-voice FM phrase (channels A/B/C of the FM chip).
+FUNCTION FANFARE()
+    PLAY "T130 O4 L8 V15 CEGEC", "T130 O3 L4 V11 CG", "T130 O5 L8 V9 GCEGC"
+END FUNCTION
+
+' ---------------- MAIN ----------------
+SCREEN 0
+WIDTH 40
+CLS
+PRINT "MSX-MUSIC (FM) via CALL MUSIC"
+PRINT "(needs MSX-MUSIC hardware)"
+PRINT
+
+CALL MUSIC                 ' hand PLAY over to the FM sound chip
+                           ' the short form  _MUSIC  is identical
+
+FOR REPEAT = 1 TO 3
+    PRINT "playing"; REPEAT
+    FANFARE()
+    WHILE PLAY(0)          ' wait until the FM queue drains
+    WEND
+    FOR PAUSE = 1 TO 600
+    NEXT PAUSE
+NEXT REPEAT
+
+PRINT "done"

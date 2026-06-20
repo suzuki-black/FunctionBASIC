@@ -10,7 +10,7 @@ import type {
   TypeSuffix,
 } from "../ast/nodes.ts";
 import { suffixOf } from "../ast/nodes.ts";
-import type { Diagnostic } from "../core/diagnostics.ts";
+import type { Diagnostic, DiagParams } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import { hasError } from "../core/diagnostics.ts";
 import {
@@ -253,14 +253,14 @@ export interface TransformOptions {
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
   const diagnostics: Diagnostic[] = [];
-  const fail = (code: string, msg: string) =>
-    diagnostics.push(error(code, ORIGIN, msg));
+  const fail = (key: string, params: DiagParams = {}) =>
+    diagnostics.push(error(key, ORIGIN, params));
 
   // 関数表
   const funcNames = new Set<string>();
   const funcTable = new Map<string, FunctionDef>();
   for (const fn of program.functions) {
-    if (funcTable.has(fn.name)) fail("E_DUP_FUNCTION", `関数 ${fn.name} が重複`);
+    if (funcTable.has(fn.name)) fail("E_DUP_FUNCTION", { name: fn.name });
     funcTable.set(fn.name, fn);
     funcNames.add(fn.name);
   }
@@ -391,7 +391,7 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       case "CallExpr": {
         if (isUserFunc(e.name)) {
           // 通常は prelower で一時変数へ lowering 済み。ここに来るのは内部不整合。
-          fail("E_INTERNAL", `式中のユーザ関数呼び出しの lowering 漏れ: ${e.name}()`);
+          fail("E_INTERNAL_LOWER", { name: e.name });
           return "0";
         }
         // 組み込み関数/括弧付き組み込み文(SPRITE(n)/KANJI(n) 等) or ユーザ配列
@@ -439,6 +439,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       case "Builtin": {
         let out = s.name;
         let prev = "name";
+        // 拡張呼び出し（CALL <名> / _<名>）は命令名直後の "(...)" を詰めて出す:
+        // 例 "CALL VOICE(0)" / "_PLAY(0)"（節キーワード TO の "TO (..)" とは別扱い）。
+        const isExt = s.name === "CALL" || s.name.startsWith("_");
         const needSpace = (): boolean => prev !== "sep" && prev !== "op";
         for (const p of s.parts) {
           if (p.kind === "sep") {
@@ -448,7 +451,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
             if (/^[A-Za-z]/.test(p.word)) {
               // 節キーワード(TO/NEW 等)は語として空白で区切る: 例 "COPY ... TO ..."
               out += (needSpace() ? " " : "") + p.word;
-              prev = "expr";
+              // CALL の拡張命令名は直後の "(" を詰めるため専用の状態にする
+              prev = isExt && prev === "name" ? "extname" : "expr";
             } else {
               // 記号(=,#)は隙間なく付ける: 例 "COLOR=(...)" / "PRINT #1"
               out += p.word;
@@ -456,7 +460,10 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
             }
           } else {
             // 区切り(, ;)/記号直後以外（名前直後・式直後）は空白で区切る: 例 "PUT SPRITE 0"
-            out += (needSpace() ? " " : "") + emitExpr(p.expr, sc);
+            const txt = emitExpr(p.expr, sc);
+            const tight =
+              isExt && (prev === "name" || prev === "extname") && txt.startsWith("(");
+            out += (needSpace() && !tight ? " " : "") + txt;
             prev = "expr";
           }
         }
@@ -564,7 +571,7 @@ function detectRecursion(
   for (const fn of program.functions) {
     if ((color.get(fn.name) ?? WHITE) === WHITE && visit(fn.name)) {
       diagnostics.push(
-        error("E_RECURSION_UNSUPPORTED", ORIGIN, `再帰は未対応です（${fn.name} を含む循環）`),
+        error("E_RECURSION_UNSUPPORTED", ORIGIN, { name: fn.name }),
       );
       break;
     }
@@ -608,7 +615,7 @@ function finishTransform(ctx: any): TransformResult {
   ): { key: string; subst: Map<string, string> } | null => {
     const fn = funcTable.get(fnName);
     if (!fn) {
-      fail("E_UNKNOWN_FUNCTION", `未定義の関数: ${fnName}`);
+      fail("E_UNKNOWN_FUNCTION", { name: fnName });
       return null;
     }
     const subst = new Map<string, string>();
@@ -617,7 +624,7 @@ function finishTransform(ctx: any): TransformResult {
       if (!p.byRef) return;
       const a = args[i];
       if (!a || (a.expr.type !== "Var" && a.expr.type !== "ArrayRef")) {
-        fail("E_REF_NOT_VARIABLE", `${fnName}: REF引数には変数を渡してください`);
+        fail("E_REF_NOT_VARIABLE", { fn: fnName });
         return;
       }
       const actual = resolveVar(a.expr.name, sc);
@@ -772,7 +779,7 @@ function finishTransform(ctx: any): TransformResult {
     const fn = funcTable.get(name);
     const key = callVariant.get(node);
     if (!fn || !key) {
-      fail("E_UNKNOWN_FUNCTION", `未解決の呼び出し: ${name}`);
+      fail("E_UNRESOLVED_CALL", { name });
       return;
     }
     const lmap = localMaps.get(name);
@@ -907,13 +914,13 @@ function finishTransform(ctx: any): TransformResult {
         case "Break": {
           const top = loopStack[loopStack.length - 1];
           if (top) items.push({ kind: "line", text: `GOTO @@L:${top.b}@@` });
-          else fail("E_BREAK_OUTSIDE_LOOP", "BREAK はループ内のみ");
+          else fail("E_BREAK_OUTSIDE_LOOP");
           break;
         }
         case "Continue": {
           const top = loopStack[loopStack.length - 1];
           if (top) items.push({ kind: "line", text: `GOTO @@L:${top.c}@@` });
-          else fail("E_CONTINUE_OUTSIDE_LOOP", "CONTINUE はループ内のみ");
+          else fail("E_CONTINUE_OUTSIDE_LOOP");
           break;
         }
         case "If": {
@@ -1056,17 +1063,11 @@ function finishTransform(ctx: any): TransformResult {
   // 1行255バイト制限の検査（docs/05 §5.12）。自動分割は将来、まずは検出。
   for (const l of out) {
     if (estimateMsxBytes(l.text) > 255)
-      fail(
-        "E_LINE_TOO_LONG",
-        `行 ${l.lineNo} が255バイトを超過しました（式の簡略化/分割が必要）`,
-      );
+      fail("E_LINE_TOO_LONG", { lineNo: l.lineNo });
     // Shift-JIS 表現不能文字の検査（docs/08 §8.6.4）
     const bad = findNonSjis(l.text);
     if (bad.length > 0)
-      fail(
-        "E_NON_SJIS",
-        `行 ${l.lineNo}: Shift-JISで表現できない文字 ${JSON.stringify(bad.join(""))}`,
-      );
+      fail("E_NON_SJIS", { lineNo: l.lineNo, chars: JSON.stringify(bad.join("")) });
   }
 
   // ---- MapTable 構築（逆変換用）----

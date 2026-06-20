@@ -28,6 +28,7 @@ export const BUILTIN_STATEMENTS: ReadonlySet<string> = new Set([
   "OUT",
   "WAIT",
   "SET",
+  "CALL", // 拡張ステートメント呼び出し（CALL MUSIC / CALL AUDIO 等。`_`短縮形も）
   "OPEN",
   "CLOSE",
   "GET",

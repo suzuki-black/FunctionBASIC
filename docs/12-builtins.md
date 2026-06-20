@@ -57,6 +57,15 @@
 
 `SPRITE(n)`（`COLOR SPRITE(0)=…`）や `KANJI(x,y)`（`PUT KANJI`）のように、組み込み"文"名が括弧を伴って式中に現れる場合も改名しない（transformer の `CallExpr`/`collectExprVars` は `isBuiltinFunction` ではなく `isBuiltin`＝文・関数の両方で判定）。`SPRITE$(n)` など `$` 付き組み込み配列も同様（ArrayRef は従来から `isBuiltin`）。
 
+#### CALL 拡張ステートメント（MSX-MUSIC / MSX-AUDIO 等）
+
+`CALL <名> [(<引数>)]` と短縮形 `_<名> [(<引数>)]` は、カートリッジ/内蔵拡張（MSX-MUSIC=FM、MSX-AUDIO、漢字 BASIC、ディスク等）を呼ぶ機構。拡張命令名は機種依存で開いているため**表に持たず常に素通し**する:
+
+- `CALL` を `BUILTIN_STATEMENTS` に追加。`CALL` 直後の最初の識別子（`MUSIC`/`AUDIO`/`VOICE`/`PCMPLAY` …）を `word` として保持（改名しない）。
+- `_` 始まりの識別子（`_MUSIC` 等）は字句解析で 1 トークン化（[lexer.ts](../src/lexer/lexer.ts) の `isIdentStart` が先頭 `_` を許可）し、パーサが文頭の `_…` を拡張ステートメントとして `parseBuiltinStmt` に回す。命令名 `_MUSIC` はそのまま出力。
+- 引数の括弧は命令名に詰めて出力（`CALL VOICE(0)` / `_PLAY(0)`）。引数中のユーザ変数は通常どおり 2 文字名へ。
+- FM/ADPCM を実際に鳴らすには **MSX-MUSIC / MSX-AUDIO ハードウェア**が必要（変換は機種非依存で常に通る）。例: [`examples/msx-music-fm.msxb`](../examples/msx-music-fm.msxb)。
+
 #### 予約システム変数
 
 `TIME` は読み（`T=TIME`）・書き（`TIME=0`）とも改名しない予約名として `BUILTIN_STATEMENTS`／`BUILTIN_FUNCTIONS` の双方に掲載（MSX-BASIC でも `TIME` はユーザ変数に使えない）。`KANJI` も `PUT KANJI` 用に `BUILTIN_STATEMENTS` で予約。

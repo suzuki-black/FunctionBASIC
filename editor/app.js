@@ -4,6 +4,7 @@ import { parse } from "./core/parser/parser.js";
 import { transform, renderMsx } from "./core/transform/transformer.js";
 import { reverse } from "./core/reverse/reverse.js";
 import { isBuiltin } from "./core/core/builtins.js";
+import { localize } from "./core/core/diagnostics.js";
 
 const $ = (id) => document.getElementById(id);
 const srcEl = $("src");
@@ -281,7 +282,7 @@ function compile(src) {
     t = transform(program);
   } catch (e) {
     return {
-      diags: [...ld, ...pd, { code: "E_INTERNAL", message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],
+      diags: [...ld, ...pd, { code: "E_INTERNAL", key: "E_INTERNAL", params: { detail: String(e.message ?? e) }, message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],
       msx: "",
       map: null,
       code: [],
@@ -296,9 +297,11 @@ function renderGutter(lineCount, errsByLine) {
   let html = "";
   for (let i = 1; i <= lineCount; i++) {
     const e = errsByLine.get(i);
-    const x = e ? `<span class="x" title="${esc(e.join("\n"))}">×</span>` : "";
+    // エラー印は行番号の左に大きく出す（ホバーで内容ツールチップ、aria-labelも）。
+    const tip = e ? esc(e.join("\n")) : "";
+    const x = e ? `<span class="x" title="${tip}" aria-label="${tip}">×</span>` : "";
     const bm = bookmarks.has(i) ? `<span class="bm">★</span>` : "";
-    html += `<div class="gl" data-line="${i}">${bm}${i}${x}</div>`;
+    html += `<div class="gl${e ? " err" : ""}" data-line="${i}">${x}${bm}${i}</div>`;
   }
   gutterEl.innerHTML = html;
 }
@@ -330,7 +333,9 @@ function renderHeavy() {
   let errorCount = 0;
   for (const d of r.diags) {
     const arr = errsByLine.get(d.line) ?? [];
-    arr.push(`${d.line}:${d.column} ${d.code} ${d.message}`);
+    // メッセージは現在のUI言語で整形（コアの診断カタログを使用）
+    const msg = d.key ? localize(d, lang) : d.message;
+    arr.push(`${d.line}:${d.column} ${d.code} ${msg}`);
     errsByLine.set(d.line, arr);
     if (d.severity === "error") errorCount++;
   }

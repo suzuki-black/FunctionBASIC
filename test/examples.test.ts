@@ -37,6 +37,13 @@ test("例: msx2-graphics-sound.msxb はエラーなしで変換される", () =>
   assert.match(msx, /PLAY "","","V15 L32 O5 G"/);
 });
 
+test("例: msx-music-fm.msxb は CALL MUSIC / FM PLAY を保持して変換される", () => {
+  const { msx, diagnostics } = compileExample("msx-music-fm.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /CALL MUSIC/); // 拡張命令名は素通し
+  assert.match(msx, /PLAY "T130 [^"]*","[^"]*","[^"]*"/); // FM の3声 PLAY
+});
+
 test("例: msx2-text-format.msxb は印字書式/型変換を保持して変換される", () => {
   const { msx, diagnostics } = compileExample("msx2-text-format.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

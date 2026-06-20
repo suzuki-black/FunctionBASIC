@@ -2,7 +2,7 @@
 // トークン列 → AST ＋ 診断（複数エラー収集／panic-mode 回復）。
 // ネストは自由に許可（ブロック本体は statement を再帰）。BREAK/CONTINUE はループスタックで検査。
 import type { Token, TokenKind } from "../lexer/token.ts";
-import type { Diagnostic } from "../core/diagnostics.ts";
+import type { Diagnostic, DiagParams } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import type { Position } from "../core/position.ts";
 import { isBuiltinStatement, isBuiltinClauseWord } from "../core/builtins.ts";
@@ -44,15 +44,15 @@ export function parse(tokens: Token[]): ParseResult {
   const checkKw = (v: string): boolean =>
     cur().kind === "KEYWORD" && cur().value === v;
   const checkOp = (v: string): boolean => cur().kind === "OP" && cur().value === v;
-  const report = (code: string, pos: Position, msg: string): void => {
-    diagnostics.push(error(code, pos, msg));
+  const report = (key: string, pos: Position, params: DiagParams = {}): void => {
+    diagnostics.push(error(key, pos, params));
   };
   const expectOp = (v: string, ctx: string): boolean => {
     if (checkOp(v)) {
       advance();
       return true;
     }
-    report("E_SYNTAX", cur().pos, `${ctx}: '${v}' が必要です`);
+    report("E_SYNTAX_EXPECT", cur().pos, { ctx, v });
     return false;
   };
   const expectKw = (v: string, ctx: string): boolean => {
@@ -60,12 +60,12 @@ export function parse(tokens: Token[]): ParseResult {
       advance();
       return true;
     }
-    report("E_SYNTAX", cur().pos, `${ctx}: '${v}' が必要です`);
+    report("E_SYNTAX_EXPECT", cur().pos, { ctx, v });
     return false;
   };
   const expectIdent = (ctx: string): string => {
     if (checkKind("IDENT")) return advance().value;
-    report("E_SYNTAX", cur().pos, `${ctx}: 識別子が必要です`);
+    report("E_SYNTAX_IDENT", cur().pos, { ctx });
     return "";
   };
   const skipNewlines = (): void => {
@@ -177,7 +177,7 @@ export function parse(tokens: Token[]): ParseResult {
       }
       return { type: "Var", name };
     }
-    report("E_SYNTAX", t.pos, `式が必要です（${t.kind} '${t.value}'）`);
+    report("E_SYNTAX_EXPR", t.pos, { kind: t.kind, v: t.value });
     return { type: "Num", value: 0, raw: "0" };
   };
 
@@ -208,7 +208,7 @@ export function parse(tokens: Token[]): ParseResult {
     if (checkKind("COMMENT")) advance(); // 行末インラインコメントは今は読み飛ばし
     if (checkKind("NEWLINE")) advance();
     else if (!atEof()) {
-      report("E_SYNTAX", cur().pos, `${ctx}: 行末が必要です`);
+      report("E_SYNTAX_EOL", cur().pos, { ctx });
       synchronize();
     }
   };
@@ -259,14 +259,14 @@ export function parse(tokens: Token[]): ParseResult {
     advance(); // INCLUDE
     let path = "";
     if (checkKind("STRING")) path = advance().value;
-    else report("E_SYNTAX", cur().pos, "INCLUDE: 文字列パスが必要です");
+    else report("E_SYNTAX_INCLUDE_PATH", cur().pos);
     return { type: "Include", path, pos };
   };
 
   const parseReturn = (pos: Position): Stmt => {
     advance(); // RETURN
     if (funcDepth === 0)
-      report("E_RETURN_OUTSIDE_FUNCTION", pos, "RETURN は関数の中でのみ使用できます");
+      report("E_RETURN_OUTSIDE_FUNCTION", pos);
     if (checkKind("NEWLINE") || checkKind("EOF") || checkKind("COMMENT"))
       return { type: "Return", pos };
     return { type: "Return", expr: parseExpr(), pos };
@@ -306,6 +306,10 @@ export function parse(tokens: Token[]): ParseResult {
         parts.push({ kind: "word", word: advance().value });
       } else if (clauseWordHere) {
         parts.push({ kind: "word", word: advance().value });
+      } else if (cmd === "CALL" && parts.length === 0 && checkKind("IDENT")) {
+        // CALL <拡張命令名> … の拡張命令名（MUSIC/AUDIO/VOICE 等）は改名しない。
+        // 拡張は機種/カートリッジ依存で開いているため、表に無くても名前を保持する。
+        parts.push({ kind: "word", word: advance().value });
       } else if (
         // LINE ...,B / ...,BF の末尾オプション（箱・塗り箱）。B/BF は変数名にも
         // 使えるため、LINE 命令の文末位置に来たときだけキーワードとして扱う。
@@ -332,7 +336,7 @@ export function parse(tokens: Token[]): ParseResult {
     skipNewlines();
     while (!atEof() && !terminators.some((t) => checkKw(t))) {
       if (checkKw("FUNCTION")) {
-        report("E_NESTED_FUNCTION", cur().pos, "FUNCTION の中に FUNCTION は定義できません");
+        report("E_NESTED_FUNCTION", cur().pos);
         synchronize();
         skipNewlines();
         continue;
@@ -423,7 +427,7 @@ export function parse(tokens: Token[]): ParseResult {
           advance();
           const top = loopStack[loopStack.length - 1];
           if (!top)
-            report("E_BREAK_OUTSIDE_LOOP", pos, "BREAK はループの内側でのみ使用できます");
+            report("E_BREAK_OUTSIDE_LOOP", pos);
           endOfStmt("BREAK");
           return { type: "Break", enclosingLoopId: top, pos };
         }
@@ -431,7 +435,7 @@ export function parse(tokens: Token[]): ParseResult {
           advance();
           const top = loopStack[loopStack.length - 1];
           if (!top)
-            report("E_CONTINUE_OUTSIDE_LOOP", pos, "CONTINUE はループの内側でのみ使用できます");
+            report("E_CONTINUE_OUTSIDE_LOOP", pos);
           endOfStmt("CONTINUE");
           return { type: "Continue", enclosingLoopId: top, pos };
         }
@@ -457,13 +461,14 @@ export function parse(tokens: Token[]): ParseResult {
           return s;
         }
         default:
-          report("E_SYNTAX", pos, `予期しないキーワード '${t.value}'`);
+          report("E_SYNTAX_UNEXPECTED_KW", pos, { v: t.value });
           synchronize();
           return null;
       }
     }
     if (t.kind === "IDENT") {
-      if (isBuiltinStatement(t.value)) {
+      // 組み込み文、または '_' 始まりの拡張ステートメント短縮形（_MUSIC = CALL MUSIC）。
+      if (isBuiltinStatement(t.value) || t.value.startsWith("_")) {
         const s = parseBuiltinStmt(pos);
         endOfStmt(t.value);
         return s;
@@ -508,7 +513,7 @@ export function parse(tokens: Token[]): ParseResult {
       return s;
     }
 
-    report("E_SYNTAX", pos, `文が必要です（${t.kind} '${t.value}'）`);
+    report("E_SYNTAX_STMT", pos, { kind: t.kind, v: t.value });
     synchronize();
     return null;
   };

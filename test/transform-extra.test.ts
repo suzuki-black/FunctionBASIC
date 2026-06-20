@@ -117,6 +117,31 @@ COPY (0,0)-(15,15) TO (100,100)`);
   assert.match(msx, /COPY \(0,0\)-\(15,15\) TO \(100,100\)/);
 });
 
+test("CALL 拡張: 拡張命令名(MUSIC/AUDIO/VOICE)は改名されず引数の変数だけ改名", () => {
+  const { msx, diagnostics } = compile(`CALL MUSIC
+CALL AUDIO
+N = 2
+CALL VOICE(N)
+CALL PCMPLAY(VARPTR(N), 3)`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /CALL MUSIC/);
+  assert.match(msx, /CALL AUDIO/);
+  // 命令名は素通し、括弧引数は詰めて出す。変数 N は2文字名へ。
+  assert.match(msx, /CALL VOICE\([A-Z]+\)/);
+  assert.match(msx, /CALL PCMPLAY\(VARPTR\([A-Z]+\),3\)/);
+  assert.ok(!/\bN\b/.test(msx), "変数 N は改名される");
+});
+
+test("CALL 拡張: _ 短縮形（_MUSIC = CALL MUSIC）も素通しされる", () => {
+  const { msx, diagnostics } = compile(`_MUSIC
+_AUDIO
+_PLAY(0)`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /^\d+ _MUSIC$/m);
+  assert.match(msx, /^\d+ _AUDIO$/m);
+  assert.match(msx, /_PLAY\(0\)/); // 括弧は詰めて出す
+});
+
 test("印字: PRINT USING の USING 節は改名されない（変数 PRINT PAGE とは区別）", () => {
   const { msx, diagnostics } = compile(`PRINT USING "##.##"; X
 LPRINT USING "&"; A$

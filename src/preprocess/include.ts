@@ -47,13 +47,13 @@ export function resolveIncludes(
 
   const expand = (path: string, stack: string[]): { lines: string[]; map: LineOrigin[] } => {
     if (stack.includes(path)) {
-      diagnostics.push(error("E_INCLUDE_CYCLE", ORIGIN, `INCLUDE が循環: ${path}`));
+      diagnostics.push(error("E_INCLUDE_CYCLE", ORIGIN, { path }));
       return { lines: [], map: [] };
     }
     if (sources.includes(path)) return { lines: [], map: [] }; // dedup（include 1回）
     const content = read(path);
     if (content == null) {
-      diagnostics.push(error("E_INCLUDE_NOT_FOUND", ORIGIN, `INCLUDE 先が見つかりません: ${path}`));
+      diagnostics.push(error("E_INCLUDE_NOT_FOUND", ORIGIN, { path }));
       return { lines: [], map: [] };
     }
     sources.push(path);

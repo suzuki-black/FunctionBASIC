@@ -16,8 +16,10 @@ export interface LexResult {
 const isDigit = (c: string): boolean => c >= "0" && c <= "9";
 const isAlpha = (c: string): boolean =>
   (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
-// 構造化側の識別子は英字始まり、以降 英数字 と _ を許可（_ は MSX 出力では使わないが入力名では可）
-const isIdentStart = (c: string): boolean => isAlpha(c);
+// 構造化側の識別子は英字始まり、以降 英数字 と _ を許可（_ は入力名では可）。
+// 先頭 '_' は MSX の拡張ステートメント短縮形（_MUSIC = CALL MUSIC）なので識別子
+// として字句化し、パーサが文頭の '_…' を CALL 相当として扱う。
+const isIdentStart = (c: string): boolean => isAlpha(c) || c === "_";
 const isIdentPart = (c: string): boolean => isAlpha(c) || isDigit(c) || c === "_";
 const isTypeSuffix = (c: string): boolean =>
   c === "%" || c === "!" || c === "#" || c === "$";
@@ -99,7 +101,7 @@ export function tokenize(source: string): LexResult {
       }
       if (!closed) {
         diagnostics.push(
-          error("E_UNTERMINATED_STRING", start, "文字列が閉じられていません"),
+          error("E_UNTERMINATED_STRING", start),
         );
       }
       push("STRING", body, '"' + body + (closed ? '"' : ""), start);
@@ -117,7 +119,7 @@ export function tokenize(source: string): LexResult {
           while (i < n && /[0-9A-Fa-f]/.test(peek())) raw += advance();
         } else {
           diagnostics.push(
-            error("E_ILLEGAL_CHAR", start, `不正な数値表記です: &${radix}`),
+            error("E_ILLEGAL_CHAR_NUM", start, { radix }),
           );
         }
       } else {
@@ -178,7 +180,7 @@ export function tokenize(source: string): LexResult {
     // 不正文字
     advance();
     diagnostics.push(
-      error("E_ILLEGAL_CHAR", start, `不正な文字です: ${JSON.stringify(c)}`),
+      error("E_ILLEGAL_CHAR", start, { char: JSON.stringify(c) }),
     );
   }
 

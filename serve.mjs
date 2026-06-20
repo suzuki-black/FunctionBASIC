@@ -25,7 +25,12 @@ createServer(async (req, res) => {
       return;
     }
     const data = await readFile(path);
-    res.writeHead(200, { "Content-Type": MIME[extname(path)] ?? "application/octet-stream" });
+    // 開発用サーバ。ビルドし直した editor/core/*.js を毎回確実に取り直すため
+    // キャッシュを無効化（ブラウザが古いモジュールを使い続ける事故を防ぐ）。
+    res.writeHead(200, {
+      "Content-Type": MIME[extname(path)] ?? "application/octet-stream",
+      "Cache-Control": "no-store, must-revalidate",
+    });
     res.end(data);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }).end("Not Found");

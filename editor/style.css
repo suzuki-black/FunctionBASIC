@@ -106,8 +106,11 @@ button:hover { background: #1177bb; }
 }
 #gutter .gl { position: relative; cursor: pointer; }
 #gutter .gl:hover { color: #ccc; }
+#gutter .gl.err { color: var(--err); }            /* エラー行は番号も赤く */
+#gutter .gl.err:hover { color: var(--err); }
 #gutter .x {
-  color: var(--err); position: absolute; right: -2px; cursor: help; font-weight: bold;
+  color: var(--err); position: absolute; left: 0; top: 0; cursor: help;
+  font-weight: bold; font-size: 1.35em; line-height: var(--line);
 }
 #gutter .bm { color: #e2c044; margin-right: 2px; font-size: 0.8em; }
 

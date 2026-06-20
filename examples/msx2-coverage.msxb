@@ -1,0 +1,114 @@
+' ============================================================
+'  MSX2 audio/visual coverage test (FunctionBASIC, chunk 1)
+'  Exercises the MSX2 graphics / sprite / screen / sound / clock
+'  command set so the transpiler is verified end to end.
+'  Not meant to be pretty — it is a coverage program: every line
+'  must survive transpilation with built-in names kept and only
+'  user variables renamed.
+'  MSX2 or later.
+' ============================================================
+
+' ---- a custom 16-colour palette (COLOR=(n,r,g,b), 0..7 each) ----
+FUNCTION MAKE_PALETTE()
+    COLOR=NEW                       ' reset to the default palette first
+    COLOR=(1, 0, 0, 2)             ' 1 -> night blue (background)
+    COLOR=(4, 0, 6, 0)             ' 4 -> grass
+    COLOR=(8, 7, 4, 0)             ' 8 -> cat orange
+    COLOR=(15, 7, 7, 7)            ' 15 -> white
+END FUNCTION
+
+' ---- draw the static scene onto whichever page is active ----
+FUNCTION DRAW_SCENE()
+    CLS
+    LINE (0, 0)-(255, 211), 1, BF          ' fill background (box fill)
+    LINE (0, 150)-(255, 211), 4, BF        ' grass strip
+    CIRCLE (210, 30), 18, 15                ' moon
+    PAINT (210, 30), 15, 15                 ' fill it (border colour 15)
+    PSET (50, 60), 8                        ' a stray star
+    GLOBAL SKYCOL
+    SKYCOL = POINT(10, 10)                  ' read a pixel back
+END FUNCTION
+
+' ---- one 16x16 sprite pattern from 32 DATA bytes ----
+FUNCTION LOAD_SPRITE(N)
+    PAT$ = ""
+    FOR I = 1 TO 32
+        READ B
+        PAT$ = PAT$ + CHR$(B)
+    NEXT I
+    SPRITE$(N) = PAT$
+END FUNCTION
+
+' ---- a short blip on PSG channel A (sound effect) ----
+FUNCTION BLIP(PITCH)
+    SOUND 0, PITCH                  ' tone period low byte
+    SOUND 1, 0                      ' tone period high byte
+    SOUND 7, &HBE                   ' mixer: channel A tone on
+    SOUND 8, 15                     ' channel A volume = max
+    FOR W = 1 TO 60
+    NEXT W
+    SOUND 8, 0                      ' silence
+END FUNCTION
+
+' ---------------- MAIN ----------------
+GLOBAL SKYCOL
+
+SCREEN 5                           ' MSX2 256x212, 16 colours
+WIDTH 32
+SET PAGE 0, 0                      ' draw + display page 0 to start
+MAKE_PALETTE()
+COLOR 15, 1, 1
+
+RESTORE
+LOAD_SPRITE(0)                     ' face overlay
+LOAD_SPRITE(1)                     ' body
+
+COLOR SPRITE(0) = 15               ' face white
+COLOR SPRITE(1) = 8                ' body orange
+
+' kick off background music; PLAY also has a function form (PLAY(n))
+PLAY "T140 O4 L8 CEGEC", "T140 O3 L4 CGCG"
+
+CATX = 40
+DX = 3
+TIME = 0                           ' reset the jiffy clock (system variable)
+
+WHILE 1
+    ' double buffer: build the next frame on the hidden page, then flip
+    SET PAGE 1, 0
+    DRAW_SCENE()
+    PUT SPRITE 0, (CATX, 120), 15, 0
+    PUT SPRITE 1, (CATX, 120), 8, 1
+    SET PAGE 1, 1
+    COPY (0, 0)-(255, 211), 1 TO (0, 0), 0   ' keep page 0 mirrored
+
+    CATX = CATX + DX
+    IF CATX > 220 THEN
+        CATX = 220
+        DX = 0 - DX
+        BLIP(150)
+    END IF
+    IF CATX < 16 THEN
+        CATX = 16
+        DX = 0 - DX
+        BLIP(80)
+    END IF
+
+    ' pace the loop with the system clock (~1 frame), not a dummy FOR
+    T0 = TIME
+    WHILE TIME - T0 < 2
+    WEND
+
+    ' restart the tune once the PSG queue has drained (PLAY as function)
+    IF PLAY(0) = 0 THEN
+        PLAY "T140 O4 L8 CEGEC", "T140 O3 L4 CGCG"
+    END IF
+WEND
+
+' ---- sprite pattern data (32 bytes each) ----
+' face overlay (eyes + nose)
+DATA 0,0,0,0,0,12,12,1,3,0,0,0,0,0,0,0
+DATA 0,0,0,0,0,96,96,128,192,0,0,0,0,0,0,0
+' body (ears, head, body, legs)
+DATA 96,112,120,127,127,127,127,127,63,31,31,31,24,24,56,112
+DATA 6,14,30,254,254,254,254,254,252,248,248,248,24,24,28,14

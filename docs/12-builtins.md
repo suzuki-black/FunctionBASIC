@@ -22,8 +22,8 @@
 |------|-----------|
 | 制御（※構造化側はネイティブ構文。`GOTO`/`GOSUB` 等は生成専用） | `IF` `THEN` `ELSE` `FOR` `TO` `STEP` `NEXT` `WHILE` `WEND` `GOTO` `GOSUB` `RETURN` `ON…GOTO` `ON…GOSUB` `STOP` `END` |
 | 画面/IO | `PRINT` `PRINT USING` `INPUT` `LINE INPUT` `LOCATE` `CLS` `SCREEN` `COLOR` `WIDTH` `BEEP` |
-| 図形 | `PSET` `PRESET` `LINE` `CIRCLE` `PAINT` `DRAW` `PUT SPRITE` `COLOR SPRITE` `PUT KANJI` |
-| 音 | `SOUND` `PLAY` `BEEP` |
+| 図形 | `PSET` `PRESET` `LINE`（末尾 `B`/`BF` 対応） `CIRCLE` `PAINT` `COPY`（`… TO …`） `DRAW` `POINT`（関数） `PUT SPRITE` `COLOR SPRITE` `PUT KANJI` `COLOR=(…)`/`COLOR=NEW`（MSX2パレット） |
+| 音 | `SOUND` `PLAY`（文・関数の両形） `BEEP` |
 | メモリ/系 | `PEEK` `POKE` `VPEEK` `VPOKE` `DEF USR` `CALL`(`_`) `OUT` `INP` `BASE` `VDP` `WAIT` `SET` |
 | ファイル | `OPEN` `CLOSE` `GET` `PUT` `FILES` `LOAD` `SAVE` `BLOAD` `BSAVE` `MAXFILES` |
 | カセット（**turboR不可**） | `CLOAD` `CSAVE` `CALL MOTOR` `MOTOR` |
@@ -36,6 +36,24 @@
 
 > `WHILE/WEND` `FOR/NEXT` `IF/THEN` は構造化側で**ネイティブ構文**として扱う（[01](01-language-spec.md)）。
 > `GOTO`/`GOSUB`/`ON…` は構造化ソースでは原則使わず、変換器が生成に用いる。
+
+### 12.2.1 節キーワード（改名禁止・文脈依存）
+
+命令の途中にだけ現れ、それ自体は文の先頭にならない語は `BUILTIN_CLAUSE_WORDS`（[builtins.ts](../src/core/builtins.ts)）で管理し、**ユーザ変数として改名しない**。ただし `PAGE`/`TIME`/`B` 等は変数名にも使えるため、**文脈を限定**して曖昧さを避ける（パーサ `parseBuiltinStmt`）:
+
+- `SET`/`GET` 命令の直後の語：`SET PAGE` `SET SCROLL` `SET ADJUST` `SET VIDEO` `SET TITLE` `SET TIME` `GET DATE` 等。
+- `=` の直後：`COLOR=NEW` `COLOR=RESTORE`。
+- `LINE` の**文末**に来る `B`/`BF`（箱・塗り箱）。
+
+これら以外の位置（例：`PAGE = 5`、`PRINT PAGE`、`B = 4`）では通常のユーザ変数として一貫して2文字名へ割り当てる。命令中のキーワード（`COPY … TO …` の `TO`）や記号（`COLOR=` の `=`、ファイル番号 `#`）は AST 上 `word` パートとして素通しする。
+
+#### 括弧付きの組み込み名
+
+`SPRITE(n)`（`COLOR SPRITE(0)=…`）や `KANJI(x,y)`（`PUT KANJI`）のように、組み込み"文"名が括弧を伴って式中に現れる場合も改名しない（transformer の `CallExpr`/`collectExprVars` は `isBuiltinFunction` ではなく `isBuiltin`＝文・関数の両方で判定）。`SPRITE$(n)` など `$` 付き組み込み配列も同様（ArrayRef は従来から `isBuiltin`）。
+
+#### 予約システム変数
+
+`TIME` は読み（`T=TIME`）・書き（`TIME=0`）とも改名しない予約名として `BUILTIN_STATEMENTS`／`BUILTIN_FUNCTIONS` の双方に掲載（MSX-BASIC でも `TIME` はユーザ変数に使えない）。`KANJI` も `PUT KANJI` 用に `BUILTIN_STATEMENTS` で予約。
 
 ---
 

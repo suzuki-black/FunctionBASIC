@@ -5,7 +5,7 @@ import type { Token, TokenKind } from "../lexer/token.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import type { Position } from "../core/position.ts";
-import { isBuiltinStatement } from "../core/builtins.ts";
+import { isBuiltinStatement, isBuiltinClauseWord } from "../core/builtins.ts";
 import { suffixOf } from "../ast/nodes.ts";
 import type {
   Program,
@@ -274,6 +274,7 @@ export function parse(tokens: Token[]): ParseResult {
 
   const parseBuiltinStmt = (pos: Position): Stmt => {
     const name = advance().value;
+    const cmd = name.toUpperCase();
     const parts: BuiltinPart[] = [];
     while (
       !atEof() &&
@@ -281,8 +282,38 @@ export function parse(tokens: Token[]): ParseResult {
       !checkKind("COMMENT") &&
       !checkOp(":")
     ) {
+      const last = parts[parts.length - 1];
+      // 節キーワードを「語」として素通しするのは曖昧でない文脈に限定する:
+      //  - SET/GET 命令の直後（SET PAGE / GET TIME 等）
+      //  - '=' の直後（COLOR=NEW / COLOR=RESTORE）
+      // これにより、ユーザ変数 PAGE を PRINT PAGE 等で使っても改名され壊れない。
+      const clauseExpected =
+        (parts.length === 0 && (cmd === "SET" || cmd === "GET")) ||
+        (last?.kind === "word" && last.word === "=");
       if (checkOp(";") || checkOp(",")) {
         parts.push({ kind: "sep", sep: advance().value });
+      } else if (cur().kind === "KEYWORD" || checkOp("=") || checkOp("#")) {
+        // 命令中の節キーワード(COPY ... TO 等)や '='(COLOR=) / '#'(ファイル番号)は
+        // 式の開始になり得ないので、そのまま素通しする語として保持する。
+        parts.push({ kind: "word", word: advance().value });
+      } else if (
+        clauseExpected &&
+        checkKind("IDENT") &&
+        isBuiltinClauseWord(cur().value)
+      ) {
+        parts.push({ kind: "word", word: advance().value });
+      } else if (
+        // LINE ...,B / ...,BF の末尾オプション（箱・塗り箱）。B/BF は変数名にも
+        // 使えるため、LINE 命令の文末位置に来たときだけキーワードとして扱う。
+        cmd === "LINE" &&
+        checkKind("IDENT") &&
+        (cur().value.toUpperCase() === "B" || cur().value.toUpperCase() === "BF") &&
+        (peek().kind === "NEWLINE" ||
+          peek().kind === "COMMENT" ||
+          peek().kind === "EOF" ||
+          (peek().kind === "OP" && peek().value === ":"))
+      ) {
+        parts.push({ kind: "word", word: advance().value });
       } else {
         const before = p;
         parts.push({ kind: "expr", expr: parseExpr() });

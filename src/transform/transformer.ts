@@ -13,7 +13,12 @@ import { suffixOf } from "../ast/nodes.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import { hasError } from "../core/diagnostics.ts";
-import { isBuiltinFunction, isBuiltinStatement, isBuiltin } from "../core/builtins.ts";
+import {
+  isBuiltinFunction,
+  isBuiltinStatement,
+  isBuiltin,
+  BUILTIN_CLAUSE_WORDS,
+} from "../core/builtins.ts";
 import { NamePool } from "./names.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
@@ -38,6 +43,7 @@ const ONE_BYTE = new Set<string>([
   ...KEYWORDS,
   ...BUILTIN_STATEMENTS,
   ...BUILTIN_FUNCTIONS,
+  ...BUILTIN_CLAUSE_WORDS,
   "GOTO",
   "GOSUB",
   "THEN",
@@ -148,7 +154,9 @@ function collectExprVars(
       e.items.forEach((x) => collectExprVars(x, funcNames, vars, arrays));
       return;
     case "CallExpr": {
-      const isCall = funcNames.has(e.name) || isBuiltinFunction(e.name);
+      // 組み込み"関数"だけでなく、括弧を取る組み込み"文"名（SPRITE(n)/KANJI(n) 等）も
+      // 変数ではない＝改名しない。
+      const isCall = funcNames.has(e.name) || isBuiltin(e.name);
       if (!isCall) {
         vars.add(e.name);
         arrays.add(e.name);
@@ -386,9 +394,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
           fail("E_INTERNAL", `式中のユーザ関数呼び出しの lowering 漏れ: ${e.name}()`);
           return "0";
         }
-        // 組み込み関数 or 配列
+        // 組み込み関数/括弧付き組み込み文(SPRITE(n)/KANJI(n) 等) or ユーザ配列
         const args = e.args.map((a) => emitExpr(a.expr, sc)).join(",");
-        if (isBuiltinFunction(e.name)) return `${e.name}(${args})`;
+        if (isBuiltin(e.name)) return `${e.name}(${args})`;
         return resolveVar(e.name, sc) + "(" + args + ")";
       }
     }
@@ -431,13 +439,24 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       case "Builtin": {
         let out = s.name;
         let prev = "name";
+        const needSpace = (): boolean => prev !== "sep" && prev !== "op";
         for (const p of s.parts) {
           if (p.kind === "sep") {
             out += p.sep;
             prev = "sep";
+          } else if (p.kind === "word") {
+            if (/^[A-Za-z]/.test(p.word)) {
+              // 節キーワード(TO/NEW 等)は語として空白で区切る: 例 "COPY ... TO ..."
+              out += (needSpace() ? " " : "") + p.word;
+              prev = "expr";
+            } else {
+              // 記号(=,#)は隙間なく付ける: 例 "COLOR=(...)" / "PRINT #1"
+              out += p.word;
+              prev = "op";
+            }
           } else {
-            // 区切り(, ;)直後以外（名前直後・式直後）は空白で区切る: 例 "PUT SPRITE 0"
-            out += (prev !== "sep" ? " " : "") + emitExpr(p.expr, sc);
+            // 区切り(, ;)/記号直後以外（名前直後・式直後）は空白で区切る: 例 "PUT SPRITE 0"
+            out += (needSpace() ? " " : "") + emitExpr(p.expr, sc);
             prev = "expr";
           }
         }

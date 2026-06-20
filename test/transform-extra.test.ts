@@ -109,6 +109,78 @@ R = (A + B) * C`);
   assert.match(msx, /\([A-Z]+\+[A-Z]+\)\*/); // (..+..)* の括弧が残る
 });
 
+test("MSX2: COPY のブロック転送（TO 節キーワードを保持）", () => {
+  const { msx, diagnostics } = compile(`SCREEN 5
+COPY (0,0)-(15,15) TO (100,100)`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.ok(!diagnostics.some((d) => d.code === "E_UNKNOWN_FUNCTION"));
+  assert.match(msx, /COPY \(0,0\)-\(15,15\) TO \(100,100\)/);
+});
+
+test("MSX2: POINT 関数は改名されず素通しされる", () => {
+  const { msx, diagnostics } = compile(`SCREEN 5
+C = POINT(10, 20)
+PRINT C`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /=POINT\(10,20\)/);
+});
+
+test("BGM: PLAY は文(演奏)でも関数(残数)でも使える", () => {
+  const { msx, diagnostics } = compile(`PLAY "CDEFG"
+WHILE PLAY(0)
+WEND`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /PLAY "CDEFG"/); // 文形
+  assert.match(msx, /PLAY\(0\)/); // 関数形（WHILE 条件内）
+});
+
+test("MSX2: SET PAGE / SET SCROLL の節キーワードを保持", () => {
+  const { msx, diagnostics } = compile(`SET PAGE 0,1
+SET SCROLL 0,0`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /SET PAGE 0,1/);
+  assert.match(msx, /SET SCROLL 0,0/);
+});
+
+test("MSX2: COLOR= パレット設定（= と NEW を保持）", () => {
+  const { msx, diagnostics } = compile(`COLOR=(1,7,7,7)
+COLOR=NEW`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /COLOR=\(1,7,7,7\)/);
+  assert.match(msx, /COLOR=NEW/);
+});
+
+test("グラフィック: LINE の末尾 B/BF（箱・塗り箱）は改名されない", () => {
+  const { msx, diagnostics } = compile(`LINE (0,0)-(10,10),15,B
+LINE (0,0)-(20,20),4,BF`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /LINE \(0,0\)-\(10,10\),15,B\b/);
+  assert.match(msx, /LINE \(0,0\)-\(20,20\),4,BF\b/);
+});
+
+test("BF はLINE末尾以外では通常のユーザ変数として改名される", () => {
+  const { msx, diagnostics } = compile(`BF = 3
+PRINT BF`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  // 2文字名へ割り当てられ、代入と参照が同じ名前に解決される（生の BF は残らない）
+  assert.ok(!/\bBF\b/.test(msx), "BF が改名される");
+  const m = msx.match(/(\b[A-Z]{1,2})=3/);
+  assert.ok(m, "BF が変数名へ");
+  assert.match(msx, new RegExp(`PRINT ${m![1]}\\b`));
+});
+
+test("節キーワードと同名のユーザ変数は文脈で区別される（PAGE）", () => {
+  // SET の外で使う PAGE は通常のユーザ変数として一貫して改名される
+  const { msx, diagnostics } = compile(`PAGE = 5
+PRINT PAGE`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  // 代入先と参照が同じ2文字名に解決される（不整合で壊れない）
+  const m = msx.match(/(\b[A-Z]{1,2})=5/);
+  assert.ok(m, "PAGE が2文字名へ");
+  assert.match(msx, new RegExp(`PRINT ${m![1]}\\b`));
+  assert.ok(!/\bPAGE\b/.test(msx), "生の PAGE は残らない");
+});
+
 test("戻り値の無い手続きFUNCTIONの末尾にRETURNが補われる", () => {
   const { msx, diagnostics } = compile(`FUNCTION SETUP()
     GLOBAL X

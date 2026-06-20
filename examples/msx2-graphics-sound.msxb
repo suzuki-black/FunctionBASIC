@@ -1,0 +1,80 @@
+' ============================================================
+'  MSX2 graphics + BGM/SE showcase (FunctionBASIC)
+'  - SCREEN 5 (MSX2, 256x212 / 16 colours from a 512 palette)
+'  - COLOR=(n,r,g,b) custom palette, COLOR=NEW to reset
+'  - LINE / CIRCLE / PAINT / POINT graphics primitives
+'  - SET PAGE for double buffering (draw hidden, then show)
+'  - COPY for VRAM block transfer
+'  - PLAY for background music, SOUND for a sound effect
+'  MSX2 or later.
+' ============================================================
+
+' Set up a small custom palette (colour 1 = deep blue background).
+FUNCTION SETUP_PALETTE()
+    COLOR=(1, 0, 0, 3)        ' colour 1 -> dark blue
+    COLOR=(4, 1, 6, 1)        ' colour 4 -> grass green
+    COLOR=(8, 7, 2, 0)        ' colour 8 -> warm orange
+END FUNCTION
+
+' Draw one frame of the scene onto the current (hidden) page.
+FUNCTION DRAW_SCENE(CX)
+    CLS
+    LINE (0, 150)-(255, 211), 4, BF      ' ground
+    CIRCLE (CX, 90), 20, 8               ' a moving sun
+    PAINT (CX, 90), 8                     ' fill it
+    ' read a pixel back just to show POINT works
+    GLOBAL HITCOL
+    HITCOL = POINT(CX, 90)
+END FUNCTION
+
+' Play a short blip as a sound effect on PSG channel A.
+FUNCTION BLIP()
+    SOUND 0, 100         ' channel A frequency (low byte)
+    SOUND 1, 1           ' channel A frequency (high byte)
+    SOUND 8, 15          ' channel A volume = max
+    FOR W = 1 TO 80
+    NEXT W
+    SOUND 8, 0           ' volume off
+END FUNCTION
+
+' ---------------- MAIN ----------------
+GLOBAL HITCOL
+
+SCREEN 5
+COLOR 15, 1, 1
+SETUP_PALETTE()
+
+' Background music loops in the PSG queue while we animate.
+PLAY "T120 O4 L8 CDEFGAB O5 C"
+
+X = 30
+DX = 4
+
+WHILE 1
+    ' double buffer: draw on the off-screen page, then flip it to view
+    SET PAGE 1, 0          ' write page 1, display page 0
+    DRAW_SCENE(X)
+    SET PAGE 1, 1          ' now display page 1
+    COPY (0, 0)-(255, 211), 1 TO (0, 0), 0   ' keep page 0 in sync
+
+    X = X + DX
+    IF X > 225 THEN
+        X = 225
+        DX = 0 - DX
+        BLIP()
+    END IF
+    IF X < 30 THEN
+        X = 30
+        DX = 0 - DX
+        BLIP()
+    END IF
+
+    ' wait for the music buffer (PLAY as a function: voices still queued?)
+    FOR T = 1 TO 150
+    NEXT T
+
+    ' restart the tune when it has drained
+    IF PLAY(0) = 0 THEN
+        PLAY "T120 O4 L8 CDEFGAB O5 C"
+    END IF
+WEND

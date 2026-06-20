@@ -168,6 +168,8 @@ WHILE 1 <br>
 WEND <br>
 PRINT "GAME OVER"
 
+**4. MSX2 graphics + BGM/SE** — a `SCREEN 5` demo that sets a custom palette with `COLOR=(n,r,g,b)`, draws with `LINE …,BF` / `CIRCLE` / `PAINT` / `POINT`, double-buffers with `SET PAGE`, block-transfers VRAM with `COPY … TO …`, plays background music with `PLAY`, and fires a sound effect with `SOUND`. All of these MSX2-specific forms (the `=` palette syntax, the `TO` clause, the `B`/`BF` line options, and `POINT` / `PLAY` used as functions) are preserved verbatim through transpilation while your variables are still renamed. Full, convert-tested source: [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb).
+
 ---
 
 ## Roadmap
@@ -178,8 +180,9 @@ FunctionBASIC is early and developing. Planned directions (no fixed dates):
 - **Native MSX playback** — run on a native emulator in addition to the embedded webMSX: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script (Windows / macOS), and integrate a native Windows MSX player.
 - **Settings screen** — an in-app settings UI to edit the webMSX URL, the built-in command/function table (with reset to defaults), the target machine, and native-player / emulator paths.
 - **Language growth** — richer Structured BASIC: `SELECT/CASE`, more string helpers, constants, local arrays, and ergonomic improvements.
-- **MSX2 graphics** — first-class helpers for MSX2 screen modes, palettes, and sprites.
-- **Sound** — BGM and SE helpers (PSG, and where available FM/SCC).
+- **MSX2 graphics** — first-class helpers for MSX2 screen modes, palettes, and sprites. (The built-in table already covers the MSX2 audio/visual command set — `COPY`, `POINT`, `SET PAGE`/`SET SCROLL`/`SET ADJUST`, the `COLOR=(…)` palette syntax, `LINE …,B`/`BF`, `COLOR SPRITE`, `PUT KANJI`, and the `SET TIME`/`SET DATE` / `TIME` system clock — so it transpiles correctly today; higher-level helpers are next.) See the convert-tested coverage program [`examples/msx2-coverage.msxb`](examples/msx2-coverage.msxb).
+- **Sound** — BGM and SE helpers (PSG, and where available FM/SCC). (`PLAY` as both statement and function, and `SOUND`, already transpile correctly.)
+- **Event traps** — `SPRITE ON`/`OFF`, `INTERVAL`, `ON SPRITE GOSUB`, `ON KEY GOSUB` etc. need a structured mapping (no line numbers in the source), so they are deliberately deferred to their own design pass.
 - **AI integration** — tighter "describe it, generate it, convert it, run it" flow with Claude.
 - **Editor** — code folding and large-file performance (likely a CodeMirror-based editor), beyond today's lightweight zero-dependency editor.
 - **Tooling** — expanding CI (GitHub Actions already runs the core tests) to full desktop (Tauri) builds, signed / notarized desktop binaries, and release packaging.
@@ -372,6 +375,8 @@ WHILE 1 <br>
 WEND <br>
 PRINT "GAME OVER"
 
+**4. MSX2グラフィック＋BGM/SE** — `SCREEN 5` のデモ。`COLOR=(n,r,g,b)` で独自パレットを設定し、`LINE …,BF` / `CIRCLE` / `PAINT` / `POINT` で描画、`SET PAGE` でダブルバッファ、`COPY … TO …` でVRAMブロック転送、`PLAY` でBGM、`SOUND` でSEを鳴らします。これらMSX2固有の書式（パレットの `=` 構文、`TO` 節、`B`/`BF` のラインオプション、関数として使う `POINT` / `PLAY`）は変換後もそのまま保たれ、ユーザ変数だけが2文字名へ割り当てられます。変換確認済みの全ソース：[`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)。
+
 ---
 
 ## ロードマップ
@@ -382,8 +387,9 @@ FunctionBASIC はまだ初期段階で、発展途上です。予定している
 - **ネイティブMSXプレイヤー対応** — 埋め込み webMSX に加え、ネイティブエミュレータでの実行：生成した `.dsk` を openMSX に自動マウントし Tcl スクリプトで `RUN`（Windows / macOS）、および Windows のネイティブMSXプレイヤー連携。
 - **設定画面** — アプリ内設定UIで、webMSX URL、組み込み命令・関数表（既定へのリセット付き）、対象機種、ネイティブプレイヤー／エミュレータのパスを編集。
 - **言語の拡張** — より豊かな構造化BASIC：`SELECT/CASE`、文字列ヘルパの充実、定数、ローカル配列、使い勝手の改善。
-- **MSX2グラフィック対応** — MSX2のスクリーンモード・パレット・スプライトの一級サポート。
-- **BGM/SE対応** — サウンドのヘルパ（PSG、可能なら FM/SCC）。
+- **MSX2グラフィック対応** — MSX2のスクリーンモード・パレット・スプライトの一級サポート。（組み込み表は MSX2 の音・映像命令一式 ― `COPY`・`POINT`・`SET PAGE`/`SET SCROLL`/`SET ADJUST`・`COLOR=(…)` パレット構文・`LINE …,B`/`BF`・`COLOR SPRITE`・`PUT KANJI`・`SET TIME`/`SET DATE`/`TIME` システム時計 ― を網羅済みで、現状でも正しく変換されます。次はより高レベルなヘルパ。）変換確認済みのカバレッジ例：[`examples/msx2-coverage.msxb`](examples/msx2-coverage.msxb)。
+- **BGM/SE対応** — サウンドのヘルパ（PSG、可能なら FM/SCC）。（文・関数の両形の `PLAY` と `SOUND` は既に正しく変換されます。）
+- **イベントトラップ** — `SPRITE ON`/`OFF`、`INTERVAL`、`ON SPRITE GOSUB`、`ON KEY GOSUB` 等は構造化（ソースに行番号が無い）への対応付けが要設計のため、専用の設計回として後回し。
 - **AI生成との統合** — Claude との「説明する→生成する→変換する→実行する」流れをより緊密に。
 - **エディタ** — コードの折りたたみと大規模ファイル性能（CodeMirrorベースのエディタを想定）。現状の軽量・依存ゼロエディタを発展。
 - **ツール整備** — CI（GitHub Actions、コアのテストは導入済み）をデスクトップ(Tauri)フルビルドへ拡張、署名・公証済みバイナリ、リリースパッケージング。

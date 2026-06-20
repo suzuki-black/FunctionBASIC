@@ -94,7 +94,9 @@ export interface CallStmt {
 // 組み込み命令（PRINT/LOCATE 等）。引数は式と区切り(; ,)の並びとして保持しパススルー。
 export type BuiltinPart =
   | { kind: "expr"; expr: Expr }
-  | { kind: "sep"; sep: string };
+  | { kind: "sep"; sep: string }
+  // 命令中に現れる節キーワード/区切り記号をそのまま素通しする語: COPY ... TO ...、COLOR=(...) の '='。
+  | { kind: "word"; word: string };
 export interface BuiltinStmt {
   type: "Builtin";
   name: string;

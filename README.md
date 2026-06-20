@@ -48,6 +48,9 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 - **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX, real hardware, or distribution.
 - **Reverse transpilation** — turn existing MSX-BASIC back into Structured BASIC (and restore the original file split where possible).
 - **Target machines** — built-ins are aware of MSX1 / MSX2 / MSX2+ / turboR (turboR by default), and the built-in table is editable.
+- **Correct MSX text encoding** — files are saved as Shift-JIS (the encoding real MSX machines use); characters that cannot be represented are reported rather than silently corrupted.
+- **Safe diagnostics** — the transpiler never silently mis-converts. Unsupported constructs and errors are reported with error codes and line/column positions, and shown as inline markers in the editor gutter.
+- **Recursion guard** — this `GOSUB`-based scheme reuses fixed variable names, so recursive / cyclic calls cannot work; they are detected and reported (`E_RECURSION_UNSUPPORTED`) instead of producing broken code.
 
 ---
 
@@ -56,6 +59,21 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 1. **Write Structured BASIC** in the editor (functions, blocks, locals — no line numbers).
 2. **Convert** — the "MSX-BASIC (output)" tab shows the generated line-numbered BASIC live as you type; "Convert & Save" writes it to disk as Shift-JIS.
 3. **Run** — press **▶ WebMSX** (or Ctrl/Cmd+Enter). The program is packaged and loaded into the embedded webMSX, which boots and runs it automatically. For real hardware or openMSX, use **Save Disk (.dsk)** instead.
+
+---
+
+## Building from source
+
+**Prerequisites:** [Node.js](https://nodejs.org/) ≥ 22.6 (for the zero-dependency core and the browser editor). For the desktop app you also need the [Rust toolchain](https://www.rust-lang.org/tools/install) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS (on macOS, the Xcode Command Line Tools).
+
+The core has **no npm dependencies**, so there is nothing to `npm install`.
+
+- **Run the core tests:** `npm test` — type-stripped TypeScript tests via Node's built-in test runner.
+- **Browser editor (no build tools):** `npm run serve`, then open `http://localhost:8123`. This type-strips the core into `editor/core/` and serves the editor.
+- **Desktop app (development):** `npm run app:dev` — builds the core and launches the Tauri dev window (Rust + system WebView).
+- **Desktop app (release build):** `npm run app:build` — produces a bundled application under `src-tauri/target/release/bundle/` for your platform.
+
+The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on demand (still no committed dependencies).
 
 ---
 
@@ -230,6 +248,9 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **実ディスク書き出し** — openMSX・実機・配布用に 720&nbsp;KB FAT12 の `.dsk` を生成。
 - **逆変換** — 既存のMSX-BASICを構造化BASICへ戻す（可能な範囲で元のファイル分割も復元）。
 - **対象機種** — 組み込み関数は MSX1 / MSX2 / MSX2+ / turboR を考慮（既定 turboR）。組み込み表は編集可能。
+- **正しいMSX文字コード** — ファイルは実機MSXが使う **Shift-JIS** で保存。表現できない文字は黙って壊さず報告します。
+- **安全な診断** — 変換器は黙って誤変換しません。未対応構文やエラーは**エラーコード＋行・列位置**付きで報告し、エディタのガターに印として表示します。
+- **再帰ガード** — この `GOSUB` 方式は固定の変数名を使い回すため再帰／循環呼び出しは成立しません。壊れたコードを出す代わりに検出して報告（`E_RECURSION_UNSUPPORTED`）します。
 
 ---
 
@@ -238,6 +259,21 @@ You may use, copy, modify, and distribute this software freely, including for co
 1. **構造化BASICを書く**（関数・ブロック・ローカル変数。行番号は不要）。
 2. **変換** — 「MSX-BASIC変換後」タブに、入力に追従して行番号付きBASICがライブ表示されます。「変換して保存」で Shift-JIS として書き出します。
 3. **実行** — **▶ WebMSX**（または Ctrl/Cmd+Enter）。プログラムが梱包されて埋め込み webMSX に読み込まれ、自動で起動・実行します。実機や openMSX 向けには **ディスク(.dsk)を保存** を使います。
+
+---
+
+## ソースからのビルド
+
+**前提:** [Node.js](https://nodejs.org/) 22.6 以上（依存ゼロのコア＆ブラウザ版エディタ用）。デスクトップ版にはさらに [Rust ツールチェイン](https://www.rust-lang.org/tools/install) と、OSごとの [Tauri 前提条件](https://v2.tauri.app/start/prerequisites/)（macOS なら Xcode Command Line Tools）が必要です。
+
+コアは **npm依存ゼロ**なので `npm install` は不要です。
+
+- **コアのテスト:** `npm test` — Node 標準テストランナーで型ストリップした TypeScript を実行。
+- **ブラウザ版エディタ（ビルドツール不要）:** `npm run serve` 後、`http://localhost:8123` を開く。コアを `editor/core/` へ型ストリップしてエディタを配信します。
+- **デスクトップ版（開発）:** `npm run app:dev` — コアをビルドし Tauri 開発ウィンドウ（Rust＋システムWebView）を起動。
+- **デスクトップ版（リリースビルド）:** `npm run app:build` — `src-tauri/target/release/bundle/` にOS向けのアプリを生成。
+
+デスクトップ用スクリプトは `npx @tauri-apps/cli` を使うため、Tauri CLI は必要時に取得されます（コミット対象の依存は増えません）。
 
 ---
 

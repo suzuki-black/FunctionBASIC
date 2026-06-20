@@ -50,6 +50,9 @@ const I18N = {
     "dsk.err": (e) => "ディスク作成に失敗: " + e,
     "rev.noerr": "エラーがあるため逆変換できません",
     "copy.ok": "コピーしました", "copy.err": "コピーに失敗（手動で選択してコピー）",
+    "ok": "OK", "cancel": "キャンセル",
+    "confirm.title": "確認", "confirm.reverse": "逆変換（MSX→構造化）の結果でエディタを置き換えますか？（往復確認）",
+    "prompt.goline.title": "行へ移動", "prompt.goline": "移動先のエディタ行番号:",
     "sc.title": "キーボードショートカット",
     "sc.body": `  保存:                Ctrl/Cmd + S\n  WebMSXで実行:        Ctrl/Cmd + Enter\n  整形(大文字化):       Ctrl/Cmd + Shift + F\n  定義へ移動:           Ctrl/Cmd + B\n  使用箇所(順送り):     Alt + F7\n  戻る / 進む:          Ctrl/Cmd + Alt + ← / →\n  行へ移動:             Ctrl/Cmd + G\n  ブックマーク 切替/次:  F11 / Shift + F11\n  スニペット:           行頭で fn/for/if/while + Tab\n  インデント:           Tab`,
   },
@@ -83,6 +86,9 @@ const I18N = {
     "dsk.err": (e) => "Disk creation failed: " + e,
     "rev.noerr": "Cannot reverse: there are errors.",
     "copy.ok": "Copied.", "copy.err": "Copy failed (select and copy manually).",
+    "ok": "OK", "cancel": "Cancel",
+    "confirm.title": "Confirm", "confirm.reverse": "Replace the editor with the reverse-converted result (MSX → Structured)?",
+    "prompt.goline.title": "Go to Line", "prompt.goline": "Editor line number:",
     "sc.title": "Keyboard Shortcuts",
     "sc.body": `  Save:                 Ctrl/Cmd + S\n  Run in WebMSX:        Ctrl/Cmd + Enter\n  Format (uppercase):   Ctrl/Cmd + Shift + F\n  Go to definition:     Ctrl/Cmd + B\n  Find usages (cycle):  Alt + F7\n  Back / Forward:       Ctrl/Cmd + Alt + ← / →\n  Go to line:           Ctrl/Cmd + G\n  Bookmark toggle/next: F11 / Shift + F11\n  Snippets:             fn/for/if/while + Tab at line start\n  Indent:               Tab`,
   },
@@ -130,6 +136,41 @@ function setStatus(kind, msg) {
   statusEl.textContent = msg;
   log("status:", kind || "info", msg);
 }
+
+// 自前モーダル（ネイティブ alert/confirm/prompt を避け、タイトル/言語/見た目を制御）
+let modalResolve = null;
+function openModal({ title, body = "", input = null, cancel = false }) {
+  $("modalTitle").textContent = title;
+  $("modalBody").textContent = body;
+  const inp = $("modalInput");
+  if (input !== null) {
+    inp.hidden = false;
+    inp.value = input;
+  } else {
+    inp.hidden = true;
+  }
+  const c = $("modalCancel");
+  c.hidden = !cancel && input === null;
+  c.textContent = t("cancel");
+  $("modal").hidden = false;
+  (input !== null ? inp : $("modalOk")).focus();
+  return new Promise((res) => {
+    modalResolve = res;
+  });
+}
+function resolveModal(val) {
+  $("modal").hidden = true;
+  const r = modalResolve;
+  modalResolve = null;
+  if (r) r(val);
+}
+// OK専用（情報表示）
+const showModal = (title, body) => openModal({ title, body });
+// はい/キャンセル → boolean
+const showConfirm = (title, body) => openModal({ title, body, cancel: true }).then((v) => v === true);
+// 入力 → string | null
+const showPrompt = (title, body = "", def = "") =>
+  openModal({ title, body, input: def }).then((v) => (typeof v === "string" ? v : null));
 // 想定外の失敗もコンソールに必ず残す
 window.addEventListener("error", (e) =>
   console.error("[editor] uncaught", e.message, e.filename + ":" + e.lineno),
@@ -547,14 +588,14 @@ async function onMakeDsk() {
 }
 
 // ---- 逆変換プレビュー ----
-function onReverse() {
+async function onReverse() {
   const r = compile(srcEl.value);
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("rev.noerr"));
     return;
   }
   const rev = reverse(r.code, r.map);
-  if (confirm("逆変換（MSX→構造化）の結果でエディタを置き換えますか？（往復確認）")) {
+  if (await showConfirm(t("confirm.title"), t("confirm.reverse"))) {
     setSource(rev.source + "\n");
   }
 }
@@ -790,9 +831,9 @@ function findUsages() {
   scrollToLine(cur.line, cur.column - 1);
   flash(`使用箇所 ${usage.idx + 1}/${list.length}: ${t.value}`);
 }
-function goToLine() {
-  const n = prompt("移動先のエディタ行番号:");
-  if (n == null) return;
+async function goToLine() {
+  const n = await showPrompt(t("prompt.goline.title"), t("prompt.goline"));
+  if (n == null || n === "") return;
   const line = Math.max(1, Math.min(srcEl.value.split("\n").length, parseInt(n) || 1));
   recordJump();
   scrollToLine(line);
@@ -930,8 +971,8 @@ function runAction(act) {
     case "fontdown": return setFont(-1);
     case "run": return onPlayWebMSX();
     case "reverse": return onReverse();
-    case "help": return alert(t("sc.title") + "\n\n" + t("sc.body"));
-    case "about": return alert(t("about.body"));
+    case "help": return showModal(t("sc.title"), t("sc.body"));
+    case "about": return showModal("FunctionBASIC", t("about.body"));
     case "lang-ja": return setLang("ja");
     case "lang-en": return setLang("en");
     default: logErr("runAction", "未知のアクション: " + act);
@@ -966,7 +1007,22 @@ menubar.querySelectorAll(".mi").forEach((mi) => {
 });
 document.addEventListener("click", closeMenus);
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeMenus();
+  if (e.key === "Escape") {
+    closeMenus();
+    if (!$("modal").hidden) resolveModal(null);
+  }
+});
+
+// モーダル: OK=入力値またはtrue / キャンセル・背景=null
+$("modalOk").addEventListener("click", () =>
+  resolveModal($("modalInput").hidden ? true : $("modalInput").value),
+);
+$("modalCancel").addEventListener("click", () => resolveModal(null));
+$("modal").addEventListener("click", (e) => {
+  if (e.target.id === "modal") resolveModal(null);
+});
+$("modalInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") resolveModal($("modalInput").value);
 });
 
 $("saveBtn").addEventListener("click", onSave);

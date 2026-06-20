@@ -115,6 +115,19 @@
 
   <div id="status" data-i18n="ready">準備完了</div>
 
+  <!-- 自前モーダル（alert/prompt のネイティブダイアログを避け、言語・見た目を制御）-->
+  <div id="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-title" id="modalTitle"></div>
+      <pre class="modal-body" id="modalBody"></pre>
+      <input id="modalInput" class="modal-input" hidden />
+      <div class="modal-actions">
+        <button id="modalCancel" hidden>キャンセル</button>
+        <button id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="./app.js"></script>
 </body>
 </html>

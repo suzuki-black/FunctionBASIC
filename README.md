@@ -153,7 +153,7 @@ FunctionBASIC is early and developing. Planned directions (no fixed dates):
 - **MSX2 graphics** — first-class helpers for MSX2 screen modes, palettes, and sprites.
 - **Sound** — BGM and SE helpers (PSG, and where available FM/SCC).
 - **AI integration** — tighter "describe it, generate it, convert it, run it" flow with Claude.
-- **Tooling** — continuous integration (GitHub Actions) for builds and tests, signed desktop binaries, an in-app settings screen, and editor folding/large-file performance.
+- **Tooling** — expanding CI (GitHub Actions already runs the core tests) to full desktop (Tauri) builds, signed desktop binaries, an in-app settings screen, and editor folding / large-file performance.
 
 Tracked work and ideas live in the issue tracker. Suggestions are welcome.
 
@@ -328,7 +328,7 @@ FunctionBASIC はまだ初期段階で、発展途上です。予定している
 - **MSX2グラフィック対応** — MSX2のスクリーンモード・パレット・スプライトの一級サポート。
 - **BGM/SE対応** — サウンドのヘルパ（PSG、可能なら FM/SCC）。
 - **AI生成との統合** — Claude との「説明する→生成する→変換する→実行する」流れをより緊密に。
-- **ツール整備** — CI（GitHub Actions）でのビルド/テスト、デスクトップ版の署名、アプリ内設定画面、エディタの折りたたみ・大規模ファイル性能。
+- **ツール整備** — CI（GitHub Actions、コアのテストは導入済み）をデスクトップ(Tauri)フルビルドへ拡張、デスクトップ版の署名、アプリ内設定画面、エディタの折りたたみ・大規模ファイル性能。
 
 作業項目やアイデアは Issue で管理しています。提案を歓迎します。
 

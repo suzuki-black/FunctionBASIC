@@ -1,0 +1,22 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # 依存ゼロ構成のため install 不要。コア(Lexer/Parser/変換器)のテストを実行。
+      - name: Run core tests
+        run: npm test
+      # ブラウザ向けにコアを型ストリップしてビルドできることを確認。
+      - name: Build editor core
+        run: node build.mjs

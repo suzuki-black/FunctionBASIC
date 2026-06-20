@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" width="120" alt="FunctionBASIC app icon — a dark code-editor window with indented, syntax-colored lines" />
+</p>
+
 # FunctionBASIC
 
 ### Structured BASIC → MSX-BASIC → webMSX

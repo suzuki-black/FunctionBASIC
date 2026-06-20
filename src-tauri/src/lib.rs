@@ -222,16 +222,6 @@ async fn save_dsk(
     }))
 }
 
-// 方式A: ネイティブMSXプレイヤーに .bas を渡して起動（Windows専用想定）
-#[tauri::command]
-fn launch_native_player(player_path: String, bas_path: String) -> Result<(), String> {
-    std::process::Command::new(player_path)
-        .arg(bas_path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,7 +384,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             save_project,
-            launch_native_player,
             set_clipboard,
             save_dsk,
             set_menu_lang,

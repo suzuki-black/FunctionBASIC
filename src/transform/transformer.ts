@@ -938,16 +938,23 @@ function finishTransform(ctx: any): TransformResult {
           break;
         }
         case "While": {
-          items.push({ kind: "line", text: `WHILE ${emitExpr(s.cond, sc)}` });
-          const b = newLabel();
-          const c = newLabel();
+          // MSX-BASIC には WHILE/WEND が無いため IF/GOTO に展開する。
+          // 条件が偽(=0)のとき脱出。`WHILE 1` のような数値条件も正しく扱える。
+          const top = newLabel(); // 条件評価（ループ先頭）
+          const b = newLabel(); // BREAK先（ループ脱出）
+          const c = newLabel(); // CONTINUE先（条件へ戻る）
+          items.push({ kind: "label", id: top });
+          items.push({
+            kind: "line",
+            text: `IF (${emitExpr(s.cond, sc)})=0 THEN GOTO @@L:${b}@@`,
+          });
           emittedLoops.push({ b, c });
           loopStack.push({ b, c });
           emitInto(s.body, sc, items);
           loopStack.pop();
-          items.push({ kind: "label", id: c }); // CONTINUE先 = WEND行
-          items.push({ kind: "line", text: `WEND` });
-          items.push({ kind: "label", id: b }); // BREAK先 = WEND直後
+          items.push({ kind: "label", id: c }); // CONTINUE → 条件へ戻る
+          items.push({ kind: "line", text: `GOTO @@L:${top}@@` });
+          items.push({ kind: "label", id: b }); // BREAK → ループ後
           break;
         }
       }

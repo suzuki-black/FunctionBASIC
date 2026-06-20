@@ -252,27 +252,25 @@ FORはMSXにネイティブに存在するため素直に対応。
 
 ### 5.5.3 WHILE
 
-MSXの `WHILE…WEND` をそのまま使える機種もあるが、互換性重視で `IF…GOTO` 形に落とすことも可能。
-本システムは既定で **ネイティブ WHILE/WEND** を出力し、オプションで GOTO 展開を選べる。
+**MSX-BASIC には `WHILE…WEND` が無い**（ループは `FOR…NEXT` のみ）。そのまま出力すると実機・
+エミュレータで `Syntax error` になるため、**必ず `IF…GOTO` 形へ展開する**。
+条件が偽(=0)のとき脱出。`WHILE 1` のような数値条件も正しく扱えるよう `(cond)=0` で判定する。
 
 ```basic
 WHILE A < 100
     LET A = A * 2
 WEND
 ```
-↓（ネイティブ）
+↓（IF/GOTO 展開）
 ```basic
-400 WHILE A<100
-410 A=A*2
-420 WEND
-```
-↓（GOTO展開オプション）
-```basic
-400 IF NOT(A<100) THEN 430
+400 IF (A<100)=0 THEN GOTO 430
 410 A=A*2
 420 GOTO 400
-430 ' wend
+430 ' (ループ後 / BREAK 先)
 ```
+
+- 脱出: `(cond)=0` が真 → ループ後へ `GOTO`。
+- `BREAK` → ループ後（430）へ `GOTO`。`CONTINUE` → 末尾の `GOTO 400`（条件再評価）へ。
 
 ### 5.5.4 ネストしたブロックの変換（ネスト許可対応）
 

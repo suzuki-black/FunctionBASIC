@@ -13,6 +13,7 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "TO",
   "STEP",
   "NEXT",
+  "AS", // OPEN/NAME/FIELD … AS（節キーワード。文中で word として素通し）
   "WHILE",
   "WEND",
   "RETURN",

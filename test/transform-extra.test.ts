@@ -117,6 +117,45 @@ COPY (0,0)-(15,15) TO (100,100)`);
   assert.match(msx, /COPY \(0,0\)-\(15,15\) TO \(100,100\)/);
 });
 
+test("印字: PRINT USING の USING 節は改名されない（変数 PRINT PAGE とは区別）", () => {
+  const { msx, diagnostics } = compile(`PRINT USING "##.##"; X
+LPRINT USING "&"; A$
+PAGE = 5
+PRINT PAGE`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /PRINT USING "##\.##";/);
+  assert.match(msx, /LPRINT USING "&";/);
+  // PRINT 直後でも USING 以外（変数 PAGE）は通常どおり改名される
+  assert.ok(!/\bPAGE\b/.test(msx), "ユーザ変数 PAGE は改名される");
+});
+
+test("ファイル: # 番号・OPEN/FIELD/AS・GET/PUT・KILL/NAME が保持される", () => {
+  const { msx, diagnostics } = compile(`OPEN "DATA" FOR INPUT AS #1
+FIELD #1, 20 AS N$, 4 AS A$
+GET #1, 5
+LINE INPUT #1, L$
+CLOSE #1
+KILL "OLD.DAT"
+NAME "A.TXT" AS "B.TXT"`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /OPEN "DATA" FOR INPUT AS#1/);
+  assert.match(msx, /FIELD#1,20 AS [A-Z]+\$,4 AS [A-Z]+\$/);
+  assert.match(msx, /GET#1,5/);
+  assert.match(msx, /LINE INPUT#1,/);
+  assert.match(msx, /KILL "OLD\.DAT"/);
+  assert.match(msx, /NAME "A\.TXT" AS "B\.TXT"/);
+});
+
+test("型変換/ファイル関数: CVI/MKI$/EOF/LOC/USR/DSKF は改名されない", () => {
+  const { msx, diagnostics } = compile(`A = CVI(R$) + CVS(S$) + CVD(T$)
+B$ = MKI$(1) + MKS$(2) + MKD$(3)
+IF EOF(1) THEN C = LOC(1) + LOF(1) + DSKF(0) + USR0(5)
+END IF`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  for (const re of [/CVI\(/, /MKI\$\(/, /EOF\(1\)/, /LOC\(1\)/, /LOF\(1\)/, /DSKF\(0\)/, /USR0\(5\)/])
+    assert.match(msx, re);
+});
+
 test("MSX2: COLOR SPRITE(n)= は SPRITE を改名せず保持する", () => {
   const { msx, diagnostics } = compile(`SCREEN 5, 2
 COLOR SPRITE(0) = 15

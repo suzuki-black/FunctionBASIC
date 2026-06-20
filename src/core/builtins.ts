@@ -4,6 +4,9 @@
 // 文として使われる組み込み（行頭に来る）
 export const BUILTIN_STATEMENTS: ReadonlySet<string> = new Set([
   "PRINT",
+  "LPRINT", // プリンタ出力（PRINT のプリンタ版）
+  "LLIST", // プリンタへプログラム一覧
+  "LFILES", // プリンタへファイル一覧
   "INPUT",
   "LOCATE",
   "CLS",
@@ -35,9 +38,17 @@ export const BUILTIN_STATEMENTS: ReadonlySet<string> = new Set([
   "FILES",
   "LOAD",
   "SAVE",
+  "MERGE", // プログラム結合
   "BLOAD",
   "BSAVE",
   "MAXFILES",
+  "KILL", // ファイル削除
+  "NAME", // ファイル改名（NAME "a" AS "b"）
+  "FIELD", // ランダムファイルのフィールド定義
+  "LSET", // 左詰めでフィールドへ代入
+  "RSET", // 右詰めでフィールドへ代入
+  "TRON", // トレース ON
+  "TROFF", // トレース OFF
   "DATA",
   "READ",
   "RESTORE",
@@ -67,6 +78,9 @@ export const BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
   "RND",
   "SGN",
   "FIX",
+  "CINT", // 整数化
+  "CSNG", // 単精度化
+  "CDBL", // 倍精度化
   "LEFT$",
   "RIGHT$",
   "MID$",
@@ -102,6 +116,36 @@ export const BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
   "TIME",
   "ERR",
   "ERL",
+  // 印字整形（PRINT/LPRINT 内）
+  "TAB",
+  "SPC",
+  // 型変換（ファイル入出力用）
+  "CVI",
+  "CVS",
+  "CVD",
+  "MKI$",
+  "MKS$",
+  "MKD$",
+  // ファイル/ディスク状態
+  "EOF",
+  "LOC",
+  "LOF",
+  "FPOS",
+  "LPOS",
+  "DSKF",
+  "DSKI$",
+  // 機械語呼び出し USR / USR0..USR9
+  "USR",
+  "USR0",
+  "USR1",
+  "USR2",
+  "USR3",
+  "USR4",
+  "USR5",
+  "USR6",
+  "USR7",
+  "USR8",
+  "USR9",
 ]);
 
 // 組み込み文の「節キーワード」: 命令の途中にだけ現れ、それ自体は文の先頭にならない語。
@@ -121,6 +165,7 @@ export const BUILTIN_CLAUSE_WORDS: ReadonlySet<string> = new Set([
   "TIME", // SET TIME / GET TIME ※TIME 関数とも両立
   "NEW", // COLOR=NEW（パレット初期化・MSX2）
   "RESTORE", // COLOR=RESTORE ※RESTORE 文とも両立
+  "USING", // PRINT USING / LPRINT USING（書式付き出力）
 ]);
 
 export const isBuiltinStatement = (name: string): boolean =>

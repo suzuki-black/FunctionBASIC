@@ -22,15 +22,20 @@
 |------|-----------|
 | 制御（※構造化側はネイティブ構文。`GOTO`/`GOSUB` 等は生成専用） | `IF` `THEN` `ELSE` `FOR` `TO` `STEP` `NEXT` `WHILE` `WEND` `GOTO` `GOSUB` `RETURN` `ON…GOTO` `ON…GOSUB` `STOP` `END` |
 | 画面/IO | `PRINT` `PRINT USING` `INPUT` `LINE INPUT` `LOCATE` `CLS` `SCREEN` `COLOR` `WIDTH` `BEEP` |
+| プリンタ | `LPRINT` `LPRINT USING` `LLIST` `LFILES` `WIDTH LPRINT` |
 | 図形 | `PSET` `PRESET` `LINE`（末尾 `B`/`BF` 対応） `CIRCLE` `PAINT` `COPY`（`… TO …`） `DRAW` `POINT`（関数） `PUT SPRITE` `COLOR SPRITE` `PUT KANJI` `COLOR=(…)`/`COLOR=NEW`（MSX2パレット） |
 | 音 | `SOUND` `PLAY`（文・関数の両形） `BEEP` |
 | メモリ/系 | `PEEK` `POKE` `VPEEK` `VPOKE` `DEF USR` `CALL`(`_`) `OUT` `INP` `BASE` `VDP` `WAIT` `SET` |
-| ファイル | `OPEN` `CLOSE` `GET` `PUT` `FILES` `LOAD` `SAVE` `BLOAD` `BSAVE` `MAXFILES` |
+| ファイル | `OPEN` `CLOSE` `GET` `PUT` `FILES` `LOAD` `SAVE` `MERGE` `BLOAD` `BSAVE` `MAXFILES` `KILL` `NAME … AS` `FIELD … AS` `LSET` `RSET` |
+| デバッグ | `TRON` `TROFF` |
 | カセット（**turboR不可**） | `CLOAD` `CSAVE` `CALL MOTOR` `MOTOR` |
 | turboR追加 | `CALL PCMPLAY` `CALL PCMREC` 等（機種フラグ=turboR） |
 | 文字列関数 | `LEFT$` `RIGHT$` `MID$` `CHR$` `ASC` `LEN` `VAL` `STR$` `HEX$` `OCT$` `BIN$` `INSTR` `SPACE$` `STRING$` `INPUT$` `INKEY$` |
 | 数学関数 | `ABS` `INT` `SQR` `SIN` `COS` `TAN` `ATN` `LOG` `EXP` `RND` `SGN` `FIX` |
-| 入力/特殊 | `STICK` `STRIG` `PAD` `PDL` `POS` `CSRLIN` `VARPTR` `FRE` `TIME` `ERR` `ERL` |
+| 型変換関数 | `CINT` `CSNG` `CDBL` `CVI` `CVS` `CVD` `MKI$` `MKS$` `MKD$` |
+| 印字整形関数 | `TAB` `SPC`（`PRINT`/`LPRINT` 内） |
+| ファイル/ディスク関数 | `EOF` `LOC` `LOF` `FPOS` `LPOS` `DSKF` `DSKI$` |
+| 入力/特殊 | `STICK` `STRIG` `PAD` `PDL` `POS` `CSRLIN` `VARPTR` `FRE` `TIME` `ERR` `ERL` `USR`/`USR0`–`USR9` |
 | データ | `DATA` `READ` `RESTORE`（[05 §5.13](05-transformer.md#513-data--read--restore)） |
 | 宣言/変数 | `DIM` `DEFINT` `DEFSNG` `DEFDBL` `DEFSTR` `ERASE` `CLEAR` `LET` `SWAP` |
 
@@ -42,10 +47,11 @@
 命令の途中にだけ現れ、それ自体は文の先頭にならない語は `BUILTIN_CLAUSE_WORDS`（[builtins.ts](../src/core/builtins.ts)）で管理し、**ユーザ変数として改名しない**。ただし `PAGE`/`TIME`/`B` 等は変数名にも使えるため、**文脈を限定**して曖昧さを避ける（パーサ `parseBuiltinStmt`）:
 
 - `SET`/`GET` 命令の直後の語：`SET PAGE` `SET SCROLL` `SET ADJUST` `SET VIDEO` `SET TITLE` `SET TIME` `GET DATE` 等。
+- `PRINT`/`LPRINT` 命令の直後の `USING` のみ：`PRINT USING …`（`PRINT PAGE` のような変数は対象外＝改名する）。
 - `=` の直後：`COLOR=NEW` `COLOR=RESTORE`。
 - `LINE` の**文末**に来る `B`/`BF`（箱・塗り箱）。
 
-これら以外の位置（例：`PAGE = 5`、`PRINT PAGE`、`B = 4`）では通常のユーザ変数として一貫して2文字名へ割り当てる。命令中のキーワード（`COPY … TO …` の `TO`）や記号（`COLOR=` の `=`、ファイル番号 `#`）は AST 上 `word` パートとして素通しする。
+これら以外の位置（例：`PAGE = 5`、`PRINT PAGE`、`B = 4`）では通常のユーザ変数として一貫して2文字名へ割り当てる。命令中のキーワード（`COPY … TO …` の `TO`、`OPEN/NAME/FIELD … AS` の `AS`）や記号（`COLOR=` の `=`、ファイル番号 `#`）は AST 上 `word` パートとして素通しする。`AS` は予約語（[keywords.ts](../src/lexer/keywords.ts)）、`#` は字句解析で OP 化（[lexer.ts](../src/lexer/lexer.ts)）して扱う。
 
 #### 括弧付きの組み込み名
 

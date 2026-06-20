@@ -283,24 +283,28 @@ export function parse(tokens: Token[]): ParseResult {
       !checkOp(":")
     ) {
       const last = parts[parts.length - 1];
-      // 節キーワードを「語」として素通しするのは曖昧でない文脈に限定する:
-      //  - SET/GET 命令の直後（SET PAGE / GET TIME 等）
-      //  - '=' の直後（COLOR=NEW / COLOR=RESTORE）
-      // これにより、ユーザ変数 PAGE を PRINT PAGE 等で使っても改名され壊れない。
-      const clauseExpected =
-        (parts.length === 0 && (cmd === "SET" || cmd === "GET")) ||
-        (last?.kind === "word" && last.word === "=");
+      // 節キーワードを「語」として素通しするのは曖昧でない文脈に限定する。
+      // 命令ごとに「どの語が」その位置で許されるかまで絞る（PAGE/TIME/B 等は
+      // 変数名にも使えるため、PRINT PAGE のような通常変数は改名する必要がある）:
+      //  - SET/GET 命令の直後 … その節キーワード全般（SET PAGE / GET TIME 等）
+      //  - PRINT/LPRINT 命令の直後 … USING のみ（PRINT USING）
+      //  - '=' の直後 … NEW/RESTORE（COLOR=NEW / COLOR=RESTORE）
+      const w = checkKind("IDENT") ? cur().value.toUpperCase() : "";
+      const clauseWordHere =
+        w !== "" &&
+        isBuiltinClauseWord(w) &&
+        ((parts.length === 0 && (cmd === "SET" || cmd === "GET")) ||
+          (parts.length === 0 &&
+            (cmd === "PRINT" || cmd === "LPRINT") &&
+            w === "USING") ||
+          (last?.kind === "word" && last.word === "="));
       if (checkOp(";") || checkOp(",")) {
         parts.push({ kind: "sep", sep: advance().value });
       } else if (cur().kind === "KEYWORD" || checkOp("=") || checkOp("#")) {
         // 命令中の節キーワード(COPY ... TO 等)や '='(COLOR=) / '#'(ファイル番号)は
         // 式の開始になり得ないので、そのまま素通しする語として保持する。
         parts.push({ kind: "word", word: advance().value });
-      } else if (
-        clauseExpected &&
-        checkKind("IDENT") &&
-        isBuiltinClauseWord(cur().value)
-      ) {
+      } else if (clauseWordHere) {
         parts.push({ kind: "word", word: advance().value });
       } else if (
         // LINE ...,B / ...,BF の末尾オプション（箱・塗り箱）。B/BF は変数名にも

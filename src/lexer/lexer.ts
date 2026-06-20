@@ -167,7 +167,9 @@ export function tokenize(source: string): LexResult {
       push("OP", two, two, start);
       continue;
     }
-    if ("+-*/\\^=<>(),:;".includes(c)) {
+    // '#' はファイル番号(PRINT #1 等)の記号。型サフィックス(A#)は識別子側で
+    // 先に消費されるため、ここに来る '#' は単独記号＝OP として扱う。
+    if ("+-*/\\^=<>(),:;#".includes(c)) {
       advance();
       push("OP", c, c, start);
       continue;

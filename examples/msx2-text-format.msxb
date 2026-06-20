@@ -1,0 +1,43 @@
+' ============================================================
+'  MSX2 text / formatting coverage (FunctionBASIC, chunk 2)
+'  Screen-only demo (no disk needed) of the print/format and
+'  type-conversion built-ins:
+'    PRINT USING (numeric "#" and string "&" fields),
+'    TAB / SPC, CINT / CSNG / CDBL.
+'  Runs on any MSX; uses SCREEN 0 text mode.
+' ============================================================
+
+' Print one money row with PRINT USING: a fixed-width "\   \" string
+' field for the label, then a "##,###.##" numeric field for the amount.
+FUNCTION SHOW_ROW(LABEL$, AMOUNT)
+    PRINT USING "\        \ ##,###.##"; LABEL$; AMOUNT
+END FUNCTION
+
+' ---------------- MAIN ----------------
+SCREEN 0
+WIDTH 40
+CLS
+
+PRINT "PRINT USING / TYPE CONVERSION"
+PRINT "-----------------------------"
+
+' a little table, each row formatted by the helper
+SHOW_ROW("apples", 1234.5)
+SHOW_ROW("pen", 9.9)
+SHOW_ROW("subtotal", 1244.4)
+PRINT
+
+' numeric rounding via CINT and single-precision via CSNG
+PRINT "CINT(3.7)   ="; CINT(3.7)
+PRINT "CINT(-3.7)  ="; CINT(-3.7)
+PRINT "CSNG(10)/3  ="; CSNG(10) / 3
+PRINT "CDBL(1)/3   ="; CDBL(1) / 3
+PRINT
+
+' TAB and SPC inside PRINT
+PRINT "L"; TAB(12); "M"; SPC(6); "R"
+PRINT USING "page ### of ###"; 2; 10
+
+' hold the screen so the result stays visible
+GLOBAL DUMMY$
+LINE INPUT "press RETURN to end "; DUMMY$

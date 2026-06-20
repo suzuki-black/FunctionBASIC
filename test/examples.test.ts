@@ -37,6 +37,17 @@ test("例: msx2-graphics-sound.msxb はエラーなしで変換される", () =>
   assert.match(msx, /PLAY "","","V15 L32 O5 G"/);
 });
 
+test("例: msx2-text-format.msxb は印字書式/型変換を保持して変換される", () => {
+  const { msx, diagnostics } = compileExample("msx2-text-format.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /PRINT USING "/); // USING 節が保持
+  assert.match(msx, /CINT\(3\.7\)/);
+  assert.match(msx, /CSNG\(10\)\/3/);
+  assert.match(msx, /TAB\(12\)/);
+  assert.match(msx, /SPC\(6\)/);
+  assert.match(msx, /LINE INPUT "/); // LINE INPUT 文
+});
+
 test("例: msx2-coverage.msxb はMSX2 命令を保持してエラーなしで変換される", () => {
   const { msx, diagnostics } = compileExample("msx2-coverage.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

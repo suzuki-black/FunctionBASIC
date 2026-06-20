@@ -13,7 +13,7 @@ import { suffixOf } from "../ast/nodes.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import { hasError } from "../core/diagnostics.ts";
-import { isBuiltinFunction } from "../core/builtins.ts";
+import { isBuiltinFunction, isBuiltinStatement, isBuiltin } from "../core/builtins.ts";
 import { NamePool } from "./names.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
@@ -125,11 +125,16 @@ function collectExprVars(
     case "Str":
       return;
     case "Var":
-      vars.add(e.name);
+      // 組み込み"文"のサブキーワード（PUT SPRITE の SPRITE 等）は変数ではない＝改名しない。
+      // 組み込み"関数"名（POS/TIME 等）はユーザ変数として使われ得るので改名対象のまま。
+      if (!isBuiltinStatement(e.name)) vars.add(e.name);
       return;
     case "ArrayRef":
-      vars.add(e.name);
-      arrays.add(e.name);
+      // SPRITE$(n) 等の組み込み配列風は改名しない
+      if (!isBuiltin(e.name)) {
+        vars.add(e.name);
+        arrays.add(e.name);
+      }
       e.indices.forEach((x) => collectExprVars(x, funcNames, vars, arrays));
       return;
     case "Un":
@@ -138,6 +143,9 @@ function collectExprVars(
     case "Bin":
       collectExprVars(e.left, funcNames, vars, arrays);
       collectExprVars(e.right, funcNames, vars, arrays);
+      return;
+    case "Group":
+      e.items.forEach((x) => collectExprVars(x, funcNames, vars, arrays));
       return;
     case "CallExpr": {
       const isCall = funcNames.has(e.name) || isBuiltinFunction(e.name);
@@ -160,10 +168,13 @@ function collectStmtVars(
   const E = (e: Expr) => collectExprVars(e, funcNames, vars, arrays);
   switch (s.type) {
     case "Let":
-      if (s.target.type === "Var") vars.add(s.target.name);
-      else {
-        vars.add(s.target.name);
-        arrays.add(s.target.name);
+      if (s.target.type === "Var") {
+        if (!isBuiltinStatement(s.target.name)) vars.add(s.target.name);
+      } else {
+        if (!isBuiltin(s.target.name)) {
+          vars.add(s.target.name);
+          arrays.add(s.target.name);
+        }
         s.target.indices.forEach(E);
       }
       E(s.expr);
@@ -347,10 +358,12 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       case "Str":
         return '"' + e.value + '"';
       case "Var":
-        return resolveVar(e.name, sc);
+        // 組み込み"文"サブキーワードはそのまま（PUT SPRITE の SPRITE 等）。それ以外は2文字名へ。
+        return isBuiltinStatement(e.name) ? e.name : resolveVar(e.name, sc);
       case "ArrayRef": {
         const idx = e.indices.map((x) => emitExpr(x, sc)).join(",");
-        return resolveVar(e.name, sc) + "(" + idx + ")";
+        const nm = isBuiltin(e.name) ? e.name : resolveVar(e.name, sc);
+        return nm + "(" + idx + ")";
       }
       case "Un": {
         const inner = emitExpr(e.operand, sc, 10);
@@ -364,6 +377,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
         const s = `${l}${sep}${r}`;
         return prec < parentPrec ? `(${s})` : s;
       }
+      case "Group":
+        // 括弧はそのまま保持（優先順位 `(a+b)` も座標タプル `(x,y)` も）
+        return "(" + e.items.map((x) => emitExpr(x, sc)).join(",") + ")";
       case "CallExpr": {
         if (isUserFunc(e.name)) {
           // 通常は prelower で一時変数へ lowering 済み。ここに来るのは内部不整合。
@@ -381,7 +397,7 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   const emitLValue = (lv: LValue, sc: Scope): string =>
     lv.type === "Var"
       ? resolveVar(lv.name, sc)
-      : resolveVar(lv.name, sc) +
+      : (isBuiltin(lv.name) ? lv.name : resolveVar(lv.name, sc)) +
         "(" +
         lv.indices.map((x) => emitExpr(x, sc)).join(",") +
         ")";
@@ -420,7 +436,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
             out += p.sep;
             prev = "sep";
           } else {
-            out += (prev === "name" ? " " : "") + emitExpr(p.expr, sc);
+            // 区切り(, ;)直後以外（名前直後・式直後）は空白で区切る: 例 "PUT SPRITE 0"
+            out += (prev !== "sep" ? " " : "") + emitExpr(p.expr, sc);
             prev = "expr";
           }
         }
@@ -609,6 +626,9 @@ function finishTransform(ctx: any): TransformResult {
       case "ArrayRef":
         e.indices.forEach((x) => scanExpr(x, sc));
         break;
+      case "Group":
+        e.items.forEach((x) => scanExpr(x, sc));
+        break;
       default:
         break;
     }
@@ -759,6 +779,8 @@ function finishTransform(ctx: any): TransformResult {
         return exprHasUserCall(e.operand);
       case "ArrayRef":
         return e.indices.some(exprHasUserCall);
+      case "Group":
+        return e.items.some(exprHasUserCall);
       default:
         return false;
     }
@@ -791,6 +813,8 @@ function finishTransform(ctx: any): TransformResult {
         return { ...e, operand: lowerExpr(e.operand, sc, items) };
       case "Bin":
         return { ...e, left: lowerExpr(e.left, sc, items), right: lowerExpr(e.right, sc, items) };
+      case "Group":
+        return { ...e, items: e.items.map((x) => lowerExpr(x, sc, items)) };
       case "CallExpr": {
         const args = e.args.map((a) => ({ ...a, expr: lowerExpr(a.expr, sc, items) }));
         if (funcTable.has(e.name)) {

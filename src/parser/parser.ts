@@ -159,9 +159,14 @@ export function parse(tokens: Token[]): ParseResult {
     }
     if (checkOp("(")) {
       advance();
-      const e = parseExpr();
+      // 括弧内はカンマ区切りも許す: 優先順位の `(a+b)` も座標タプル `(x, y)` も Group に。
+      const items: Expr[] = [parseExpr()];
+      while (checkOp(",")) {
+        advance();
+        items.push(parseExpr());
+      }
       expectOp(")", "括弧");
-      return e;
+      return { type: "Group", items };
     }
     if (t.kind === "IDENT") {
       const name = advance().value;
@@ -279,7 +284,9 @@ export function parse(tokens: Token[]): ParseResult {
       if (checkOp(";") || checkOp(",")) {
         parts.push({ kind: "sep", sep: advance().value });
       } else {
+        const before = p;
         parts.push({ kind: "expr", expr: parseExpr() });
+        if (p === before) advance(); // 進行保証（不正トークンで無限ループしない）
       }
     }
     return { type: "Builtin", name, parts, pos };

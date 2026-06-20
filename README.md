@@ -138,14 +138,18 @@ Generated MSX-BASIC:
 1030 NEXT <br>
 1040 E=0: RETURN
 
-**2. Sprite movement** — slide a sprite across the screen (illustrative).
+**2. Multicolour cat from two overlapping sprites (MSX2)** — MSX hardware sprites are a single colour each, so a classic trick is to stack two sprites at the same position to get more colours. This moves a cat (a white face sprite over an orange body sprite) with the cursor / joystick. Full, convert-tested source: [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb).
 
-Structured BASIC:
-' move sprite 0 left to right <br>
-FOR X = 0 TO 255 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;PUT SPRITE 0, (X, 100), 15, 0 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;FOR D = 1 TO 30 : NEXT D <br>
-NEXT X
+The heart of it — one cat is two sprites drawn at the same spot, then moved:
+
+' one cat = two sprites at the same spot, in two colours <br>
+PUT SPRITE 0, (CATX, CATY), 15, 0&nbsp;&nbsp;' front: white face <br>
+PUT SPRITE 1, (CATX, CATY), 9, 1&nbsp;&nbsp;' behind: orange body
+
+…which the transpiler turns into authentic MSX-BASIC (variables allocated, coordinates preserved):
+
+300 PUT SPRITE 0,(A,B),15,0 <br>
+310 PUT SPRITE 1,(A,B),9,1
 
 **3. Game skeleton** — a minimal main loop (illustrative).
 
@@ -338,14 +342,18 @@ PRINT "FOUND="; RESULT; " AT "; POS
 1030 NEXT <br>
 1040 E=0: RETURN
 
-**2. スプライト移動** — スプライトを画面で左から右へ（説明用）。
+**2. 2枚重ねスプライトの多色猫（MSX2）** — MSXのハードウェアスプライトは1枚＝1色なので、同じ位置に2枚重ねて多色にするのが定番技です。白い顔スプライトをオレンジの体スプライトに重ねた猫を、カーソル／ジョイスティックで動かします。変換確認済みの全ソース：[`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)。
 
-構造化BASIC:
-' スプライト0を左から右へ動かす <br>
-FOR X = 0 TO 255 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;PUT SPRITE 0, (X, 100), 15, 0 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;FOR D = 1 TO 30 : NEXT D <br>
-NEXT X
+肝は「1匹の猫＝同じ位置に2枚のスプライト」を描いて動かすこと：
+
+' 1匹の猫＝同じ位置に2枚のスプライト（2色） <br>
+PUT SPRITE 0, (CATX, CATY), 15, 0&nbsp;&nbsp;' 前面：白い顔 <br>
+PUT SPRITE 1, (CATX, CATY), 9, 1&nbsp;&nbsp;' 背面：オレンジの体
+
+…これを変換器が本物のMSX-BASICにします（変数割当・座標は保持）：
+
+300 PUT SPRITE 0,(A,B),15,0 <br>
+310 PUT SPRITE 1,(A,B),9,1
 
 **3. ゲームの雛形** — 最小のメインループ（説明用）。
 

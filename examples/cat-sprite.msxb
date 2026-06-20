@@ -1,0 +1,77 @@
+' ============================================================
+'  Moving cat — two overlapping MSX2 sprites make it multicolour
+'  MSX2 or later. SCREEN 5 with 16x16 sprites.
+'  Plane 0 (front) = white face, plane 1 (behind) = orange body,
+'  drawn at the SAME position so the two colours combine.
+' ============================================================
+
+' Read 32 bytes of DATA into sprite pattern N.
+FUNCTION BUILD_SPRITE(N)
+    PAT$ = ""
+    FOR I = 1 TO 32
+        READ B
+        PAT$ = PAT$ + CHR$(B)
+    NEXT I
+    SPRITE$(N) = PAT$
+END FUNCTION
+
+' Keep V within [LO, HI].
+FUNCTION CLAMP(V, LO, HI)
+    IF V < LO THEN
+        RETURN LO
+    END IF
+    IF V > HI THEN
+        RETURN HI
+    END IF
+    RETURN V
+END FUNCTION
+
+' ---------------- MAIN ----------------
+GLOBAL CATX
+GLOBAL CATY
+
+SCREEN 5, 2                 ' MSX2: 16x16 sprites
+COLOR 15, 4, 4
+CLS
+
+RESTORE
+BUILD_SPRITE(0)            ' face overlay (DATA block 1)
+BUILD_SPRITE(1)            ' body         (DATA block 2)
+
+CATX = 120
+CATY = 90
+
+WHILE 1
+    ' One cat = two sprites at the same spot, in two colours.
+    PUT SPRITE 0, (CATX, CATY), 15, 0     ' front: white face
+    PUT SPRITE 1, (CATX, CATY), 9, 1      ' behind: orange body
+
+    DIR = STICK(0)                        ' 0 = none, 1..8 = eight directions
+    IF DIR = 2 OR DIR = 3 OR DIR = 4 THEN
+        CATX = CATX + 2
+    END IF
+    IF DIR = 6 OR DIR = 7 OR DIR = 8 THEN
+        CATX = CATX - 2
+    END IF
+    IF DIR = 8 OR DIR = 1 OR DIR = 2 THEN
+        CATY = CATY - 2
+    END IF
+    IF DIR = 4 OR DIR = 5 OR DIR = 6 THEN
+        CATY = CATY + 2
+    END IF
+
+    CATX = CLAMP(CATX, 0, 240)
+    CATY = CLAMP(CATY, 0, 195)
+
+    IF STRIG(0) THEN
+        BREAK
+    END IF
+WEND
+
+' --- sprite pattern data: 32 bytes per 16x16 sprite (left column, then right column) ---
+' block 1: face overlay (eyes + nose)
+DATA 0,0,0,0,0,12,12,1,3,0,0,0,0,0,0,0
+DATA 0,0,0,0,0,96,96,128,192,0,0,0,0,0,0,0
+' block 2: cat body (ears, head, body, legs)
+DATA 96,112,120,127,127,127,127,127,63,31,31,31,24,24,56,112
+DATA 6,14,30,254,254,254,254,254,252,248,248,248,24,24,28,14

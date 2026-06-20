@@ -87,3 +87,24 @@ F(POS)`);
   assert.equal(f.variants.length, 1);
   assert.equal(f.variants[0].refSubst[0].param, "X");
 });
+
+test("座標タプル(x,y)と組み込み命令の保持: PUT SPRITE / SPRITE$", () => {
+  const { msx, diagnostics } = compile(`SCREEN 5, 2
+P$ = ""
+SPRITE$(0) = P$
+X = 100
+Y = 50
+PUT SPRITE 0, (X, Y), 15, 0`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  // 組み込み命令名・座標タプルは保持（変数のみ2文字名へ）
+  assert.match(msx, /PUT SPRITE 0,\([A-Z]+,[A-Z]+\),15,0/);
+  assert.match(msx, /SPRITE\$\(0\)=/); // SPRITE$ は改名されない
+});
+
+test("優先順位の括弧は保持される: (A+B)*C", () => {
+  const { msx } = compile(`A = 1
+B = 2
+C = 3
+R = (A + B) * C`);
+  assert.match(msx, /\([A-Z]+\+[A-Z]+\)\*/); // (..+..)* の括弧が残る
+});

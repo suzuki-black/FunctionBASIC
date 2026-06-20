@@ -136,6 +136,7 @@ export type Expr =
   | ArrayRef
   | Unary
   | Binary
+  | Group
   | CallExpr;
 
 export interface NumLit {
@@ -167,6 +168,11 @@ export interface Binary {
   op: string;
   left: Expr;
   right: Expr;
+}
+// 括弧式。優先順位の括弧 `(a+b)` も、座標タプル `(x, y)`（PSET/LINE/PUT SPRITE 等）も表す。
+export interface Group {
+  type: "Group";
+  items: Expr[];
 }
 export interface Arg {
   byRef: boolean;

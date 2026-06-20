@@ -299,6 +299,9 @@ fn build_native_menu<R: tauri::Runtime>(
                 Some(about_meta),
             )?,
             &PredefinedMenuItem::separator(handle)?,
+            &mi("lang-ja", "日本語", "日本語")?,
+            &mi("lang-en", "English", "English")?,
+            &PredefinedMenuItem::separator(handle)?,
             &PredefinedMenuItem::quit(handle, Some(l("FunctionBASICを終了", "Quit FunctionBASIC")))?,
         ],
     )?;
@@ -339,9 +342,6 @@ fn build_native_menu<R: tauri::Runtime>(
             &PredefinedMenuItem::separator(handle)?,
             &mi("fontup", "文字を大きく", "Increase Font")?,
             &mi("fontdown", "文字を小さく", "Decrease Font")?,
-            &PredefinedMenuItem::separator(handle)?,
-            &mi("lang-ja", "日本語", "日本語")?,
-            &mi("lang-en", "English", "English")?,
         ],
     )?;
     let run = Submenu::with_items(
@@ -375,6 +375,12 @@ fn set_menu_lang(app: tauri::AppHandle, lang: String) -> Result<(), String> {
     Ok(())
 }
 
+// ウィンドウタイトルを言語に合わせて差し替える。
+#[tauri::command]
+fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> {
+    window.set_title(&title).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::Emitter;
@@ -391,7 +397,8 @@ pub fn run() {
             launch_native_player,
             set_clipboard,
             save_dsk,
-            set_menu_lang
+            set_menu_lang,
+            set_window_title
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

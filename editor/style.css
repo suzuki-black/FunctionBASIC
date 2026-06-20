@@ -45,6 +45,7 @@ body {
 }
 .menu { position: relative; }
 .mtitle { display: block; padding: 5px 12px; color: #ccc; cursor: default; }
+.mtitle-app { font-weight: bold; color: #9cdcfe; }
 .menu.open .mtitle, .menu:hover .mtitle { background: #0e639c; color: #fff; }
 .dropdown {
   display: none; position: absolute; top: 100%; left: 0; min-width: 240px;

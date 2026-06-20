@@ -29,6 +29,8 @@ const I18N = {
     "splitright": "アクティブタブを右へ分割", "merge": "分割を統合", "reset": "タブ配置をリセット",
     "fontup": "文字を大きく", "fontdown": "文字を小さく",
     "runmsx": "▶ WebMSXで実行", "reverse": "MSX→構造化に逆変換", "helpsc": "キーボードショートカット…",
+    "m.app": "FunctionBASIC", "about": "FunctionBASICについて",
+    "about.body": "FunctionBASIC  v0.1.0\n\n構造化BASIC → MSX-BASIC 変換エディタ",
     "tb.save": "変換して保存", "tb.play": "▶ WebMSX", "tb.font": "文字",
     "tab.structured": "構造化BASIC", "tab.msx": "MSX-BASIC変換後", "tab.webmsx": "実行 (WebMSX)",
     "note.webmsx": "▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します", "note.copy": "📋 コピー",
@@ -60,6 +62,8 @@ const I18N = {
     "splitright": "Split Active Tab Right", "merge": "Unsplit (Merge)", "reset": "Reset Tab Layout",
     "fontup": "Increase Font", "fontdown": "Decrease Font",
     "runmsx": "▶ Run in WebMSX", "reverse": "Reverse: MSX → Structured", "helpsc": "Keyboard Shortcuts…",
+    "m.app": "FunctionBASIC", "about": "About FunctionBASIC",
+    "about.body": "FunctionBASIC  v0.1.0\n\nStructured BASIC → MSX-BASIC converter/editor",
     "tb.save": "Convert & Save", "tb.play": "▶ WebMSX", "tb.font": "Font",
     "tab.structured": "Structured BASIC", "tab.msx": "MSX-BASIC (output)", "tab.webmsx": "Run (WebMSX)",
     "note.webmsx": "Press ▶ WebMSX (or Ctrl/Cmd+Enter) to run here automatically.", "note.copy": "📋 Copy",
@@ -97,6 +101,14 @@ function applyI18n() {
   document.querySelectorAll("[data-lang]").forEach((mi) => {
     mi.classList.toggle("checked", mi.dataset.lang === lang);
   });
+  // ネイティブのウィンドウタイトルも言語連動（デスクトップ）
+  if (isDesktop()) {
+    try {
+      tauri().core.invoke("set_window_title", { title: t("title") });
+    } catch (e) {
+      logErr("set_window_title", e);
+    }
+  }
 }
 function setLang(l) {
   lang = l === "en" ? "en" : "ja";
@@ -919,6 +931,7 @@ function runAction(act) {
     case "run": return onPlayWebMSX();
     case "reverse": return onReverse();
     case "help": return alert(t("sc.title") + "\n\n" + t("sc.body"));
+    case "about": return alert(t("about.body"));
     case "lang-ja": return setLang("ja");
     case "lang-en": return setLang("en");
     default: logErr("runAction", "未知のアクション: " + act);

@@ -9,6 +9,15 @@
 <body>
   <!-- メニューバー（テキストエディタ風）。OSネイティブメニューと同じ操作を提供 -->
   <div id="menubar">
+    <div class="menu" data-menu="app">
+      <span class="mtitle mtitle-app" data-i18n="m.app">FunctionBASIC</span>
+      <div class="dropdown">
+        <div class="mi" data-act="about"><span data-i18n="about">FunctionBASICについて</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="lang-ja" data-lang="ja"><span>日本語</span></div>
+        <div class="mi" data-act="lang-en" data-lang="en"><span>English</span></div>
+      </div>
+    </div>
     <div class="menu" data-menu="file">
       <span class="mtitle" data-i18n="m.file">ファイル</span>
       <div class="dropdown">
@@ -41,9 +50,6 @@
         <div class="sep"></div>
         <div class="mi" data-act="fontup"><span data-i18n="fontup">文字を大きく</span></div>
         <div class="mi" data-act="fontdown"><span data-i18n="fontdown">文字を小さく</span></div>
-        <div class="sep"></div>
-        <div class="mi" data-act="lang-ja" data-lang="ja"><span>日本語</span></div>
-        <div class="mi" data-act="lang-en" data-lang="en"><span>English</span></div>
       </div>
     </div>
     <div class="menu" data-menu="run">

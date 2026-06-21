@@ -221,6 +221,9 @@ function collectStmtVars(
       E(s.cond);
       s.body.forEach((x) => collectStmtVars(x, funcNames, vars, arrays));
       return;
+    case "On":
+      if (s.arg) E(s.arg);
+      return;
     case "Global":
     case "Break":
     case "Continue":
@@ -439,9 +442,11 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       case "Builtin": {
         let out = s.name;
         let prev = "name";
-        // 拡張呼び出し（CALL <名> / _<名>）は命令名直後の "(...)" を詰めて出す:
-        // 例 "CALL VOICE(0)" / "_PLAY(0)"（節キーワード TO の "TO (..)" とは別扱い）。
+        // 拡張呼び出し（CALL <名> / _<名>）と KEY(n)/STRIG(n) のトラップ文は、
+        // 命令名直後の "(...)" を詰めて出す: 例 "CALL VOICE(0)" / "KEY(1) ON"
+        // （節キーワード TO の "TO (..)" とは別扱い）。
         const isExt = s.name === "CALL" || s.name.startsWith("_");
+        const tightParen = isExt || s.name === "KEY" || s.name === "STRIG";
         const needSpace = (): boolean => prev !== "sep" && prev !== "op";
         for (const p of s.parts) {
           if (p.kind === "sep") {
@@ -462,12 +467,23 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
             // 区切り(, ;)/記号直後以外（名前直後・式直後）は空白で区切る: 例 "PUT SPRITE 0"
             const txt = emitExpr(p.expr, sc);
             const tight =
-              isExt && (prev === "name" || prev === "extname") && txt.startsWith("(");
+              tightParen && (prev === "name" || prev === "extname") && txt.startsWith("(");
             out += (needSpace() && !tight ? " " : "") + txt;
             prev = "expr";
           }
         }
         return out;
+      }
+      case "On": {
+        // 飛び先: ユーザ関数名は入口行へ解決（@@ENTRY:key@@）、リテラル(0等)はそのまま。
+        const tgt = (t: { fn?: string; lit?: string }) =>
+          t.fn != null ? `@@ENTRY:${t.fn}|@@` : String(t.lit);
+        const list = s.targets.map(tgt).join(",");
+        let head: string;
+        if (s.event === "") head = `ON ${emitExpr(s.arg!, sc)}`;
+        else if (s.event === "INTERVAL") head = `ON INTERVAL=${emitExpr(s.arg!, sc)}`;
+        else head = `ON ${s.event}`;
+        return `${head} ${s.dispatch} ${list}`;
       }
       case "Global":
         return null; // 出力なし
@@ -676,6 +692,12 @@ function finishTransform(ctx: any): TransformResult {
         case "Builtin":
           s.parts.forEach((p) => p.kind === "expr" && scanExpr(p.expr, sc));
           break;
+        case "On":
+          if (s.arg) scanExpr(s.arg, sc);
+          // 飛び先のユーザ関数を無引数 variant として登録（入口行を確保）
+          for (const t of s.targets)
+            if (t.fn) registerVariant(t.fn, [], sc, t);
+          break;
         case "Dim":
           s.decls.forEach((d) => d.dims.forEach((x) => scanExpr(x, sc)));
           break;
@@ -820,6 +842,8 @@ function finishTransform(ctx: any): TransformResult {
         return !!s.expr && exprHasUserCall(s.expr);
       case "Builtin":
         return s.parts.some((p) => p.kind === "expr" && exprHasUserCall(p.expr));
+      case "On":
+        return !!s.arg && exprHasUserCall(s.arg);
       case "Call":
         return true;
       default:
@@ -909,6 +933,7 @@ function finishTransform(ctx: any): TransformResult {
         case "Return":
         case "Dim":
         case "Builtin":
+        case "On":
           items.push({ kind: "line", text: simpleStmtText(s, sc)! });
           break;
         case "Break": {

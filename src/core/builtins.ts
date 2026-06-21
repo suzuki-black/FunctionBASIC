@@ -36,6 +36,10 @@ export const BUILTIN_STATEMENTS: ReadonlySet<string> = new Set([
   "SPRITE",
   "KANJI", // PUT KANJI（漢字表示・MSX2）
   "KEY",
+  "STRIG", // STRIG(n) ON/OFF/STOP（トリガ割込）。BUILTIN_FUNCTIONS にも掲載
+  "INTERVAL", // INTERVAL ON/OFF/STOP（時間割込）
+  "ERROR", // ERROR n（エラー発生）/ ON ERROR GOTO
+  "RESUME", // RESUME / RESUME NEXT / RESUME 0（エラーハンドラからの復帰）
   "FILES",
   "LOAD",
   "SAVE",

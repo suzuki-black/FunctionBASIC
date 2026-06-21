@@ -1,0 +1,51 @@
+' ============================================================
+'  Event traps via ON ... GOSUB (FunctionBASIC, chunk 5)
+'
+'  In Structured BASIC there are no line numbers to GOSUB to, so an
+'  interrupt handler is just a FUNCTION: name it after GOSUB and the
+'  transpiler resolves it to the handler's entry line.
+'
+'    ON INTERVAL=<n> GOSUB <fn>   ' time interrupt every n/60 s
+'    ON STRIG GOSUB <fn>          ' joystick / space trigger
+'    ON KEY GOSUB <f1>,<f2>,...   ' function keys
+'    ON SPRITE GOSUB <fn>         ' sprite collision
+'
+'  Each device also needs its trap turned ON (INTERVAL ON, STRIG(0) ON …).
+'  Runs on any MSX.
+' ============================================================
+
+' INTERVAL handler: tick once per second.
+FUNCTION TICK()
+    GLOBAL SECS
+    SECS = SECS + 1
+END FUNCTION
+
+' STRIG handler: remember that the trigger was pressed.
+FUNCTION HITTRIG()
+    GLOBAL HITS
+    HITS = HITS + 1
+END FUNCTION
+
+' ---------------- MAIN ----------------
+GLOBAL SECS
+GLOBAL HITS
+
+SCREEN 0
+WIDTH 40
+CLS
+PRINT "event traps: ON INTERVAL / ON STRIG"
+PRINT "press space (or trigger) to count hits"
+PRINT
+
+SECS = 0
+HITS = 0
+
+ON INTERVAL = 60 GOSUB TICK     ' ~once per second (60 interrupts)
+INTERVAL ON
+ON STRIG GOSUB HITTRIG
+STRIG(0) ON
+
+WHILE 1
+    LOCATE 0, 4
+    PRINT "seconds:"; SECS; "   hits:"; HITS; "    "
+WEND

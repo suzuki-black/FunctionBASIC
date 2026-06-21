@@ -65,7 +65,17 @@
 - `_` 始まりの識別子（`_MUSIC` 等）は字句解析で 1 トークン化（[lexer.ts](../src/lexer/lexer.ts) の `isIdentStart` が先頭 `_` を許可）し、パーサが文頭の `_…` を拡張ステートメントとして `parseBuiltinStmt` に回す。命令名 `_MUSIC` はそのまま出力。
 - 引数の括弧は命令名に詰めて出力（`CALL VOICE(0)` / `_PLAY(0)`）。引数中のユーザ変数は通常どおり 2 文字名へ。
 - **末尾修飾の `ON`/`OFF`** は予約語（[keywords.ts](../src/lexer/keywords.ts)）。`_TURBO ON`/`_TURBO OFF`（turbo R の R800/Z80 切替）や `SPRITE ON`/`STOP ON` 等で `word` として素通しする。`ON`/`OFF` は完全一致のみ予約（`ONX`/`OFFSET` 等の変数は通常どおり改名）。`STOP` は文として既存（`SPRITE STOP` も保持）。
-- 注: イベントトラップ本体（`INTERVAL`、`KEY(n)`/`STRIG(n)` のトラップ文、`ON SPRITE GOSUB`/`ON … GOTO`/`ON ERROR GOTO`）はソースに行番号が無い構造化への対応付けが要設計のため別途対応（`SPRITE ON`/`KEY ON` 等の単純な有効/無効は上記で通る）。
+#### イベントトラップ（ON … GOSUB は飛び先＝FUNCTION）
+
+構造化BASICにはGOSUB先の行番号が無いので、**割込ハンドラは FUNCTION** で書き、`ON … GOSUB <関数名>` の飛び先に関数名を置く。変換器が関数の入口行へ解決する（`@@ENTRY` 機構）:
+
+- `ON SPRITE GOSUB fn` / `ON STOP GOSUB fn`
+- `ON INTERVAL=<n> GOSUB fn`
+- `ON KEY GOSUB f1,f2,…` / `ON STRIG GOSUB f0,f1,…`（複数ハンドラ）
+- `ON ERROR GOTO fn`（※ハンドラ FUNCTION は本体内で `RESUME` する想定。RETURN で終わると GOTO 先で「RETURN without GOSUB」になる）
+- 計算分岐 `ON <式> GOTO|GOSUB f1,f2,…`、`ON ERROR GOTO 0`（リテラルはそのまま）
+- 有効/無効: `SPRITE ON/OFF/STOP`・`INTERVAL ON/OFF/STOP`・`KEY(n) ON/OFF/STOP`・`STRIG(n) ON/OFF/STOP`・`STOP ON/OFF`。`STRIG`/`INTERVAL`/`ERROR`/`RESUME` は文として `BUILTIN_STATEMENTS` に追加（`STRIG` は関数とも両立）。`KEY(n)`/`STRIG(n)` の括弧は命令名に詰めて出力。
+- 飛び先は原則ユーザ関数名。未定義名は `E_UNKNOWN_FUNCTION`。例: [`examples/event-traps.msxb`](../examples/event-traps.msxb)。
 - FM/ADPCM を実際に鳴らすには **MSX-MUSIC / MSX-AUDIO ハードウェア**が必要（変換は機種非依存で常に通る）。例: [`examples/msx-music-fm.msxb`](../examples/msx-music-fm.msxb)。
 
 #### 予約システム変数

@@ -37,6 +37,7 @@ export type Stmt =
   | IfBlock
   | ForBlock
   | WhileBlock
+  | OnStmt
   | IncludeStmt;
 
 export interface LetStmt {
@@ -101,6 +102,21 @@ export interface BuiltinStmt {
   type: "Builtin";
   name: string;
   parts: BuiltinPart[];
+  pos: Position;
+}
+
+// イベントトラップ／計算分岐: ON SPRITE GOSUB fn / ON x GOTO f1,f2 / ON ERROR GOTO fn 等。
+// 飛び先(target)は原則ユーザ関数名(fn)。ON ERROR GOTO 0 等のリテラルは lit に保持。
+export interface OnTarget {
+  fn?: string;
+  lit?: string;
+}
+export interface OnStmt {
+  type: "On";
+  event: string; // "SPRITE"|"KEY"|"STRIG"|"STOP"|"INTERVAL"|"ERROR"|"" (空=計算分岐)
+  arg?: Expr; // INTERVAL=<arg> の間隔、または計算分岐 ON <arg> の式
+  dispatch: "GOTO" | "GOSUB";
+  targets: OnTarget[];
   pos: Position;
 }
 

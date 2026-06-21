@@ -37,6 +37,14 @@ test("例: msx2-graphics-sound.msxb はエラーなしで変換される", () =>
   assert.match(msx, /PLAY "","","V15 L32 O5 G"/);
 });
 
+test("例: event-traps.msxb は ON … GOSUB を入口行へ解決して変換される", () => {
+  const { msx, diagnostics } = compileExample("event-traps.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /ON INTERVAL=60 GOSUB \d+/);
+  assert.match(msx, /ON STRIG GOSUB \d+/);
+  assert.match(msx, /STRIG\(0\) ON/);
+});
+
 test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () => {
   const { msx, diagnostics } = compileExample("turbo-r.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

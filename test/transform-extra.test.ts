@@ -117,6 +117,63 @@ COPY (0,0)-(15,15) TO (100,100)`);
   assert.match(msx, /COPY \(0,0\)-\(15,15\) TO \(100,100\)/);
 });
 
+test("イベントトラップ: ON … GOSUB の飛び先関数が入口行へ解決される", () => {
+  const { msx, diagnostics } = compile(`FUNCTION ONHIT()
+    GLOBAL SC
+    SC = SC + 1
+END FUNCTION
+FUNCTION ONTICK()
+    GLOBAL TK
+    TK = TK + 1
+END FUNCTION
+GLOBAL SC
+GLOBAL TK
+ON SPRITE GOSUB ONHIT
+SPRITE ON
+ON INTERVAL = 60 GOSUB ONTICK
+INTERVAL ON
+ON KEY GOSUB ONHIT, ONTICK
+ON ERROR GOTO ONHIT`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  // ONHIT=1000台 / ONTICK=2000台 に解決され、ハンドラ名は出力に残らない
+  assert.match(msx, /ON SPRITE GOSUB 1000/);
+  assert.match(msx, /ON INTERVAL=60 GOSUB 2000/);
+  assert.match(msx, /ON KEY GOSUB 1000,2000/);
+  assert.match(msx, /ON ERROR GOTO 1000/);
+});
+
+test("イベントトラップ: 計算分岐 ON x GOTO/GOSUB と ON ERROR GOTO 0", () => {
+  const { msx, diagnostics } = compile(`FUNCTION A1()
+    GLOBAL G
+    G = 1
+END FUNCTION
+FUNCTION A2()
+    GLOBAL G
+    G = 2
+END FUNCTION
+GLOBAL G
+X = 1
+ON X GOTO A1, A2
+ON X GOSUB A1, A2
+ON ERROR GOTO 0`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /ON [A-Z]+ GOTO 1000,2000/); // ON <var> GOTO 行,行
+  assert.match(msx, /ON [A-Z]+ GOSUB 1000,2000/);
+  assert.match(msx, /ON ERROR GOTO 0/); // 数値リテラルはそのまま
+});
+
+test("イベントトラップ: デバイス有効/無効（INTERVAL/STRIG(n)/KEY(n)）", () => {
+  const { msx, diagnostics } = compile(`INTERVAL ON
+INTERVAL STOP
+STRIG(0) ON
+KEY(1) STOP
+ERROR 5
+RESUME NEXT`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  for (const re of [/INTERVAL ON\b/, /INTERVAL STOP\b/, /STRIG\(0\) ON\b/, /KEY\(1\) STOP\b/, /ERROR 5\b/, /RESUME NEXT\b/])
+    assert.match(msx, re);
+});
+
 test("MSX2+/turboR: ON/OFF/STOP 修飾語は改名されず保持される", () => {
   const { msx, diagnostics } = compile(`_TURBO ON
 _TURBO OFF

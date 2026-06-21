@@ -20,6 +20,7 @@ import type {
   IfBlock,
   ForBlock,
   WhileBlock,
+  OnTarget,
 } from "../ast/nodes.ts";
 
 export interface ParseResult {
@@ -400,6 +401,44 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "While", cond, body, loopId: id, pos };
   };
 
+  // ON SPRITE GOSUB fn / ON INTERVAL=n GOSUB fn / ON KEY GOSUB f1,f2 /
+  // ON ERROR GOTO fn / ON <式> GOTO|GOSUB f1,f2…（飛び先は原則ユーザ関数名）
+  const ON_EVENTS = new Set(["SPRITE", "KEY", "STRIG", "STOP", "INTERVAL", "ERROR"]);
+  const parseOn = (pos: Position): Stmt => {
+    advance(); // ON
+    let event = "";
+    let arg: Expr | undefined;
+    if (checkKind("IDENT") && ON_EVENTS.has(cur().value)) {
+      event = advance().value;
+      if (event === "INTERVAL") {
+        expectOp("=", "ON INTERVAL");
+        arg = parseExpr();
+      }
+    } else {
+      arg = parseExpr(); // 計算分岐 ON <式> GOTO/GOSUB
+    }
+    // 分岐種別（GOTO/GOSUB は字句上は IDENT）
+    let dispatch: "GOTO" | "GOSUB" = "GOSUB";
+    if (checkKind("IDENT") && (cur().value === "GOTO" || cur().value === "GOSUB")) {
+      dispatch = advance().value as "GOTO" | "GOSUB";
+    } else {
+      report("E_SYNTAX_EXPECT", cur().pos, { ctx: "ON", v: "GOSUB" });
+    }
+    // 飛び先リスト（関数名 or 数値リテラル）
+    const targets: OnTarget[] = [];
+    const one = (): void => {
+      if (checkKind("IDENT")) targets.push({ fn: advance().value });
+      else if (checkKind("NUMBER")) targets.push({ lit: advance().value });
+      else report("E_SYNTAX_IDENT", cur().pos, { ctx: dispatch });
+    };
+    one();
+    while (checkOp(",")) {
+      advance();
+      one();
+    }
+    return { type: "On", event, arg, dispatch, targets, pos };
+  };
+
   const parseStatement = (): Stmt | null => {
     const t = cur();
     const pos = t.pos;
@@ -418,6 +457,11 @@ export function parse(tokens: Token[]): ParseResult {
           return parseFor(pos);
         case "WHILE":
           return parseWhile(pos);
+        case "ON": {
+          const s = parseOn(pos);
+          endOfStmt("ON");
+          return s;
+        }
         case "RETURN": {
           const s = parseReturn(pos);
           endOfStmt("RETURN");

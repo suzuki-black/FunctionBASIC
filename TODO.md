@@ -8,12 +8,15 @@ The transpiler output for MSX-MUSIC (FM) is **confirmed correct**: pasting the
 converted BASIC into MSXPen (MSX2+ America) plays the FM music. The limitation is
 in our *embedded* player only.
 
-- [ ] **FM (MSX-MUSIC) does not reliably sound in the embedded WebMSX.** We embed
-  webmsx.org as a **cross-origin iframe**, which can only be driven by rebooting
-  with a data-ZIP URL each run; the machine/extension combo for FM
-  (`MACHINE=MSX2PA` + `PRESETS=MSXMUSIC`, set in `editor/app.js`) did not produce
-  FM sound this way, although the same program plays in MSXPen. Verify FM in
-  **MSXPen / openMSX / real hardware** for now.
+- [ ] **FM (MSX-MUSIC) does not sound in the embedded WebMSX.** We embed
+  webmsx.org as a **cross-origin iframe**, drivable only by rebooting with a
+  data-ZIP URL each run. None of these made FM sound in the iframe (all tried
+  and reverted): `MACHINE=MSX2PA` (MSX2+ America) + `PRESETS=MSXMUSIC`; typing
+  the run after boot via `BASIC_ENTER=RUN"..."` instead of `BASIC_RUN`. The same
+  program **does** play in MSXPen (MSX2+ America), so the transpiler output is
+  correct. The run URL is back to the original `DISKA_FILES_URL` + `BASIC_RUN`.
+  Verify FM in **MSXPen / openMSX / real hardware** for now; the real fix is the
+  same-origin embedding below.
 - [ ] **MSX-AUDIO (Y8950 / OPL1)** is not emulated by WebMSX at all → verify on
   **openMSX** or real hardware. (`CALL AUDIO` etc. transpile correctly.)
 - [ ] **turbo R `_TURBO`**: the run machine is MSX2+, so `examples/turbo-r.msxb`

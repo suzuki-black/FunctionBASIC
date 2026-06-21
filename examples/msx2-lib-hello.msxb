@@ -1,0 +1,29 @@
+' ============================================================
+'  MSX2 helper library — minimal "hello sprite".
+'  The smallest useful program with INCLUDE "lib/msx2.msxb":
+'  set up the screen, a palette colour, define a 2-plane sprite,
+'  and show it. MSX2 or later.
+' ============================================================
+INCLUDE "lib/msx2.msxb"
+
+M2_INIT()                 ' SCREEN 5, 16x16 sprites
+M2_PAL(8, 7, 4, 0)        ' colour 8 -> orange (the cat body)
+
+RESTORE
+M2_DEFSPR(0)              ' face overlay
+M2_DEFSPR(1)              ' body
+
+' two planes stacked at the same spot = a 2-colour sprite
+M2_SPR(0, 120, 90, 15)    ' white face
+M2_SPR(1, 120, 90, 8)     ' orange body
+
+' keep the picture on screen
+WHILE 1
+    M2_WAIT(10)
+WEND
+
+' --- sprite pattern data (32 bytes each) ---
+DATA 0,0,0,0,0,12,12,1,3,0,0,0,0,0,0,0
+DATA 0,0,0,0,0,96,96,128,192,0,0,0,0,0,0,0
+DATA 96,112,120,127,127,127,127,127,63,31,31,31,24,24,56,112
+DATA 6,14,30,254,254,254,254,254,252,248,248,248,24,24,28,14

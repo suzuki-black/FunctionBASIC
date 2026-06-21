@@ -1,0 +1,30 @@
+' ============================================================
+'  MSX2 helper library — palette cycling (no sprites).
+'  Draws 15 colour bars once, then animates by rewriting the
+'  palette with M2_PAL each frame — the bars flow through hues
+'  without redrawing. Shows M2_INIT / M2_PAL / M2_WAIT.
+'  MSX2 or later.
+' ============================================================
+INCLUDE "lib/msx2.msxb"
+
+GLOBAL T
+
+M2_INIT()                       ' SCREEN 5
+
+' paint 15 vertical bars, one per colour 1..15
+FOR I = 1 TO 15
+    LINE (I * 16, 0)-(I * 16 + 15, 211), I, BF
+NEXT I
+
+T = 0
+WHILE 1
+    ' shift every palette entry's R/G/B over time (each 0..7)
+    FOR I = 1 TO 15
+        R = (I + T) MOD 8
+        G = (I + T + 3) MOD 8
+        B = (I + T + 5) MOD 8
+        M2_PAL(I, R, G, B)
+    NEXT I
+    T = T + 1
+    M2_WAIT(4)
+WEND

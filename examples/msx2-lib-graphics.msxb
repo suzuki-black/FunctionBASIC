@@ -1,0 +1,38 @@
+' ============================================================
+'  MSX2 helper library — drawn (non-sprite) animation.
+'  Shows the screen/palette/double-buffer/timing/SE helpers with
+'  plain graphics: a filled circle slides back and forth, drawn
+'  flicker-free with M2_FRAME/M2_SHOW. MSX2 or later.
+' ============================================================
+INCLUDE "lib/msx2.msxb"
+
+GLOBAL X
+GLOBAL DX
+
+M2_INIT()                 ' SCREEN 5, double-buffer ready
+M2_PAL(1, 0, 0, 1)        ' background -> dark blue
+M2_PAL(8, 7, 2, 0)        ' ball -> orange
+
+X = 30
+DX = 4
+
+WHILE 1
+    M2_FRAME()            ' draw on the hidden page (auto CLS)
+    CIRCLE (X, 100), 18, 8
+    PAINT (X, 100), 8
+    M2_SHOW()             ' flip into view (no flicker)
+
+    X = X + DX
+    IF X > 225 THEN
+        X = 225
+        DX = 0 - DX
+        M2_SE(120)
+    END IF
+    IF X < 30 THEN
+        X = 30
+        DX = 0 - DX
+        M2_SE(200)
+    END IF
+
+    M2_WAIT(2)
+WEND

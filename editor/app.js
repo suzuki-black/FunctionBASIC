@@ -432,6 +432,10 @@ async function onSave() {
 // data: URL の ZIP で直接渡して「自動ロード→自動RUN」させる。同梱せずリンクのみ
 // なのでライセンス清潔。localhost/CORS/ドラッグ/保存ダイアログ/手動RUN すべて不要。
 const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
+// 起動マシン。turbo R は MSX-MUSIC(FM) 内蔵かつ最上位互換なので、FM の例も
+// turbo R の `_TURBO` の例も含め全例が動く。他候補: "MSX2P"(MSX2+/FM内蔵)/"MSX2"/"MSX1"。
+// 注: MSX-AUDIO(Y8950) は WebMSX 未対応のため CALL AUDIO 系は実機/openMSX でのみ可。
+const WEBMSX_MACHINE = "MSXTR";
 
 // WebMSX へ渡すプログラムは MSX 上で打鍵されないが、ディスク内ファイル名・URL を
 // 確実にするため ASCII(改行/タブのみ) に整える。日本語コメント等は実行に不要。
@@ -526,7 +530,8 @@ async function webmsxAutorunUrl(name, asciiProgram) {
   const zip = await zipForWebmsx(name, data);
   const dataUrl = "data:application/zip;base64," + toBase64(zip);
   return (
-    `${WEBMSX_URL}?DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
+    `${WEBMSX_URL}?MACHINE=${encodeURIComponent(WEBMSX_MACHINE)}` +
+    `&DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
     `&BASIC_RUN=${name}`
   );
 }

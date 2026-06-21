@@ -1,38 +1,38 @@
 ' ============================================================
-'  MSX-MUSIC (FM) demo via the CALL extended statement.
+'  MSX-MUSIC (FM) demo via CALL MUSIC / CALL VOICE / PLAY #2.
 '
-'  `CALL <name>` (and its short form `_<name>`) is how MSX reaches
-'  cartridge / built-in extensions. MSX-MUSIC and MSX-AUDIO are
-'  driven this way. The transpiler passes these through verbatim:
-'  the extension name (MUSIC / AUDIO / …) is never renamed, only
-'  your own variables are.
+'  To actually use the FM sound chip (YM2413) from BASIC:
+'    CALL MUSIC(<drums>,0,<ch1>,<ch2>,...)  initialise FM
+'    CALL VOICE(@n,@n,...)                   pick an FM instrument
+'    PLAY #2, "...","..."                    play on device #2 (FM)
+'  Plain PLAY (no #2) is the PSG; FM needs PLAY #2.
+'  Inside the MML you can also switch instrument with @n.
 '
-'  REQUIRES a machine with MSX-MUSIC (FM-PAC, or built-in FM on an
-'  MSX2+/turbo R). On a plain MSX2 without FM, CALL MUSIC errors.
+'  REQUIRES MSX-MUSIC (FM). In the in-app WebMSX this works because the
+'  run machine is MSX2+ (WebMSX only sounds FM in MSX2+ mode).
 ' ============================================================
 
-' A short three-voice FM phrase (channels A/B/C of the FM chip).
+' A short three-voice FM phrase on FM channels 1-3 (device #2).
+' V15 = maximum MML volume on each FM channel (V0..V15).
 FUNCTION FANFARE()
-    PLAY "T130 O4 L8 V15 CEGEC", "T130 O3 L4 V11 CG", "T130 O5 L8 V9 GCEGC"
+    PLAY #2, "V15 T130 O4 L8 CEGEC", "V15 T130 O3 L4 CG", "V15 T130 O5 L8 GCEGC"
 END FUNCTION
 
 ' ---------------- MAIN ----------------
 SCREEN 0
 WIDTH 40
 CLS
-PRINT "MSX-MUSIC (FM) via CALL MUSIC"
-PRINT "(needs MSX-MUSIC hardware)"
+PRINT "MSX-MUSIC (FM) via PLAY #2"
 PRINT
 
-CALL MUSIC                 ' hand PLAY over to the FM sound chip
-                           ' the short form  _MUSIC  is identical
+CALL MUSIC(0,0,1,1,1)      ' FM on, three melody channels
+CALL VOICE(@7,@7,@7)       ' FM instrument @7 = Trumpet, on channels 1-3
 
-FOR REPEAT = 1 TO 3
+FOR REPEAT = 1 TO 2
     PRINT "playing"; REPEAT
     FANFARE()
-    WHILE PLAY(0)          ' wait until the FM queue drains
-    WEND
-    FOR PAUSE = 1 TO 600
+    ' let the phrase ring out (it plays in the background on the FM chip)
+    FOR PAUSE = 1 TO 2500
     NEXT PAUSE
 NEXT REPEAT
 

@@ -9,6 +9,9 @@
 '  (TIME, in 1/60 s ticks) so you can see R800 is faster.
 '
 '  REQUIRES an MSX turbo R machine. On other machines _TURBO errors.
+'  NOTE: the in-app WebMSX runs as MSX2+ by default (so the FM example
+'  can sound), so to try THIS example switch the machine to turbo R via
+'  the WebMSX gear (settings) menu.
 ' ============================================================
 
 ' Spin a fixed amount of work and return how many ticks it took.

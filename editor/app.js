@@ -432,10 +432,15 @@ async function onSave() {
 // data: URL の ZIP で直接渡して「自動ロード→自動RUN」させる。同梱せずリンクのみ
 // なのでライセンス清潔。localhost/CORS/ドラッグ/保存ダイアログ/手動RUN すべて不要。
 const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
-// 起動マシン。turbo R は MSX-MUSIC(FM) 内蔵かつ最上位互換なので、FM の例も
-// turbo R の `_TURBO` の例も含め全例が動く。他候補: "MSX2P"(MSX2+/FM内蔵)/"MSX2"/"MSX1"。
+// 起動マシン。WebMSX は MSX2+ モードでないと FM音源が鳴らない。さらに MSX2P(日本)は
+// MSX-MUSIC を足しても WebMSX 上で FM が鳴らなかったが、MSX2PA(MSX2+ America)では鳴る
+// （MSXPen が America 構成で鳴る、というユーザ切り分けと一致）。PRESETS=MSXMUSIC も併用。
+// 参考: https://x.com/BasicProgrammer/status/1327497588547874816 と WebMSX README。
+// 代償: turbo R 専用の `_TURBO ON/OFF`(examples/turbo-r.msxb) は MSX2+ では動かない
+//   → その例だけ WebMSX の⚙でマシンを turbo R に切替える（将来は設定画面で例ごとに指定）。
 // 注: MSX-AUDIO(Y8950) は WebMSX 未対応のため CALL AUDIO 系は実機/openMSX でのみ可。
-const WEBMSX_MACHINE = "MSXTR";
+const WEBMSX_MACHINE = "MSX2PA";
+const WEBMSX_PRESETS = "MSXMUSIC";
 
 // WebMSX へ渡すプログラムは MSX 上で打鍵されないが、ディスク内ファイル名・URL を
 // 確実にするため ASCII(改行/タブのみ) に整える。日本語コメント等は実行に不要。
@@ -531,6 +536,7 @@ async function webmsxAutorunUrl(name, asciiProgram) {
   const dataUrl = "data:application/zip;base64," + toBase64(zip);
   return (
     `${WEBMSX_URL}?MACHINE=${encodeURIComponent(WEBMSX_MACHINE)}` +
+    `&PRESETS=${encodeURIComponent(WEBMSX_PRESETS)}` +
     `&DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
     `&BASIC_RUN=${name}`
   );

@@ -108,6 +108,15 @@ export function tokenize(source: string): LexResult {
       continue;
     }
 
+    // MSX-MUSIC のボイス参照 @nn（CALL VOICE(@3,@23) 等）。文字列外の '@<数字>' は
+    // 音色番号リテラルとして raw を保持して素通しする（MML 文字列内の @ は STRING 側で保持）。
+    if (c === "@" && isDigit(peek(1))) {
+      let raw = advance(); // @
+      while (i < n && isDigit(peek())) raw += advance();
+      push("NUMBER", raw.toUpperCase(), raw, start);
+      continue;
+    }
+
     // 数値（10進・&H/&O/&B）
     if (isDigit(c) || (c === "." && isDigit(peek(1))) || c === "&") {
       let raw = "";

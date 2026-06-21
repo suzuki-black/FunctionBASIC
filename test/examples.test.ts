@@ -55,8 +55,9 @@ test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () =>
 test("例: msx-music-fm.msxb は CALL MUSIC / FM PLAY を保持して変換される", () => {
   const { msx, diagnostics } = compileExample("msx-music-fm.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
-  assert.match(msx, /CALL MUSIC/); // 拡張命令名は素通し
-  assert.match(msx, /PLAY "T130 [^"]*","[^"]*","[^"]*"/); // FM の3声 PLAY
+  assert.match(msx, /CALL MUSIC\(0,0,1,1,1\)/); // FM 初期化（引数付き）
+  assert.match(msx, /CALL VOICE\(@7,@7,@7\)/); // 音色設定（@n は素通し・@7=Trumpet）
+  assert.match(msx, /PLAY#2,"V15 T130 [^"]*","[^"]*","[^"]*"/); // FM は device #2 で3声、V15最大音量
 });
 
 test("例: msx2-text-format.msxb は印字書式/型変換を保持して変換される", () => {

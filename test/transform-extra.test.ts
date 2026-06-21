@@ -210,6 +210,22 @@ CALL PCMPLAY(VARPTR(N), 3)`);
   assert.ok(!/\bN\b/.test(msx), "変数 N は改名される");
 });
 
+test("MSX-MUSIC: FM 初期化/音色/PLAY#2 と @n ボイス、複数語CALL名", () => {
+  const { msx, diagnostics } = compile(`CALL MUSIC(0,0,1,1,1)
+CALL VOICE(@1,@7,@16)
+MYSRC = 1
+CALL VOICE COPY(MYSRC, MYDST)
+CALL COPY PCM(0, 1)
+PLAY #2, "@1 O4 CEG", "O3 CG", "O5 GCE"`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /CALL MUSIC\(0,0,1,1,1\)/);
+  assert.match(msx, /CALL VOICE\(@1,@7,@16\)/); // @n ボイス番号は素通し
+  assert.match(msx, /CALL VOICE COPY\([A-Z]+,[A-Z]+\)/); // 複数語命令名は保持、引数変数のみ改名
+  assert.match(msx, /CALL COPY PCM\(0,1\)/);
+  assert.match(msx, /PLAY#2,"@1 O4 CEG"/); // FM は device #2、MML 内 @ も文字列で保持
+  assert.ok(!/MYSRC|MYDST/.test(msx), "引数の変数は改名される");
+});
+
 test("CALL 拡張: _ 短縮形（_MUSIC = CALL MUSIC）も素通しされる", () => {
   const { msx, diagnostics } = compile(`_MUSIC
 _AUDIO

@@ -456,8 +456,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
             if (/^[A-Za-z]/.test(p.word)) {
               // 節キーワード(TO/NEW 等)は語として空白で区切る: 例 "COPY ... TO ..."
               out += (needSpace() ? " " : "") + p.word;
-              // CALL の拡張命令名は直後の "(" を詰めるため専用の状態にする
-              prev = isExt && prev === "name" ? "extname" : "expr";
+              // CALL の拡張命令名（複数語可）は直後の "(" を詰めるため専用の状態にする
+              prev =
+                isExt && (prev === "name" || prev === "extname") ? "extname" : "expr";
             } else {
               // 記号(=,#)は隙間なく付ける: 例 "COLOR=(...)" / "PRINT #1"
               out += p.word;

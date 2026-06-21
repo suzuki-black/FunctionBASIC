@@ -307,9 +307,15 @@ export function parse(tokens: Token[]): ParseResult {
         parts.push({ kind: "word", word: advance().value });
       } else if (clauseWordHere) {
         parts.push({ kind: "word", word: advance().value });
-      } else if (cmd === "CALL" && parts.length === 0 && checkKind("IDENT")) {
-        // CALL <拡張命令名> … の拡張命令名（MUSIC/AUDIO/VOICE 等）は改名しない。
-        // 拡張は機種/カートリッジ依存で開いているため、表に無くても名前を保持する。
+      } else if (
+        (cmd === "CALL" || cmd.startsWith("_")) &&
+        checkKind("IDENT") &&
+        parts.every((p) => p.kind === "word")
+      ) {
+        // CALL <拡張命令名> … の拡張命令名は改名しない。複数語の命令名
+        // （CALL VOICE COPY / CALL COPY PCM / CALL MK VOICE 等）に対応するため、
+        // 命令名の語が連続する間（先頭からの IDENT の連なり）を語として取り込む。
+        // 拡張は機種/カートリッジ依存で開くため、表に無くても名前を保持する。
         parts.push({ kind: "word", word: advance().value });
       } else if (
         // LINE ...,B / ...,BF の末尾オプション（箱・塗り箱）。B/BF は変数名にも

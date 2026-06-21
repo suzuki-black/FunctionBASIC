@@ -188,18 +188,18 @@ PRINT "GAME OVER"
 
 ## Roadmap
 
-FunctionBASIC is early and developing. Planned directions (no fixed dates):
+FunctionBASIC is early and developing. **`[x]` = done, `[ ]` = not yet** (no fixed dates):
 
-- **Windows support** — the desktop app is built with Tauri to target both Windows and macOS; package, sign, and test the Windows build (development so far has been on macOS).
-- **Native MSX playback** — run on a native emulator in addition to the embedded webMSX: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script (Windows / macOS), and integrate a native Windows MSX player.
-- **Settings screen** — *initial version done*: an in-app Settings dialog (app menu → Settings…) for language, font size, and the webMSX run machine / `PRESETS` / URL (so you can switch to turbo R or an FM-capable machine per taste). Still planned: editing the built-in command/function table (with reset to defaults) and native-player / emulator paths.
-- **Language growth** — richer Structured BASIC: `SELECT/CASE`, more string helpers, constants, local arrays, and ergonomic improvements.
-- **Built-in coverage by generation** — completing the MSX/MSX2/MSX2+/turboR command set. Done so far: text/printing/file I/O (`PRINT USING`, `LPRINT`, `LINE INPUT`, `OPEN/CLOSE/FIELD … AS`, `GET/PUT #`, `KILL`, `NAME … AS`), type conversion (`CINT`/`CSNG`/`CDBL`, `CVI`/`MKI$` …), file/format functions (`EOF`, `LOC`, `LOF`, `DSKF`, `TAB`, `SPC`, `USR`), and the `CALL <name>` / `_<name>` extended-statement mechanism that reaches MSX-MUSIC (FM) and MSX-AUDIO (extension names pass through verbatim; needs the matching sound hardware to play). MSX2+ modes (`SCREEN 10`–`12`, `SET SCROLL`) and turbo R (`_TURBO ON`/`OFF` CPU switch, `CALL PCMPLAY`/`PCMREC`/`PAUSE`) transpile too. Event traps work too: a handler is a `FUNCTION`, and `ON SPRITE GOSUB <fn>` / `ON INTERVAL=<n> GOSUB <fn>` / `ON KEY GOSUB <f1>,<f2>` / `ON ERROR GOTO <fn>` (plus computed `ON <x> GOTO/GOSUB …`) resolve the function name to its entry line — see [`examples/event-traps.msxb`](examples/event-traps.msxb). See also [`examples/msx2-text-format.msxb`](examples/msx2-text-format.msxb), [`examples/msx-music-fm.msxb`](examples/msx-music-fm.msxb), and [`examples/turbo-r.msxb`](examples/turbo-r.msxb).
-- **MSX2 graphics** — first-class helpers for MSX2 screen modes, palettes, and sprites. (The built-in table already covers the MSX2 audio/visual command set — `COPY`, `POINT`, `SET PAGE`/`SET SCROLL`/`SET ADJUST`, the `COLOR=(…)` palette syntax, `LINE …,B`/`BF`, `COLOR SPRITE`, `PUT KANJI`, and the `SET TIME`/`SET DATE` / `TIME` system clock — so it transpiles correctly today; higher-level helpers are next.) See the convert-tested coverage program [`examples/msx2-coverage.msxb`](examples/msx2-coverage.msxb).
-- **Sound** — BGM and SE helpers (PSG, and where available FM/SCC). (`PLAY` as both statement and function, and `SOUND`, already transpile correctly.)
-- **AI integration** — tighter "describe it, generate it, convert it, run it" flow with Claude.
-- **Editor** — code folding and large-file performance (likely a CodeMirror-based editor), beyond today's lightweight zero-dependency editor.
-- **Tooling** — expanding CI (GitHub Actions already runs the core tests) to full desktop (Tauri) builds, signed / notarized desktop binaries, and release packaging.
+- [x] **Built-in command coverage by generation** — the MSX / MSX2 / MSX2+ / turbo R command set transpiles correctly: text / printing / file I/O (`PRINT USING`, `LPRINT`, `LINE INPUT`, `OPEN/CLOSE/FIELD … AS`, `GET/PUT #`, `KILL`, `NAME … AS`), type conversion (`CINT`/`CSNG`/`CDBL`, `CVI`/`MKI$` …), file/format functions (`EOF`, `LOC`, `LOF`, `DSKF`, `TAB`, `SPC`, `USR`), the `CALL <name>` / `_<name>` extension mechanism (incl. MSX-MUSIC and MSX-AUDIO), MSX2+ modes (`SCREEN 10`–`12`, `SET SCROLL`), turbo R (`_TURBO ON`/`OFF`, `CALL PCMPLAY`/`PCMREC`/`PAUSE`), and event traps (`ON SPRITE/KEY/INTERVAL … GOSUB <fn>`, `ON ERROR GOTO`, computed `ON <x> GOTO/GOSUB`). See [`examples/`](examples/).
+- [x] **Settings screen (initial version)** — in-app Settings dialog (app menu → Settings…) for language, font size, and the webMSX run machine / `PRESETS` / URL. *Still to do:* editing the built-in command/function table (with reset to defaults) and native-player / emulator paths.
+- [ ] **MSX2 graphics helpers** — higher-level helpers for screen modes, palettes, and sprites. (The raw command set already transpiles — `COPY`, `POINT`, `SET PAGE`/`SCROLL`/`ADJUST`, `COLOR=(…)`, `LINE …,B`/`BF`, `COLOR SPRITE`, `PUT KANJI`, `TIME` clock; see [`examples/msx2-coverage.msxb`](examples/msx2-coverage.msxb).)
+- [ ] **Sound helpers** — BGM/SE helper layer (PSG, and where available FM/SCC). (`PLAY` statement+function and `SOUND` already transpile.)
+- [ ] **Native MSX playback** — run on a native emulator besides the embedded webMSX: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script, plus a native Windows MSX player. (Would also make FM/MSX-AUDIO audible — see the FM limitation under *Usage*.)
+- [ ] **Editor — code folding & large-file performance** — likely a CodeMirror-based editor, beyond today's lightweight zero-dependency one.
+- [ ] **Language growth** — richer Structured BASIC: `SELECT/CASE`, more string helpers, constants, local arrays, ergonomic improvements.
+- [ ] **Windows support** — package, sign, and test the Tauri desktop build on Windows (development so far has been on macOS).
+- [ ] **AI integration** — tighter "describe it, generate it, convert it, run it" flow with Claude.
+- [ ] **Tooling / CI** — expand GitHub Actions (core tests already run) to full desktop (Tauri) builds, signed / notarized binaries, and release packaging.
 
 Tracked work and ideas live in the issue tracker. Suggestions are welcome.
 
@@ -409,18 +409,18 @@ PRINT "GAME OVER"
 
 ## ロードマップ
 
-FunctionBASIC はまだ初期段階で、発展途上です。予定している方向性（時期は未定）：
+FunctionBASIC はまだ初期段階で、発展途上です。**`[x]`＝対応済 / `[ ]`＝未対応**（時期は未定）：
 
-- **Windows対応** — デスクトップ版は Tauri で Windows / macOS 両対応を想定。Windowsビルドのパッケージング・署名・動作確認（これまでの開発は macOS 中心）。
-- **ネイティブMSXプレイヤー対応** — 埋め込み webMSX に加え、ネイティブエミュレータでの実行：生成した `.dsk` を openMSX に自動マウントし Tcl スクリプトで `RUN`（Windows / macOS）、および Windows のネイティブMSXプレイヤー連携。
-- **設定画面** — *初版実装済み*：アプリ内の設定ダイアログ（アプリメニュー →「設定…」）で、言語・フォントサイズ・WebMSX 実行機種／`PRESETS`／URL を変更可能（turbo R や FM 対応機への切替も）。今後：組み込み命令・関数表の編集（既定へのリセット付き）とネイティブプレイヤー／エミュレータのパス。
-- **言語の拡張** — より豊かな構造化BASIC：`SELECT/CASE`、文字列ヘルパの充実、定数、ローカル配列、使い勝手の改善。
-- **世代別の組み込み命令網羅** — MSX/MSX2/MSX2+/turboR の命令一式を順次対応。対応済：テキスト/印字/ファイル入出力（`PRINT USING`・`LPRINT`・`LINE INPUT`・`OPEN/CLOSE/FIELD … AS`・`GET/PUT #`・`KILL`・`NAME … AS`）、型変換（`CINT`/`CSNG`/`CDBL`、`CVI`/`MKI$` 等）、ファイル/書式関数（`EOF`・`LOC`・`LOF`・`DSKF`・`TAB`・`SPC`・`USR`）、`CALL <名>`/`_<名>` 拡張ステートメント機構（MSX-MUSIC（FM）・MSX-AUDIO へ到達。拡張命令名は素通し。実際に鳴らすには対応サウンド機が必要）。MSX2+（`SCREEN 10`–`12`・`SET SCROLL`）と turbo R（`_TURBO ON`/`OFF` の CPU 切替・`CALL PCMPLAY`/`PCMREC`/`PAUSE`）も変換可。イベントトラップも対応：ハンドラは `FUNCTION` で書き、`ON SPRITE GOSUB <fn>`・`ON INTERVAL=<n> GOSUB <fn>`・`ON KEY GOSUB <f1>,<f2>`・`ON ERROR GOTO <fn>`（＋計算分岐 `ON <x> GOTO/GOSUB …`）が関数名を入口行へ解決します（[`examples/event-traps.msxb`](examples/event-traps.msxb)）。例：[`examples/msx2-text-format.msxb`](examples/msx2-text-format.msxb)・[`examples/msx-music-fm.msxb`](examples/msx-music-fm.msxb)・[`examples/turbo-r.msxb`](examples/turbo-r.msxb)。
-- **MSX2グラフィック対応** — MSX2のスクリーンモード・パレット・スプライトの一級サポート。（組み込み表は MSX2 の音・映像命令一式 ― `COPY`・`POINT`・`SET PAGE`/`SET SCROLL`/`SET ADJUST`・`COLOR=(…)` パレット構文・`LINE …,B`/`BF`・`COLOR SPRITE`・`PUT KANJI`・`SET TIME`/`SET DATE`/`TIME` システム時計 ― を網羅済みで、現状でも正しく変換されます。次はより高レベルなヘルパ。）変換確認済みのカバレッジ例：[`examples/msx2-coverage.msxb`](examples/msx2-coverage.msxb)。
-- **BGM/SE対応** — サウンドのヘルパ（PSG、可能なら FM/SCC）。（文・関数の両形の `PLAY` と `SOUND` は既に正しく変換されます。）
-- **AI生成との統合** — Claude との「説明する→生成する→変換する→実行する」流れをより緊密に。
-- **エディタ** — コードの折りたたみと大規模ファイル性能（CodeMirrorベースのエディタを想定）。現状の軽量・依存ゼロエディタを発展。
-- **ツール整備** — CI（GitHub Actions、コアのテストは導入済み）をデスクトップ(Tauri)フルビルドへ拡張、署名・公証済みバイナリ、リリースパッケージング。
+- [x] **世代別の組み込み命令網羅** — MSX / MSX2 / MSX2+ / turbo R の命令一式が正しく変換されます：テキスト/印字/ファイル入出力（`PRINT USING`・`LPRINT`・`LINE INPUT`・`OPEN/CLOSE/FIELD … AS`・`GET/PUT #`・`KILL`・`NAME … AS`）、型変換（`CINT`/`CSNG`/`CDBL`、`CVI`/`MKI$` 等）、ファイル/書式関数（`EOF`・`LOC`・`LOF`・`DSKF`・`TAB`・`SPC`・`USR`）、`CALL <名>`/`_<名>` 拡張機構（MSX-MUSIC・MSX-AUDIO 含む）、MSX2+（`SCREEN 10`–`12`・`SET SCROLL`）、turbo R（`_TURBO ON`/`OFF`・`CALL PCMPLAY`/`PCMREC`/`PAUSE`）、イベントトラップ（`ON SPRITE/KEY/INTERVAL … GOSUB <fn>`・`ON ERROR GOTO`・計算分岐 `ON <x> GOTO/GOSUB`）。例：[`examples/`](examples/)。
+- [x] **設定画面（初版）** — アプリ内設定ダイアログ（アプリメニュー →「設定…」）で、言語・フォントサイズ・WebMSX 実行機種／`PRESETS`／URL を変更可能。*今後：*組み込み命令・関数表の編集（既定へのリセット付き）とネイティブプレイヤー／エミュレータのパス。
+- [ ] **MSX2グラフィックのヘルパ** — スクリーンモード・パレット・スプライトの高レベルヘルパ。（生の命令は変換済み ― `COPY`・`POINT`・`SET PAGE`/`SCROLL`/`ADJUST`・`COLOR=(…)`・`LINE …,B`/`BF`・`COLOR SPRITE`・`PUT KANJI`・`TIME` 時計。例：[`examples/msx2-coverage.msxb`](examples/msx2-coverage.msxb)）
+- [ ] **サウンドのヘルパ** — BGM/SE ヘルパ層（PSG、可能なら FM/SCC）。（文・関数の `PLAY` と `SOUND` は変換済み）
+- [ ] **ネイティブMSXプレイヤー対応** — 埋め込み webMSX に加えネイティブエミュレータで実行：生成した `.dsk` を openMSX に自動マウントし Tcl で `RUN`、Windows ネイティブMSXプレイヤー連携。（FM/MSX-AUDIO を実音で鳴らせるようになる ―《使い方》の FM 制限を参照）
+- [ ] **エディタ：コード折りたたみ・大規模ファイル性能** — CodeMirror ベース想定。現状の軽量・依存ゼロエディタを発展。
+- [ ] **言語の拡張** — より豊かな構造化BASIC：`SELECT/CASE`、文字列ヘルパ、定数、ローカル配列、使い勝手。
+- [ ] **Windows対応** — Tauri デスクトップ版の Windows ビルド・署名・動作確認（開発は macOS 中心）。
+- [ ] **AI生成との統合** — Claude との「説明→生成→変換→実行」をより緊密に。
+- [ ] **ツール整備 / CI** — GitHub Actions（コアテストは導入済み）をデスクトップ(Tauri)フルビルド・署名/公証バイナリ・リリースパッケージングへ拡張。
 
 作業項目やアイデアは Issue で管理しています。提案を歓迎します。
 

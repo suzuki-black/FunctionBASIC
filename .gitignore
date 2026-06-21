@@ -6,3 +6,4 @@ src-tauri/target/
 
 editor/core/
 src-tauri/gen/
+.claude/

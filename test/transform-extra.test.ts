@@ -117,6 +117,27 @@ COPY (0,0)-(15,15) TO (100,100)`);
   assert.match(msx, /COPY \(0,0\)-\(15,15\) TO \(100,100\)/);
 });
 
+test("MSX2+/turboR: ON/OFF/STOP 修飾語は改名されず保持される", () => {
+  const { msx, diagnostics } = compile(`_TURBO ON
+_TURBO OFF
+SPRITE ON
+SPRITE OFF
+SPRITE STOP
+STOP ON
+KEY OFF`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  for (const re of [/_TURBO ON\b/, /_TURBO OFF\b/, /SPRITE ON\b/, /SPRITE OFF\b/, /SPRITE STOP\b/, /STOP ON\b/, /KEY OFF\b/])
+    assert.match(msx, re);
+});
+
+test("ON/OFF はキーワード完全一致のみ（ONX 等のユーザ変数は改名される）", () => {
+  const { msx, diagnostics } = compile(`ONX = 5
+OFFSET = ONX + 1
+PRINT OFFSET`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.ok(!/\bONX\b/.test(msx) && !/\bOFFSET\b/.test(msx), "ONX/OFFSET は通常変数として改名");
+});
+
 test("CALL 拡張: 拡張命令名(MUSIC/AUDIO/VOICE)は改名されず引数の変数だけ改名", () => {
   const { msx, diagnostics } = compile(`CALL MUSIC
 CALL AUDIO

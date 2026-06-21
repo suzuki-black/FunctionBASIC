@@ -29,7 +29,7 @@
 | ファイル | `OPEN` `CLOSE` `GET` `PUT` `FILES` `LOAD` `SAVE` `MERGE` `BLOAD` `BSAVE` `MAXFILES` `KILL` `NAME … AS` `FIELD … AS` `LSET` `RSET` |
 | デバッグ | `TRON` `TROFF` |
 | カセット（**turboR不可**） | `CLOAD` `CSAVE` `CALL MOTOR` `MOTOR` |
-| turboR追加 | `CALL PCMPLAY` `CALL PCMREC` 等（機種フラグ=turboR） |
+| turboR追加 | `CALL PCMPLAY` `CALL PCMREC` `CALL PAUSE` 等、`_TURBO ON`/`_TURBO OFF`（R800/Z80 切替・機種フラグ=turboR） |
 | 文字列関数 | `LEFT$` `RIGHT$` `MID$` `CHR$` `ASC` `LEN` `VAL` `STR$` `HEX$` `OCT$` `BIN$` `INSTR` `SPACE$` `STRING$` `INPUT$` `INKEY$` |
 | 数学関数 | `ABS` `INT` `SQR` `SIN` `COS` `TAN` `ATN` `LOG` `EXP` `RND` `SGN` `FIX` |
 | 型変換関数 | `CINT` `CSNG` `CDBL` `CVI` `CVS` `CVD` `MKI$` `MKS$` `MKD$` |
@@ -64,6 +64,8 @@
 - `CALL` を `BUILTIN_STATEMENTS` に追加。`CALL` 直後の最初の識別子（`MUSIC`/`AUDIO`/`VOICE`/`PCMPLAY` …）を `word` として保持（改名しない）。
 - `_` 始まりの識別子（`_MUSIC` 等）は字句解析で 1 トークン化（[lexer.ts](../src/lexer/lexer.ts) の `isIdentStart` が先頭 `_` を許可）し、パーサが文頭の `_…` を拡張ステートメントとして `parseBuiltinStmt` に回す。命令名 `_MUSIC` はそのまま出力。
 - 引数の括弧は命令名に詰めて出力（`CALL VOICE(0)` / `_PLAY(0)`）。引数中のユーザ変数は通常どおり 2 文字名へ。
+- **末尾修飾の `ON`/`OFF`** は予約語（[keywords.ts](../src/lexer/keywords.ts)）。`_TURBO ON`/`_TURBO OFF`（turbo R の R800/Z80 切替）や `SPRITE ON`/`STOP ON` 等で `word` として素通しする。`ON`/`OFF` は完全一致のみ予約（`ONX`/`OFFSET` 等の変数は通常どおり改名）。`STOP` は文として既存（`SPRITE STOP` も保持）。
+- 注: イベントトラップ本体（`INTERVAL`、`KEY(n)`/`STRIG(n)` のトラップ文、`ON SPRITE GOSUB`/`ON … GOTO`/`ON ERROR GOTO`）はソースに行番号が無い構造化への対応付けが要設計のため別途対応（`SPRITE ON`/`KEY ON` 等の単純な有効/無効は上記で通る）。
 - FM/ADPCM を実際に鳴らすには **MSX-MUSIC / MSX-AUDIO ハードウェア**が必要（変換は機種非依存で常に通る）。例: [`examples/msx-music-fm.msxb`](../examples/msx-music-fm.msxb)。
 
 #### 予約システム変数

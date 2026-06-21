@@ -37,6 +37,13 @@ test("例: msx2-graphics-sound.msxb はエラーなしで変換される", () =>
   assert.match(msx, /PLAY "","","V15 L32 O5 G"/);
 });
 
+test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () => {
+  const { msx, diagnostics } = compileExample("turbo-r.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /^\d+ _TURBO ON$/m);
+  assert.match(msx, /^\d+ _TURBO OFF$/m);
+});
+
 test("例: msx-music-fm.msxb は CALL MUSIC / FM PLAY を保持して変換される", () => {
   const { msx, diagnostics } = compileExample("msx-music-fm.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

@@ -14,6 +14,8 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "STEP",
   "NEXT",
   "AS", // OPEN/NAME/FIELD … AS（節キーワード。文中で word として素通し）
+  "ON", // 末尾修飾: _TURBO ON / SPRITE ON / STOP ON 等（文中で word 素通し）
+  "OFF", // 末尾修飾: _TURBO OFF / SPRITE OFF 等
   "WHILE",
   "WEND",
   "RETURN",

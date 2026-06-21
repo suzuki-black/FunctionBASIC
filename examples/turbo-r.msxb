@@ -1,0 +1,43 @@
+' ============================================================
+'  turbo R CPU switch demo (FunctionBASIC, chunk 4: MSX2+/turbo R)
+'
+'  _TURBO ON  selects the fast R800 CPU,
+'  _TURBO OFF selects the original Z80.
+'  (CALL TURBO ON/OFF is the long form; both pass through.)
+'
+'  We time the same busy loop on each CPU using the system clock
+'  (TIME, in 1/60 s ticks) so you can see R800 is faster.
+'
+'  REQUIRES an MSX turbo R machine. On other machines _TURBO errors.
+' ============================================================
+
+' Spin a fixed amount of work and return how many ticks it took.
+FUNCTION BENCH()
+    GLOBAL TICKS
+    T0 = TIME
+    FOR I = 1 TO 2000
+        X = I * I
+    NEXT I
+    TICKS = TIME - T0
+END FUNCTION
+
+' ---------------- MAIN ----------------
+GLOBAL TICKS
+
+SCREEN 0
+WIDTH 40
+CLS
+PRINT "turbo R CPU switch (_TURBO ON/OFF)"
+PRINT "----------------------------------"
+
+_TURBO OFF                 ' Z80 (original speed)
+BENCH()
+PRINT USING "Z80 : #### ticks"; TICKS
+
+_TURBO ON                  ' R800 (fast)
+BENCH()
+PRINT USING "R800: #### ticks"; TICKS
+
+_TURBO OFF                 ' back to Z80 before we leave
+PRINT
+PRINT "done"

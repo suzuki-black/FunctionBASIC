@@ -2,6 +2,8 @@
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
+mod sav;
+
 // Shift-JIS で書き出す（docs/08 §8.6）。表現不能文字があればエラー。
 fn write_sjis(path: std::path::PathBuf, text: &str) -> Result<(), String> {
     let (bytes, _enc, had_errors) = encoding_rs::SHIFT_JIS.encode(text);
@@ -184,15 +186,10 @@ struct DskResult {
     load_name: String,
 }
 
-// 変換後 BASIC を ASCII(Shift-JIS) のディスクファイルにして .dsk を保存。
-// async: 保存ダイアログの blocking 呼出でメインスレッドを固めないため。
-#[tauri::command]
-async fn save_dsk(
-    app: tauri::AppHandle,
-    base: String,
-    msx: String,
-) -> Result<Option<DskResult>, String> {
-    // MSX の ASCII セーブ形式に合わせ CRLF 改行＋末尾 EOF(0x1A)。
+// 変換後 BASIC を MSX の ASCII セーブ形式（Shift-JIS, CRLF 改行＋末尾 EOF 0x1A）の
+// 1 ファイルとして収めた 720KB FAT12 フルイメージ（1440×512 バイト）を返す。
+// .dsk / .sav の両経路で共有する。
+fn build_disk_image(base: &str, msx: &str) -> Result<Vec<u8>, String> {
     let body = msx.replace("\r\n", "\n").replace('\r', "\n");
     let crlf = body.split('\n').collect::<Vec<_>>().join("\r\n");
     let (bytes, _enc, had_errors) = encoding_rs::SHIFT_JIS.encode(&crlf);
@@ -201,8 +198,18 @@ async fn save_dsk(
     }
     let mut data = bytes.into_owned();
     data.push(0x1A);
+    build_dsk(base, &data)
+}
 
-    let img = build_dsk(&base, &data)?;
+// 変換後 BASIC を ASCII(Shift-JIS) のディスクファイルにして .dsk を保存。
+// async: 保存ダイアログの blocking 呼出でメインスレッドを固めないため。
+#[tauri::command]
+async fn save_dsk(
+    app: tauri::AppHandle,
+    base: String,
+    msx: String,
+) -> Result<Option<DskResult>, String> {
+    let img = build_disk_image(&base, &msx)?;
     let load_name = dsk_filename(&base);
 
     let Some(picked) = app
@@ -222,9 +229,124 @@ async fn save_dsk(
     }))
 }
 
+#[derive(serde::Serialize)]
+struct SavResult {
+    path: String,
+    load_name: String,
+    // 上書き前に取った既存ファイルのバックアップパス（新規保存なら null）。
+    backup: Option<String>,
+}
+
+// 現在時刻（UTC）を "YYYYMMDD-HHMMSS" 文字列で返す。バックアップ名の付与用。
+// chrono 等を足さずに std だけで算出（Howard Hinnant の civil_from_days）。
+fn timestamp_utc() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
+    let days = secs.div_euclid(86400);
+    let rem = secs.rem_euclid(86400);
+    let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let year = y + if m <= 2 { 1 } else { 0 };
+    format!("{year:04}{m:02}{d:02}-{hh:02}{mm:02}{ss:02}")
+}
+
+// path に既存ファイルがあれば、上書き前に同じディレクトリへ
+// "<元名>.<UTCタイムスタンプ>.bak" としてコピーし、そのパスを返す。
+// 万一同名が既にあれば連番を付けて衝突回避（バックアップを上書きしない＝データを失わない）。
+// 既存ファイルが無ければ何もしない（Ok(None)）。
+fn backup_existing(path: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let fname = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "backup".into());
+    let ts = timestamp_utc();
+    let mut bp = path.to_path_buf();
+    bp.set_file_name(format!("{fname}.{ts}.bak"));
+    let mut n = 1u32;
+    while bp.exists() {
+        bp.set_file_name(format!("{fname}.{ts}.{n}.bak"));
+        n += 1;
+    }
+    std::fs::copy(path, &bp).map_err(|e| format!("バックアップ作成に失敗: {e}"))?;
+    Ok(Some(bp))
+}
+
+// 変換後 BASIC を MSXPLAYer 仮想フロッピー（.sav）にして保存。
+// 中身は .dsk と同じ FAT12 フルイメージで、それを .sav 形式に詰め替えるだけ（sav.rs）。
+// .sav は MSXPLAYer のワークドライブに置いてデータを受け渡す用途（起動ディスクにはならない）。
+// 既存 .sav を上書きする場合は、消える前に必ずバックアップを取る（MSXPLAYer のワーク
+// ドライブには利用者の既存データが入り得るため）。
+#[tauri::command]
+async fn save_sav(
+    app: tauri::AppHandle,
+    base: String,
+    msx: String,
+) -> Result<Option<SavResult>, String> {
+    let img = build_disk_image(&base, &msx)?;
+    let sav = sav::dsk_to_sav(&img).map_err(|e| e.to_string())?;
+    let load_name = dsk_filename(&base);
+
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .set_file_name(format!("{base}.sav"))
+        .add_filter("MSXPLAYer virtual floppy", &["sav"])
+        .blocking_save_file()
+    else {
+        return Ok(None); // キャンセル
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    // 上書き前にバックアップ。失敗したら書き込まずに中断（データ保全を優先）。
+    let backup = backup_existing(&path)?;
+    std::fs::write(&path, &sav).map_err(|e| e.to_string())?;
+    Ok(Some(SavResult {
+        path: path.display().to_string(),
+        load_name,
+        backup: backup.map(|b| b.display().to_string()),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_existing_preserves_old_file() {
+        let dir = std::env::temp_dir().join(format!("fbe_bk_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("WORK.sav");
+
+        // 既存ファイルが無ければ何もしない。
+        assert_eq!(backup_existing(&target).unwrap(), None);
+
+        // 既存ファイルあり → バックアップが作られ、中身が保たれ、元も残る。
+        std::fs::write(&target, b"OLD DATA").unwrap();
+        let bk = backup_existing(&target).unwrap().expect("backup made");
+        assert!(bk.exists(), "バックアップが存在する");
+        assert_eq!(std::fs::read(&bk).unwrap(), b"OLD DATA", "旧内容を保持");
+        assert!(target.exists(), "元ファイルは残る（コピーであって移動でない）");
+
+        // 連番衝突回避: もう一度バックアップしても既存 .bak を上書きしない。
+        let bk2 = backup_existing(&target).unwrap().expect("backup made");
+        assert_ne!(bk, bk2, "同じバックアップ名を再利用しない");
+        assert_eq!(std::fs::read(&bk).unwrap(), b"OLD DATA", "最初の .bak は無傷");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn dsk_structure_and_roundtrip() {
@@ -250,8 +372,9 @@ mod tests {
         // データ（sector 14 = cluster2）にプログラムがそのまま入る
         let d = 14 * 512;
         assert_eq!(&img[d..d + prog.len()], prog);
-        // 検証用に書き出し（外部FAT12ツールでの相互運用チェック用）
-        std::fs::write("/tmp/fbe_test.dsk", &img).unwrap();
+        // 検証用に書き出し（外部FAT12ツールでの相互運用チェック用）。
+        // OS のテンポラリディレクトリを使う（Windows に /tmp は無い）。
+        std::fs::write(std::env::temp_dir().join("fbe_test.dsk"), &img).unwrap();
     }
 }
 
@@ -302,6 +425,7 @@ fn build_native_menu<R: tauri::Runtime>(
         &[
             &mi("save", "変換して保存", "Convert & Save")?,
             &mi("dsk", "ディスク(.dsk)を保存…", "Save Disk (.dsk)…")?,
+            &mi("sav", "MSXPLAYer用(.sav)を保存…", "Save for MSXPLAYer (.sav)…")?,
         ],
     )?;
     // 編集: 標準の取消/やり直し/コピペ等（ネイティブ編集を保持）＋ 整形
@@ -386,6 +510,7 @@ pub fn run() {
             save_project,
             set_clipboard,
             save_dsk,
+            save_sav,
             set_menu_lang,
             set_window_title
         ])

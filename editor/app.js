@@ -26,7 +26,7 @@ const I18N = {
   ja: {
     "title": "構造化BASIC エディタ — MSX-BASIC 変換",
     "m.file": "ファイル", "m.edit": "編集", "m.view": "表示", "m.run": "実行", "m.help": "ヘルプ",
-    "save": "変換して保存", "dsk": "ディスク(.dsk)を保存…",
+    "save": "変換して保存", "dsk": "ディスク(.dsk)を保存…", "sav": "MSXPLAYer用(.sav)を保存…",
     "format": "整形（大文字化）", "def": "定義へ移動", "usages": "使用箇所（順送り）", "goline": "行へ移動…",
     "back": "戻る", "fwd": "進む", "bm": "ブックマーク切替", "bmnext": "次のブックマーク",
     "splitright": "アクティブタブを右へ分割", "merge": "分割を統合", "reset": "タブ配置をリセット",
@@ -58,6 +58,11 @@ const I18N = {
     "dsk.cancel": "ディスク作成をキャンセルしました",
     "dsk.ok": (path, name) => `ディスク作成: ${path} → WebMSXにドラッグ後 RUN"${name}"`,
     "dsk.err": (e) => "ディスク作成に失敗: " + e,
+    "sav.noerr": "エラーがあるため.savを作成できません", "sav.desktoponly": ".sav作成はデスクトップ版で利用できます",
+    "sav.cancel": ".sav作成をキャンセルしました",
+    "sav.ok": (path, name, backup) =>
+      `.sav作成: ${path}${backup ? `（既存ファイルを ${backup} にバックアップ）` : ""} → MSXPLAYerのワークドライブに置き FILES で確認、RUN"${name}"`,
+    "sav.err": (e) => ".sav作成に失敗: " + e,
     "rev.noerr": "エラーがあるため逆変換できません",
     "copy.ok": "コピーしました", "copy.err": "コピーに失敗（手動で選択してコピー）",
     "ok": "OK", "cancel": "キャンセル",
@@ -69,7 +74,7 @@ const I18N = {
   en: {
     "title": "Structured BASIC Editor — MSX-BASIC",
     "m.file": "File", "m.edit": "Edit", "m.view": "View", "m.run": "Run", "m.help": "Help",
-    "save": "Convert & Save", "dsk": "Save Disk (.dsk)…",
+    "save": "Convert & Save", "dsk": "Save Disk (.dsk)…", "sav": "Save for MSXPLAYer (.sav)…",
     "format": "Format (Uppercase)", "def": "Go to Definition", "usages": "Find Usages (cycle)", "goline": "Go to Line…",
     "back": "Back", "fwd": "Forward", "bm": "Toggle Bookmark", "bmnext": "Next Bookmark",
     "splitright": "Split Active Tab Right", "merge": "Unsplit (Merge)", "reset": "Reset Tab Layout",
@@ -101,6 +106,11 @@ const I18N = {
     "dsk.cancel": "Disk creation cancelled.",
     "dsk.ok": (path, name) => `Disk created: ${path} → drag into WebMSX, then RUN"${name}"`,
     "dsk.err": (e) => "Disk creation failed: " + e,
+    "sav.noerr": "Cannot create .sav: there are errors.", "sav.desktoponly": ".sav creation is available in the desktop app.",
+    "sav.cancel": ".sav creation cancelled.",
+    "sav.ok": (path, name, backup) =>
+      `.sav created: ${path}${backup ? ` (existing file backed up to ${backup})` : ""} → place on the MSXPLAYer work drive, then FILES / RUN"${name}"`,
+    "sav.err": (e) => ".sav creation failed: " + e,
     "rev.noerr": "Cannot reverse: there are errors.",
     "copy.ok": "Copied.", "copy.err": "Copy failed (select and copy manually).",
     "ok": "OK", "cancel": "Cancel",
@@ -671,6 +681,35 @@ async function onMakeDsk() {
   }
 }
 
+// ---- MSXPLAYer 用 .sav 書き出し ----
+// 中身は .dsk と同じ FAT12 イメージを .sav 形式に詰め替えたもの。
+// .sav は MSXPLAYer のワークドライブに置いてデータを渡す用途のため、WebMSX は開かない。
+async function onMakeSav() {
+  log(".sav作成: 開始");
+  const r = compile(srcEl.value);
+  if (r.diags.some((d) => d.severity === "error")) {
+    setStatus("err", t("sav.noerr"));
+    return;
+  }
+  const base = baseName();
+  if (!isDesktop()) {
+    setStatus("err", t("sav.desktoponly"));
+    return;
+  }
+  try {
+    const res = await tauri().core.invoke("save_sav", { base, msx: r.msx });
+    if (!res) {
+      setStatus("", t("sav.cancel"));
+      return; // 保存ダイアログでキャンセル
+    }
+    log(".sav作成: 完了", res.path, res.backup ? "backup=" + res.backup : "");
+    setStatus("ok", t("sav.ok", res.path, res.load_name, res.backup));
+  } catch (e) {
+    logErr("save_sav", e);
+    setStatus("err", t("sav.err", e?.message ?? e));
+  }
+}
+
 // ---- 逆変換プレビュー ----
 async function onReverse() {
   const r = compile(srcEl.value);
@@ -1044,6 +1083,7 @@ function runAction(act) {
   switch (act) {
     case "save": return onSave();
     case "dsk": return onMakeDsk();
+    case "sav": return onMakeSav();
     case "format": return onFormat();
     case "def": return goToDefinition();
     case "usages": return findUsages();

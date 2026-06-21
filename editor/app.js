@@ -5,6 +5,8 @@ import { transform, renderMsx } from "./core/transform/transformer.js";
 import { reverse } from "./core/reverse/reverse.js";
 import { isBuiltin } from "./core/core/builtins.js";
 import { localize } from "./core/core/diagnostics.js";
+import { resolveIncludes } from "./core/preprocess/include.js";
+import { LIBS } from "./core/libs.js";
 
 const $ = (id) => document.getElementById(id);
 const srcEl = $("src");
@@ -331,21 +333,36 @@ function highlightHtml(src) {
 }
 
 // ---- コンパイル ----
+// 組み込みライブラリの INCLUDE 解決（ブラウザは実FSが無いので埋め込み辞書を使う）。
+// MAIN(エディタ本文)以外は LIBS から path / basename で引く。
+const MAIN_PATH = "__main__";
+function includeRead(path, src) {
+  if (path === MAIN_PATH) return src;
+  return LIBS[path] ?? LIBS[path.split("/").pop()] ?? null;
+}
+
 function compile(src) {
-  const { tokens, diagnostics: ld } = tokenize(src);
+  let source = src;
+  let incDiags = [];
+  if (/\bINCLUDE\b/i.test(src)) {
+    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, src));
+    source = inc.source;
+    incDiags = inc.diagnostics;
+  }
+  const { tokens, diagnostics: ld } = tokenize(source);
   const { program, diagnostics: pd } = parse(tokens);
   let t;
   try {
     t = transform(program);
   } catch (e) {
     return {
-      diags: [...ld, ...pd, { code: "E_INTERNAL", key: "E_INTERNAL", params: { detail: String(e.message ?? e) }, message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],
+      diags: [...incDiags, ...ld, ...pd, { code: "E_INTERNAL", key: "E_INTERNAL", params: { detail: String(e.message ?? e) }, message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],
       msx: "",
       map: null,
       code: [],
     };
   }
-  return { diags: [...ld, ...pd, ...t.diagnostics], msx: renderMsx(t.code), map: t.map, code: t.code };
+  return { diags: [...incDiags, ...ld, ...pd, ...t.diagnostics], msx: renderMsx(t.code), map: t.map, code: t.code };
 }
 
 // ---- ガター（行番号＋×＋ブックマーク）----

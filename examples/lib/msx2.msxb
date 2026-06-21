@@ -1,0 +1,76 @@
+' ============================================================
+'  MSX2 helper library  (FunctionBASIC)   INCLUDE "lib/msx2.msxb"
+'
+'  High-level wrappers for MSX2 SCREEN 5: screen/palette setup,
+'  16x16 sprites, flicker-free double buffering, frame timing and
+'  a clean sound effect. These encode the easy-to-get-wrong bits
+'  (SET PAGE argument order, sprite size, SE on a free channel).
+'
+'  All helpers are prefixed M2_ and share one global page counter
+'  (M2PG). Requires MSX2 or later.
+' ============================================================
+
+' Initialise SCREEN 5 (256x212, 16 colours) with 16x16 sprites.
+FUNCTION M2_INIT()
+    GLOBAL M2PG
+    SCREEN 5, 2                 ' ,2 = 16x16 sprites
+    M2PG = 0                    ' page we draw on (for the flip helpers)
+    SET PAGE 0, 0
+    CLS
+END FUNCTION
+
+' Set palette entry N (0..15) to R,G,B (each 0..7).
+FUNCTION M2_PAL(N, R, G, B)
+    COLOR = (N, R, G, B)
+END FUNCTION
+
+' Load the next 32 DATA bytes into 16x16 sprite pattern N.
+' The caller provides the DATA blocks and RESTOREs before calling.
+FUNCTION M2_DEFSPR(N)
+    PAT$ = ""
+    FOR I = 1 TO 32
+        READ B
+        PAT$ = PAT$ + CHR$(B)
+    NEXT I
+    SPRITE$(N) = PAT$
+END FUNCTION
+
+' Show sprite plane PL (using pattern PL) at (X,Y) in colour C.
+' Stack two planes at the same spot for a 2-colour sprite.
+FUNCTION M2_SPR(PL, X, Y, C)
+    PUT SPRITE PL, (X, Y), C, PL
+END FUNCTION
+
+' --- flicker-free double buffering ---
+' Correct order is SET PAGE <display>,<draw>. Call M2_FRAME at the
+' top of the loop (draw on the hidden page), then M2_SHOW after
+' drawing (flip it into view).
+FUNCTION M2_FRAME()
+    GLOBAL M2PG
+    M2PG = 1 - M2PG
+    SET PAGE 1 - M2PG, M2PG    ' show finished page, draw on the hidden one
+    CLS
+END FUNCTION
+
+FUNCTION M2_SHOW()
+    GLOBAL M2PG
+    SET PAGE M2PG, M2PG        ' now display the page we just drew
+END FUNCTION
+
+' Wait N interrupts (~N/60 s) using the system clock.
+FUNCTION M2_WAIT(N)
+    T0 = TIME
+    WHILE TIME - T0 < N
+    WEND
+END FUNCTION
+
+' A short sound effect on PSG channel C, leaving channels A/B free
+' for music. PERIOD is the channel-C tone period (smaller = higher).
+FUNCTION M2_SE(PERIOD)
+    SOUND 7, &HB8              ' mixer: tones A/B/C on, noise off
+    SOUND 4, PERIOD           ' channel C period (low byte)
+    SOUND 5, 0                ' channel C period (high byte)
+    SOUND 10, 15             ' channel C volume = max
+    M2_WAIT(3)
+    SOUND 10, 0              ' silence channel C
+END FUNCTION

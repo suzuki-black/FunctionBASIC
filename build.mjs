@@ -30,4 +30,25 @@ for (const file of files) {
   writeFileSync(outPath, js);
   count++;
 }
-console.log(`built ${count} files → ${OUT}/`);
+// 組み込みライブラリ（examples/lib/*.msxb）をエディタへバンドル。
+// ブラウザ版は実ファイルI/Oが無いため、INCLUDE をこの埋め込み辞書で解決する。
+// キーは "lib/<name>.msxb"（ファイル配置どおり）と "<name>.msxb"（basename）両対応。
+const LIB_DIR = "examples/lib";
+const libs = {};
+try {
+  for (const name of readdirSync(LIB_DIR)) {
+    if (!name.endsWith(".msxb")) continue;
+    const content = readFileSync(join(LIB_DIR, name), "utf8");
+    libs["lib/" + name] = content;
+    libs[name] = content;
+  }
+} catch {
+  /* lib ディレクトリが無ければスキップ */
+}
+writeFileSync(
+  join(OUT, "libs.js"),
+  "// 自動生成（build.mjs）: 組み込みライブラリの埋め込み。編集しない。\n" +
+    "export const LIBS = " + JSON.stringify(libs, null, 2) + ";\n",
+);
+
+console.log(`built ${count} files → ${OUT}/ (libs: ${Object.keys(libs).length / 2})`);

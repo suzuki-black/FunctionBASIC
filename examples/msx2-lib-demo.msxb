@@ -1,0 +1,51 @@
+' ============================================================
+'  MSX2 helper library demo — uses INCLUDE "lib/msx2.msxb".
+'  A multicolour cat sprite bounces over a palette-tinted scene,
+'  double-buffered, with a blip on each bounce. All the fiddly
+'  MSX2 details are handled by the M2_* helpers.
+'  MSX2 or later.
+' ============================================================
+INCLUDE "lib/msx2.msxb"
+
+GLOBAL CATX
+GLOBAL DX
+
+M2_INIT()                      ' SCREEN 5, 16x16 sprites
+M2_PAL(1, 0, 0, 2)             ' background -> night blue
+M2_PAL(4, 0, 6, 0)             ' grass green
+M2_PAL(8, 7, 4, 0)             ' cat orange
+
+RESTORE
+M2_DEFSPR(0)                   ' face overlay
+M2_DEFSPR(1)                   ' body
+
+CATX = 40
+DX = 2
+
+WHILE 1
+    M2_FRAME()                 ' draw on the hidden page
+    LINE (0, 150)-(255, 211), 4, BF      ' grass
+    M2_SPR(0, CATX, 116, 15)             ' white face (plane 0)
+    M2_SPR(1, CATX, 116, 8)              ' orange body (plane 1)
+    M2_SHOW()                  ' flip it into view
+
+    CATX = CATX + DX
+    IF CATX > 220 THEN
+        CATX = 220
+        DX = 0 - DX
+        M2_SE(120)
+    END IF
+    IF CATX < 16 THEN
+        CATX = 16
+        DX = 0 - DX
+        M2_SE(200)
+    END IF
+
+    M2_WAIT(2)                 ' ~2/60 s per frame
+WEND
+
+' --- sprite pattern data (32 bytes each, reused from the cat sample) ---
+DATA 0,0,0,0,0,12,12,1,3,0,0,0,0,0,0,0
+DATA 0,0,0,0,0,96,96,128,192,0,0,0,0,0,0,0
+DATA 96,112,120,127,127,127,127,127,63,31,31,31,24,24,56,112
+DATA 6,14,30,254,254,254,254,254,252,248,248,248,24,24,28,14

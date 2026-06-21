@@ -8,8 +8,26 @@ import { dirname, join } from "node:path";
 import { tokenize } from "../src/lexer/lexer.ts";
 import { parse } from "../src/parser/parser.ts";
 import { transform, renderMsx } from "../src/transform/transformer.ts";
+import { resolveIncludes } from "../src/preprocess/include.ts";
 
-const examplesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "examples");
+const repoDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const examplesDir = join(repoDir, "examples");
+
+// INCLUDE を解決してから変換（ライブラリ INCLUDE 例の検証用）。
+const compileWithIncludes = (entryRel: string) => {
+  const inc = resolveIncludes(entryRel, (p) => {
+    try {
+      return readFileSync(join(repoDir, p), "utf8");
+    } catch {
+      return null;
+    }
+  });
+  const { tokens, diagnostics: ld } = tokenize(inc.source);
+  const { program, diagnostics: pd } = parse(tokens);
+  const r = transform(program);
+  const diagnostics = [...inc.diagnostics, ...ld, ...pd, ...r.diagnostics];
+  return { diagnostics, msx: renderMsx(r.code).replace(/\r/g, "") };
+};
 
 const compileExample = (file: string) => {
   const src = readFileSync(join(examplesDir, file), "utf8");
@@ -43,6 +61,15 @@ test("例: event-traps.msxb は ON … GOSUB を入口行へ解決して変換�
   assert.match(msx, /ON INTERVAL=60 GOSUB \d+/);
   assert.match(msx, /ON STRIG GOSUB \d+/);
   assert.match(msx, /STRIG\(0\) ON/);
+});
+
+test("ライブラリ: msx2-lib-demo.msxb は INCLUDE 解決後にエラーなしで変換される", () => {
+  const { msx, diagnostics } = compileWithIncludes("examples/msx2-lib-demo.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /SCREEN 5,2/); // M2_INIT
+  assert.match(msx, /COLOR=\(/); // M2_PAL
+  assert.match(msx, /PUT SPRITE [A-Z]+,\([A-Z]+,/); // M2_SPR
+  assert.match(msx, /SET PAGE 1-([A-Z]+),\1/); // M2_FRAME の正しいダブルバッファ順
 });
 
 test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () => {

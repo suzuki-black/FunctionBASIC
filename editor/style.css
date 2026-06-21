@@ -186,3 +186,27 @@ button:hover { background: #1177bb; }
 .modal-actions button[hidden] { display: none; }
 #modalCancel { background: #444; }
 #modalCancel:hover { background: #555; }
+
+/* 設定ダイアログ（#modal と同じオーバーレイ体裁を流用） */
+#settings {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+#settings[hidden] { display: none; }
+.settings-box { min-width: 420px; }
+.set-section {
+  margin: 16px 0 6px; padding-top: 10px; border-top: 1px solid #444;
+  font-weight: bold; color: #9cdcfe; font-size: 13px;
+}
+.set-row {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+}
+.set-label { flex: 0 0 130px; color: var(--fg); font-size: 13px; }
+.set-row select, .set-row input {
+  flex: 1; background: #333; color: var(--fg);
+  border: 1px solid #555; border-radius: 4px; padding: 6px 8px;
+  font-family: var(--mono); font-size: 13px;
+}
+.set-row input[type="number"] { flex: 0 0 80px; }
+.set-hint { margin: 4px 0 0 140px; color: #9a9a9a; font-size: 11px; }

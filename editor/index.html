@@ -13,6 +13,7 @@
       <span class="mtitle mtitle-app" data-i18n="m.app">FunctionBASIC</span>
       <div class="dropdown">
         <div class="mi" data-act="about"><span data-i18n="about">FunctionBASICについて</span></div>
+        <div class="mi" data-act="settings"><span data-i18n="m.settings">設定…</span></div>
         <div class="sep"></div>
         <div class="mi" data-act="lang-ja" data-lang="ja"><span>日本語</span></div>
         <div class="mi" data-act="lang-en" data-lang="en"><span>English</span></div>
@@ -124,6 +125,57 @@
       <div class="modal-actions">
         <button id="modalCancel" hidden>キャンセル</button>
         <button id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 設定ダイアログ -->
+  <div id="settings" hidden>
+    <div class="modal-box settings-box">
+      <div class="modal-title" data-i18n="set.title">設定</div>
+
+      <div class="set-row">
+        <label class="set-label" data-i18n="set.lang">言語</label>
+        <select id="setLang">
+          <option value="ja">日本語</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+
+      <div class="set-row">
+        <label class="set-label" data-i18n="set.font">フォントサイズ</label>
+        <input id="setFontSize" type="number" min="9" max="28" step="1" />
+      </div>
+
+      <div class="set-section" data-i18n="set.webmsx">WebMSX 実行</div>
+
+      <div class="set-row">
+        <label class="set-label" data-i18n="set.machine">機種</label>
+        <select id="setMachine">
+          <option value="" data-i18n="set.machinedefault">既定（WebMSX）</option>
+          <option value="MSX1">MSX1</option>
+          <option value="MSX2">MSX2</option>
+          <option value="MSX2P">MSX2+ (Japan)</option>
+          <option value="MSX2PA">MSX2+ (America)</option>
+          <option value="MSXTR">turbo R</option>
+        </select>
+      </div>
+      <div class="set-hint" data-i18n="set.machinehint"></div>
+
+      <div class="set-row">
+        <label class="set-label" data-i18n="set.presets">拡張(PRESETS)</label>
+        <input id="setPresets" type="text" placeholder="MSXMUSIC" spellcheck="false" />
+      </div>
+      <div class="set-hint" data-i18n="set.presetshint"></div>
+
+      <div class="set-row">
+        <label class="set-label" data-i18n="set.url">WebMSX URL</label>
+        <input id="setUrl" type="text" spellcheck="false" />
+      </div>
+
+      <div class="modal-actions">
+        <button id="setCancel" data-i18n="set.cancel">キャンセル</button>
+        <button id="setSave" data-i18n="set.save">保存</button>
       </div>
     </div>
   </div>

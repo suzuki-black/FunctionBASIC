@@ -29,6 +29,13 @@ const I18N = {
     "back": "戻る", "fwd": "進む", "bm": "ブックマーク切替", "bmnext": "次のブックマーク",
     "splitright": "アクティブタブを右へ分割", "merge": "分割を統合", "reset": "タブ配置をリセット",
     "fontup": "文字を大きく", "fontdown": "文字を小さく",
+    "m.settings": "設定…", "set.title": "設定",
+    "set.lang": "言語", "set.font": "フォントサイズ",
+    "set.webmsx": "WebMSX 実行",
+    "set.machine": "機種", "set.machinedefault": "既定（WebMSX）",
+    "set.machinehint": "turbo R の例や FM 検証時に切替。既定のままで多くの例は動作",
+    "set.presets": "拡張(PRESETS)", "set.presetshint": "カンマ区切り。FM を試す機種では MSXMUSIC を指定",
+    "set.url": "WebMSX URL", "set.save": "保存", "set.cancel": "キャンセル",
     "runmsx": "▶ WebMSXで実行", "reverse": "MSX→構造化に逆変換", "helpsc": "キーボードショートカット…",
     "m.app": "FunctionBASIC", "about": "FunctionBASICについて",
     "about.body": "FunctionBASIC  v0.1.0\n\n構造化BASIC → MSX-BASIC 変換エディタ",
@@ -65,6 +72,13 @@ const I18N = {
     "back": "Back", "fwd": "Forward", "bm": "Toggle Bookmark", "bmnext": "Next Bookmark",
     "splitright": "Split Active Tab Right", "merge": "Unsplit (Merge)", "reset": "Reset Tab Layout",
     "fontup": "Increase Font", "fontdown": "Decrease Font",
+    "m.settings": "Settings…", "set.title": "Settings",
+    "set.lang": "Language", "set.font": "Font size",
+    "set.webmsx": "WebMSX run",
+    "set.machine": "Machine", "set.machinedefault": "Default (WebMSX)",
+    "set.machinehint": "Switch for turbo R examples or FM tests; most examples run on the default",
+    "set.presets": "Extensions (PRESETS)", "set.presetshint": "Comma-separated. Use MSXMUSIC on an FM-capable machine to try FM",
+    "set.url": "WebMSX URL", "set.save": "Save", "set.cancel": "Cancel",
     "runmsx": "▶ Run in WebMSX", "reverse": "Reverse: MSX → Structured", "helpsc": "Keyboard Shortcuts…",
     "m.app": "FunctionBASIC", "about": "About FunctionBASIC",
     "about.body": "FunctionBASIC  v0.1.0\n\nStructured BASIC → MSX-BASIC converter/editor",
@@ -95,6 +109,27 @@ const I18N = {
   },
 };
 let lang = localStorage.getItem("fbe-lang") === "en" ? "en" : "ja";
+
+// ---- 設定（言語は fbe-lang、その他は fbe-settings に永続化）----
+const SETTINGS_KEY = "fbe-settings";
+const DEFAULT_SETTINGS = {
+  webmsxUrl: "https://webmsx.org",
+  webmsxMachine: "", // "" = WebMSX 既定機。MSX1/MSX2/MSX2P/MSX2PA/MSXTR 等
+  webmsxPresets: "", // 例: "MSXMUSIC"（カンマ区切り）。FM を試す機種で指定
+  fontSize: 15,
+};
+function loadSettings() {
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+let settings = loadSettings();
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
 function t(key, ...args) {
   const v = (I18N[lang] && I18N[lang][key]) ?? I18N.ja[key] ?? key;
   return typeof v === "function" ? v(...args) : v;
@@ -172,6 +207,28 @@ const showConfirm = (title, body) => openModal({ title, body, cancel: true }).th
 // 入力 → string | null
 const showPrompt = (title, body = "", def = "") =>
   openModal({ title, body, input: def }).then((v) => (typeof v === "string" ? v : null));
+
+// ---- 設定ダイアログ ----
+function openSettings() {
+  $("setLang").value = lang;
+  $("setFontSize").value = settings.fontSize;
+  $("setMachine").value = settings.webmsxMachine;
+  $("setPresets").value = settings.webmsxPresets;
+  $("setUrl").value = settings.webmsxUrl;
+  $("settings").hidden = false;
+}
+function closeSettings() {
+  $("settings").hidden = true;
+}
+function applySettingsFromForm() {
+  setLang($("setLang").value === "en" ? "en" : "ja");
+  applyFontSize(parseInt($("setFontSize").value, 10) || settings.fontSize);
+  settings.webmsxMachine = $("setMachine").value;
+  settings.webmsxPresets = $("setPresets").value.trim();
+  settings.webmsxUrl = $("setUrl").value.trim() || DEFAULT_SETTINGS.webmsxUrl;
+  saveSettings();
+  closeSettings();
+}
 // 想定外の失敗もコンソールに必ず残す
 window.addEventListener("error", (e) =>
   console.error("[editor] uncaught", e.message, e.filename + ":" + e.lineno),
@@ -431,10 +488,10 @@ async function onSave() {
 // WebMSX の URL パラメータ（DISKA_FILES_URL + BASIC_RUN）を使い、プログラムを
 // data: URL の ZIP で直接渡して「自動ロード→自動RUN」させる。同梱せずリンクのみ
 // なのでライセンス清潔。localhost/CORS/ドラッグ/保存ダイアログ/手動RUN すべて不要。
-const WEBMSX_URL = "https://webmsx.org"; // 設定で変更可（docs/10 §10.9）
-// 注: FM(MSX-MUSIC)を埋め込みWebMSXで鳴らす試み（MACHINE=MSX2PA/PRESETS=MSXMUSIC、
-//     BASIC_ENTER でのブート後タイプ実行）はいずれも別オリジンiframeでは鳴らず、
-//     一旦取り下げて TODO.md に集約（変換器の出力は MSXPen で実音確認済みで正しい）。
+// WebMSX の URL/機種/PRESETS は設定画面で変更可（settings）。既定URLは webmsx.org。
+// 機種(MACHINE)・PRESETS(例 MSXMUSIC) を指定すると turbo R 例や FM の検証に使える。
+// （注: 別オリジンiframe＋毎回リブートの制約で FM 実音は鳴らない。詳細は TODO.md）
+const webmsxBaseUrl = () => settings.webmsxUrl || DEFAULT_SETTINGS.webmsxUrl;
 
 // WebMSX へ渡すプログラムは MSX 上で打鍵されないが、ディスク内ファイル名・URL を
 // 確実にするため ASCII(改行/タブのみ) に整える。日本語コメント等は実行に不要。
@@ -529,7 +586,9 @@ async function webmsxAutorunUrl(name, asciiProgram) {
   const zip = await zipForWebmsx(name, data);
   const dataUrl = "data:application/zip;base64," + toBase64(zip);
   return (
-    `${WEBMSX_URL}?DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
+    `${webmsxBaseUrl()}?DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
+    (settings.webmsxMachine ? `&MACHINE=${encodeURIComponent(settings.webmsxMachine)}` : "") +
+    (settings.webmsxPresets ? `&PRESETS=${encodeURIComponent(settings.webmsxPresets)}` : "") +
     `&BASIC_RUN=${name}`
   );
 }
@@ -582,10 +641,10 @@ async function onMakeDsk() {
     }
     // WebMSX も開く（任意）。失敗してもディスクは出来ている。
     try {
-      await tauri().core.invoke("plugin:opener|open_url", { url: WEBMSX_URL });
+      await tauri().core.invoke("plugin:opener|open_url", { url: webmsxBaseUrl() });
     } catch (e) {
       logErr("opener", e);
-      window.open(WEBMSX_URL, "_blank");
+      window.open(webmsxBaseUrl(), "_blank");
     }
     log("ディスク作成: 完了", res.path);
     setStatus("ok", t("dsk.ok", res.path, res.load_name));
@@ -724,11 +783,15 @@ function revealRun() {
   renderTabs();
 }
 
-// ---- フォントサイズ ----
+// ---- フォントサイズ（設定に永続化）----
+function applyFontSize(px) {
+  const v = Math.min(28, Math.max(9, px | 0));
+  settings.fontSize = v;
+  document.documentElement.style.setProperty("--font-size", v + "px");
+}
 function setFont(delta) {
-  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--font-size"));
-  const next = Math.min(28, Math.max(9, cur + delta));
-  document.documentElement.style.setProperty("--font-size", next + "px");
+  applyFontSize((settings.fontSize || 15) + delta);
+  saveSettings();
 }
 
 function setSource(text) {
@@ -977,6 +1040,7 @@ function runAction(act) {
     case "layout-reset": return resetLayout();
     case "fontup": return setFont(1);
     case "fontdown": return setFont(-1);
+    case "settings": return openSettings();
     case "run": return onPlayWebMSX();
     case "reverse": return onReverse();
     case "help": return showModal(t("sc.title"), t("sc.body"));
@@ -1042,6 +1106,11 @@ $("copyBtn").addEventListener("click", async () => {
 });
 $("fontUp").addEventListener("click", () => setFont(1));
 $("fontDown").addEventListener("click", () => setFont(-1));
+$("setSave").addEventListener("click", applySettingsFromForm);
+$("setCancel").addEventListener("click", closeSettings);
+$("settings").addEventListener("click", (e) => {
+  if (e.target.id === "settings") closeSettings(); // 背景クリックで閉じる
+});
 
 // タブ: クリックで選択、ドラッグで並べ替え／グループ間移動（分割・統合）
 $("tabstrips").addEventListener("click", (e) => {
@@ -1102,6 +1171,7 @@ if (isDesktop()) {
 
 // 起動
 log("起動: desktop=", isDesktop(), " secureContext=", window.isSecureContext, " url=", location.href, " lang=", lang);
+applyFontSize(settings.fontSize); // 永続化されたフォントサイズを適用
 applyI18n();
 loadLayout();
 renderTabs();

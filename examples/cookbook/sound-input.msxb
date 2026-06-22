@@ -1,0 +1,23 @@
+' ============================================================
+'  Cookbook: sound & input devices.
+'  SOUND PLAY(stmt+func) BEEP  /  STICK STRIG(func+stmt) PAD PDL
+' ============================================================
+' --- sound ---
+BEEP
+SOUND 7, &HB8                 ' PSG mixer register
+SOUND 8, 15                   ' channel A volume
+PLAY "T120 O4 CDEFGAB"        ' PLAY as a statement (PSG)
+WHILE PLAY(0)                 ' PLAY as a function: still playing?
+WEND
+SOUND 8, 0
+
+' --- input devices (read every frame in real programs) ---
+D = STICK(0)                  ' joystick / cursor direction 0..8
+T = STRIG(0)                  ' trigger / space: pressed?
+P = PAD(0)                    ' touch pad / mouse
+L = PDL(1)                    ' paddle
+PRINT D; T; P; L
+
+' STRIG as a statement enables the trigger trap (see input-events)
+STRIG(0) ON
+STRIG(0) OFF

@@ -1,0 +1,50 @@
+' ============================================================
+'  Cookbook: file / disk. These need a disk drive, so they sit in
+'  an `IF 0` guard — converted for reference, not executed here.
+'  OPEN CLOSE PRINT# INPUT# GET PUT FIELD LSET RSET
+'  FILES LOAD SAVE MERGE BLOAD BSAVE MAXFILES KILL NAME
+'  EOF LOC LOF FPOS LPOS DSKF DSKI$
+'  CVI CVS CVD MKI$ MKS$ MKD$  (record <-> bytes)
+' ============================================================
+MAXFILES = 2
+
+IF 0 THEN
+    ' sequential I/O
+    OPEN "DATA.TXT" FOR OUTPUT AS #1
+    PRINT #1, "line"
+    CLOSE #1
+    OPEN "DATA.TXT" FOR INPUT AS #1
+    WHILE EOF(1) = 0
+        LINE INPUT #1, L$
+    WEND
+    PRINT LOC(1); LOF(1); FPOS(1)
+    CLOSE #1
+
+    ' random access records
+    OPEN "DB.DAT" AS #1
+    FIELD #1, 2 AS NI$, 4 AS NS$, 8 AS ND$
+    LSET NI$ = MKI$(123)
+    RSET NS$ = MKS$(1.5)
+    LSET ND$ = MKD$(2.5)
+    PUT #1, 1
+    GET #1, 1
+    II = CVI(NI$)
+    SS = CVS(NS$)
+    DD = CVD(ND$)
+    CLOSE #1
+
+    ' program / binary / directory
+    FILES
+    SAVE "PROG.BAS"
+    LOAD "PROG.BAS"
+    MERGE "EXTRA.BAS"
+    BSAVE "IMG.BIN", &HC000, &HC100
+    BLOAD "IMG.BIN"
+    NAME "OLD.TXT" AS "NEW.TXT"
+    KILL "NEW.TXT"
+
+    ' disk / printer status
+    F = DSKF(0)
+    S$ = DSKI$(0, 0)
+    P = LPOS(0)
+END IF

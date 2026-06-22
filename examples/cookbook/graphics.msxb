@@ -1,0 +1,42 @@
+' ============================================================
+'  Cookbook: MSX2 graphics. Every graphics built-in exercised.
+'  SCREEN PSET PRESET LINE CIRCLE PAINT DRAW POINT COPY
+'  SPRITE(PUT SPRITE) SPRITE$ KANJI(PUT KANJI) COLOR=(palette)
+'  SET (PAGE/SCROLL/ADJUST/VIDEO) BASE VDP VPEEK VPOKE
+' ============================================================
+SCREEN 5, 2
+
+COLOR=(1, 0, 0, 7)            ' palette entry 1 -> blue
+COLOR=NEW                     ' reset palette
+
+PSET (10, 10), 15             ' plot a dot
+PRESET (10, 10)              ' erase it
+LINE (0, 0)-(50, 50), 8       ' line
+LINE (60, 0)-(90, 30), 4, BF  ' filled box
+CIRCLE (128, 96), 30, 15      ' circle
+PAINT (128, 96), 15           ' flood fill
+DRAW "BM100,100 R20 D20 L20 U20"   ' turtle graphics
+C = POINT(0, 0)               ' read a pixel
+COPY (0, 0)-(31, 31), 0 TO (200, 0), 0   ' VRAM block copy
+
+' sprites
+P$ = STRING$(32, CHR$(255))   ' a solid 16x16 pattern
+SPRITE$(0) = P$
+COLOR SPRITE(0) = 15
+PUT SPRITE 0, (120, 80), 15, 0
+
+' VDP / VRAM access
+V = BASE(5)                   ' table base address
+VDP(0) = VDP(0)               ' read/write a VDP register
+VPOKE 0, VPEEK(0)             ' VRAM read/write
+
+' SET sub-commands (MSX2)
+SET PAGE 0, 0
+SET SCROLL 0, 0
+SET ADJUST 0, 0
+SET VIDEO 0
+
+' kanji (needs kanji ROM; converted for reference)
+IF 0 THEN
+    PUT KANJI (0, 0), &H2422
+END IF

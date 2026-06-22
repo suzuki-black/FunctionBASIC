@@ -131,9 +131,9 @@ function collectExprVars(
     case "Str":
       return;
     case "Var":
-      // 組み込み"文"のサブキーワード（PUT SPRITE の SPRITE 等）は変数ではない＝改名しない。
-      // 組み込み"関数"名（POS/TIME 等）はユーザ変数として使われ得るので改名対象のまま。
-      if (!isBuiltinStatement(e.name)) vars.add(e.name);
+      // 組み込み"文"サブキーワード(PUT SPRITE の SPRITE 等)も、括弧なしで使う組み込み
+      // "関数"(INKEY$/CSRLIN/ERR/ERL/TIME 等)も MSX 予約語＝変数ではないので改名しない。
+      if (!isBuiltin(e.name)) vars.add(e.name);
       return;
     case "ArrayRef":
       // SPRITE$(n) 等の組み込み配列風は改名しない
@@ -177,7 +177,7 @@ function collectStmtVars(
   switch (s.type) {
     case "Let":
       if (s.target.type === "Var") {
-        if (!isBuiltinStatement(s.target.name)) vars.add(s.target.name);
+        if (!isBuiltin(s.target.name)) vars.add(s.target.name);
       } else {
         if (!isBuiltin(s.target.name)) {
           vars.add(s.target.name);
@@ -369,8 +369,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
       case "Str":
         return '"' + e.value + '"';
       case "Var":
-        // 組み込み"文"サブキーワードはそのまま（PUT SPRITE の SPRITE 等）。それ以外は2文字名へ。
-        return isBuiltinStatement(e.name) ? e.name : resolveVar(e.name, sc);
+        // 組み込み"文"サブキーワード/括弧なし組み込み関数(INKEY$/CSRLIN/ERR/ERL/TIME 等)は
+        // 予約語なのでそのまま。それ以外は2文字名へ。
+        return isBuiltin(e.name) ? e.name : resolveVar(e.name, sc);
       case "ArrayRef": {
         const idx = e.indices.map((x) => emitExpr(x, sc)).join(",");
         const nm = isBuiltin(e.name) ? e.name : resolveVar(e.name, sc);

@@ -25,8 +25,8 @@ END FUNCTION
 
 DIM A(10)
 A(3) = 0
-RESULT = FIND_ZERO(POS)
-PRINT "FOUND="; RESULT; " AT "; POS`;
+RESULT = FIND_ZERO(PX)
+PRINT "FOUND="; RESULT; " AT "; PX`;
 
 test("FIND_ZERO ゴールデン出力", () => {
   const { msx, diagnostics } = compile(FIND_ZERO);
@@ -58,11 +58,11 @@ test("行番号は昇順・重複なし、GOSUBは数値解決済み", () => {
 
 test("REF名前置換: 呼び出し側の実変数を関数内で直接書き換える（ゼロコピー）", () => {
   const { msx } = compile(FIND_ZERO);
-  // IDX は POS の割当名 C に置換され、関数内で C= が直接現れる（受渡変数やコピーバックは無い）
+  // IDX は PX の割当名 C に置換され、関数内で C= が直接現れる（受渡変数やコピーバックは無い）
   assert.match(msx, /THEN C=D/);
   // 実行コードに IDX= のような構造化名の代入は残らない（コメント内の "IDX->C" 注記は可）
   assert.ok(!/\bIDX=/.test(msx), "IDX への代入は出力に残らない");
-  assert.ok(!/=POS\b|POS=/.test(msx.replace(/PRINT.*/g, "")), "受渡変数/コピーバックが無い");
+  assert.ok(!/=PX\b|PX=/.test(msx.replace(/PRINT.*/g, "")), "受渡変数/コピーバックが無い");
 });
 
 test("再帰は E_RECURSION_UNSUPPORTED", () => {

@@ -1,0 +1,25 @@
+' ============================================================
+'  Cookbook: data, variables, declarations.
+'  DATA READ RESTORE  /  DIM ERASE  /  LET SWAP CLEAR
+'  DEFINT DEFSNG DEFDBL DEFSTR
+' ============================================================
+DEFINT I-N                    ' I..N default to integer
+DEFSNG A-H                    ' single precision
+DEFDBL X-Z                    ' double precision
+DEFSTR S                      ' string
+
+DIM T(10)                     ' array
+LET A = 1                     ' explicit LET assignment
+B = 2
+SWAP A, B                     ' exchange A and B
+PRINT A; B
+
+RESTORE
+READ T(0)
+READ T(1)
+PRINT T(0); T(1)
+
+ERASE T                       ' free the array
+CLEAR                         ' clear all variables
+
+DATA 100, 200

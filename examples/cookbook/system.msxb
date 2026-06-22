@@ -1,0 +1,48 @@
+' ============================================================
+'  Cookbook: system / memory / control / clock.
+'  PEEK POKE OUT INP WAIT VARPTR FRE  /  TIME(stmt+func)
+'  ERROR RESUME ERR ERL  /  TRON TROFF STOP END
+'  CALL  /  USR USR0..USR9  /  SET TIME/DATE/TITLE/PROMPT/PASSWORD/BEEP
+' ============================================================
+A = 0
+
+' --- memory / ports ---
+POKE &HC000, PEEK(&HC000)     ' RAM read/write
+OUT &HA0, INP(&HA0)           ' I/O port read/write
+WAIT &HA2, 0                  ' wait on a port (mask 0 = no wait)
+A = VARPTR(A)                 ' address of a variable
+A = FRE(0)                    ' free memory
+
+' --- clock (system variable, both forms) ---
+TIME = 0                      ' reset the jiffy clock
+A = TIME                      ' read it
+
+' --- machine-code calls ---
+A = USR(0)
+A = USR0(0) + USR1(0) + USR2(0) + USR3(0) + USR4(0)
+A = USR5(0) + USR6(0) + USR7(0) + USR8(0) + USR9(0)
+
+' --- extended statements ---
+CALL SYSTEM                   ' an extension command (CALL <name>)
+SET TITLE "HELLO"             ' MSX2 SET sub-commands
+SET PROMPT "?"
+SET BEEP 1, 1
+
+' --- trace ---
+TRON
+TROFF
+
+' --- error handling + RTC (converted; not all run on every machine) ---
+IF 0 THEN
+    SET DATE "2026/06/22"
+    SET PASSWORD "X"
+    ON ERROR GOTO HANDLE
+    ERROR 5
+    PRINT ERR; ERL
+    STOP
+END IF
+END
+
+FUNCTION HANDLE()
+    RESUME
+END FUNCTION

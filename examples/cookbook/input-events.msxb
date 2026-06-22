@@ -1,0 +1,54 @@
+' ============================================================
+'  Cookbook: event traps (enable/disable + ON … GOSUB/GOTO).
+'  Handlers are no-arg FUNCTIONs; the transpiler resolves the name
+'  to the handler's entry line.
+'  SPRITE/INTERVAL/KEY(n)/STRIG(n)/STOP  ON/OFF/STOP
+'  ON SPRITE/INTERVAL/KEY/STRIG/STOP GOSUB  /  ON ERROR GOTO
+'  ON <expr> GOTO/GOSUB
+' ============================================================
+GLOBAL HITS
+GLOBAL TICKS
+HITS = 0
+TICKS = 0
+
+' register handlers (functions defined below)
+ON SPRITE GOSUB ONHIT
+ON INTERVAL = 60 GOSUB ONTICK
+ON KEY GOSUB ONHIT, ONTICK
+ON STRIG GOSUB ONHIT
+ON STOP GOSUB ONHIT
+
+' enable / disable the traps
+SPRITE ON
+INTERVAL ON
+KEY(1) ON
+STRIG(0) ON
+STOP ON
+SPRITE OFF
+INTERVAL STOP
+KEY(1) OFF
+STRIG(0) STOP
+STOP OFF
+
+' computed branch (also resolves function names to line numbers)
+X = 1
+ON X GOTO ONHIT, ONTICK
+ON X GOSUB ONHIT, ONTICK
+
+' error trap (0 = disable)
+IF 0 THEN
+    ON ERROR GOTO ONHIT
+    ON ERROR GOTO 0
+END IF
+
+END
+
+FUNCTION ONHIT()
+    GLOBAL HITS
+    HITS = HITS + 1
+END FUNCTION
+
+FUNCTION ONTICK()
+    GLOBAL TICKS
+    TICKS = TICKS + 1
+END FUNCTION

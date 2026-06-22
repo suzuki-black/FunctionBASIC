@@ -467,6 +467,14 @@ export function parse(tokens: Token[]): ParseResult {
           return parseFor(pos);
         case "WHILE":
           return parseWhile(pos);
+        case "END": {
+          // 裸の END（プログラム終了）。END IF / END FUNCTION は parseBlockBody が
+          // 終端として先に止めるため、ここに来る END は単独文。
+          advance();
+          const s: Stmt = { type: "Builtin", name: "END", parts: [], pos };
+          endOfStmt("END");
+          return s;
+        }
         case "ON": {
           const s = parseOn(pos);
           endOfStmt("ON");

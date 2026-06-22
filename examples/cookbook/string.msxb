@@ -1,0 +1,21 @@
+' ============================================================
+'  Cookbook: string functions.
+'  LEFT$ RIGHT$ MID$ CHR$ ASC LEN VAL STR$ HEX$ OCT$ BIN$
+'  INSTR SPACE$ STRING$
+' ============================================================
+A$ = "MSX-BASIC"
+
+PRINT LEFT$(A$, 3)          ' "MSX"
+PRINT RIGHT$(A$, 5)         ' "BASIC"
+PRINT MID$(A$, 5, 1)        ' "B"
+PRINT LEN(A$)               ' length
+PRINT ASC(A$)               ' code of first char
+PRINT CHR$(65)              ' "A"
+PRINT VAL("123") + 1        ' string -> number
+PRINT STR$(123)             ' number -> string
+PRINT HEX$(255)             ' "FF"
+PRINT OCT$(8)               ' "10"
+PRINT BIN$(5)               ' "101"
+PRINT INSTR(A$, "BASIC")    ' find substring position
+PRINT SPACE$(4); "X"        ' 4 spaces
+PRINT STRING$(10, "*")      ' "**********"

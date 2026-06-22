@@ -1,0 +1,30 @@
+' ============================================================
+'  Cookbook: screen & text I/O. Every built-in here is exercised
+'  (converted). Interactive / printer ones sit in an `IF 0` guard
+'  so the demo still runs without blocking or needing a printer.
+'  SCREEN WIDTH COLOR CLS LOCATE PRINT (USING) POS CSRLIN TAB SPC
+'  KEY BEEP  /  INPUT INPUT$ INKEY$  /  LPRINT LLIST LFILES
+' ============================================================
+SCREEN 0
+WIDTH 40
+COLOR 15, 4, 4
+CLS
+
+LOCATE 0, 0
+PRINT "hello"; TAB(20); "world"
+PRINT SPC(3); "indented"
+PRINT USING "value: ###.##"; 3.14
+PRINT "cursor col="; POS(0); " row="; CSRLIN
+BEEP
+KEY OFF
+KEY 1, "RUN" + CHR$(13)
+
+' interactive input + printer output: converted but not executed here
+IF 0 THEN
+    INPUT "name"; N$
+    K$ = INKEY$
+    C$ = INPUT$(1)
+    LPRINT "to printer"
+    LLIST
+    LFILES
+END IF

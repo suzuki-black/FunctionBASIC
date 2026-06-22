@@ -36,6 +36,7 @@ export function parse(tokens: Token[]): ParseResult {
   const loopStack: string[] = [];
   let funcDepth = 0;
   let loopId = 0;
+  let strict = false; // STRICT ディレクティブ
 
   const cur = (): Token => tokens[p];
   const peek = (o = 1): Token => tokens[p + o] ?? tokens[tokens.length - 1];
@@ -477,6 +478,13 @@ export function parse(tokens: Token[]): ParseResult {
     }
     if (t.kind === "KEYWORD") {
       switch (t.value) {
+        case "STRICT": {
+          // 厳格モード宣言（構造化専用・MSX出力なし）。フラグを立てて文は生成しない。
+          advance();
+          strict = true;
+          endOfStmt("STRICT");
+          return null;
+        }
         case "IF":
           return parseIf(pos);
         case "FOR":
@@ -647,6 +655,7 @@ export function parse(tokens: Token[]): ParseResult {
     }
     skipNewlines();
   }
+  program.strict = strict;
 
   return { program, diagnostics };
 }

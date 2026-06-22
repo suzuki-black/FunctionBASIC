@@ -87,6 +87,14 @@ test("ライブラリ例: hello / graphics / palette が INCLUDE 解決後に無
   }
 });
 
+test("例: strict-demo.msxb は STRICT 有効・型エラーなしで変換される", () => {
+  const src = readFileSync(join(examplesDir, "strict-demo.msxb"), "utf8");
+  const { tokens } = tokenize(src);
+  const { program } = parse(tokens);
+  assert.equal(program.strict, true, "STRICT が有効");
+  assert.deepEqual(errorsOf("strict-demo.msxb"), []);
+});
+
 test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () => {
   const { msx, diagnostics } = compileExample("turbo-r.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

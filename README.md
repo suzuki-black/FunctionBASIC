@@ -133,6 +133,29 @@ Because Structured BASIC has **no line numbers** and **renames variables to two-
 
 (`ON … GOSUB <fn>` handler functions and `ON x GOTO/GOSUB <fn>` targets must take **no parameters** — `E_HANDLER_PARAMS`.)
 
+### Strict mode (optional static typing)
+
+Put `STRICT` at the top of a program to turn on **opt-in static type checking** (Rust-style: no implicit conversions). It is off by default — existing code is unaffected, and MSX's usual implicit numeric conversions still apply in non-strict code.
+
+Under `STRICT`:
+
+- **Every variable, array, parameter and `FOR` variable must carry a type suffix** — `%` integer, `!` single, `#` double, `$` string. Untyped names are an error (`E_STRICT_UNTYPED`).
+- **Assignments, function arguments and return values must match the type exactly.** No implicit conversion: `A% = B#`, `A% = 1.5`, and any string/number mix are errors (`E_TYPE_MISMATCH`). Convert explicitly with `CINT` / `CSNG` / `CDBL` / `INT` / `FIX` / `ASC` / `STR$` / `VAL` …
+- Numeric literals are flexible (`5` fits `%`/`!`/`#`; `1.5` fits `!`/`#`); operators follow MSX promotion, and the exact-match check fires at the assignment/argument/return boundary.
+- Because integer (`%`) math is the fast path on the Z80, STRICT also nudges game logic toward `%`. For trig/graphics, keep coordinates and math in one float type (`!`/`#`) — MSX graphics statements accept floats — or convert at the boundary.
+
+```basic
+STRICT
+FUNCTION ADD%(A%, B%)
+    RETURN A% + B%
+END FUNCTION
+TOTAL% = 0
+FOR I% = 1 TO 10 : TOTAL% = ADD%(TOTAL%, I%) : NEXT I%
+AVG! = CSNG(TOTAL%) / 10        ' explicit % -> ! conversion
+```
+
+See [`examples/strict-demo.msxb`](examples/strict-demo.msxb).
+
 ---
 
 ## Examples
@@ -372,6 +395,29 @@ You may use, copy, modify, and distribute this software freely, including for co
 | 1行 `IF … THEN <文>`（`END IF` 無し） | ブロックの `IF … THEN` … `END IF` |
 
 （`ON … GOSUB <関数>` のハンドラや `ON x GOTO/GOSUB <関数>` の飛び先関数は**無引数**でなければなりません — `E_HANDLER_PARAMS`。）
+
+### 厳格モード（任意の静的型付け）
+
+プログラム先頭に `STRICT` と書くと、**オプトインの静的型チェック**（rust方式＝暗黙変換なし）が有効になります。既定はオフで、既存コードに影響はありません（非strictでは従来どおりMSXの暗黙数値変換のまま）。
+
+`STRICT` では：
+
+- **全ての変数・配列・引数・`FOR`変数に型サフィックス必須** — `%`整数 `!`単精度 `#`倍精度 `$`文字列。無いとエラー（`E_STRICT_UNTYPED`）。
+- **代入・引数・戻り値は型が完全一致**。暗黙変換なし：`A% = B#`・`A% = 1.5`・文字列/数値の混在はエラー（`E_TYPE_MISMATCH`）。変換は `CINT` / `CSNG` / `CDBL` / `INT` / `FIX` / `ASC` / `STR$` / `VAL` … で明示。
+- 数値リテラルは柔軟（`5`は%/!/#可、`1.5`は!/#）。演算子はMSXの昇格に従い、完全一致判定は代入/引数/戻り値の境界で行われます。
+- Z80では整数(`%`)演算が速いので、STRICTはゲームロジックを`%`へ寄せます。三角関数/グラフィックスは座標も計算も浮動小数(`!`/`#`)で統一（MSXの描画命令は浮動小数を受けます）するか、境界で明示変換を。
+
+```basic
+STRICT
+FUNCTION ADD%(A%, B%)
+    RETURN A% + B%
+END FUNCTION
+TOTAL% = 0
+FOR I% = 1 TO 10 : TOTAL% = ADD%(TOTAL%, I%) : NEXT I%
+AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
+```
+
+例：[`examples/strict-demo.msxb`](examples/strict-demo.msxb)。
 
 ---
 

@@ -8,6 +8,7 @@ export interface Program {
   functions: FunctionDef[];
   toplevel: Stmt[];
   includes: IncludeStmt[];
+  strict?: boolean; // STRICT ディレクティブで有効化＝静的型チェック（型サフィックス必須・完全一致）
 }
 
 export interface Param {

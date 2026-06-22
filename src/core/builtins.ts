@@ -173,6 +173,26 @@ export const BUILTIN_CLAUSE_WORDS: ReadonlySet<string> = new Set([
   "USING", // PRINT USING / LPRINT USING（書式付き出力）
 ]);
 
+// 組み込み関数の戻り値型（STRICT の静的型チェック用）。"$"終わりは文字列なので表に持たず
+// 自動判定。ABS は引数型を継承するので表に入れず checker 側で特別扱い。表に無い数値関数は
+// 既定で "#"（倍精度）扱い＝整数等へ入れるには明示キャストを要求する（安全側）。
+export const BUILTIN_RETURN: ReadonlyMap<string, "%" | "!" | "#"> = new Map([
+  // 整数(%)
+  ["SGN", "%"], ["INT", "%"], ["FIX", "%"], ["CINT", "%"],
+  ["LEN", "%"], ["ASC", "%"], ["INSTR", "%"], ["POS", "%"], ["CSRLIN", "%"],
+  ["INP", "%"], ["PEEK", "%"], ["VPEEK", "%"], ["VARPTR", "%"], ["BASE", "%"], ["VDP", "%"],
+  ["STICK", "%"], ["STRIG", "%"], ["PAD", "%"], ["PDL", "%"], ["POINT", "%"], ["PLAY", "%"],
+  ["EOF", "%"], ["LOC", "%"], ["LOF", "%"], ["FPOS", "%"], ["LPOS", "%"], ["DSKF", "%"],
+  ["ERR", "%"], ["ERL", "%"],
+  ["USR", "%"], ["USR0", "%"], ["USR1", "%"], ["USR2", "%"], ["USR3", "%"], ["USR4", "%"],
+  ["USR5", "%"], ["USR6", "%"], ["USR7", "%"], ["USR8", "%"], ["USR9", "%"],
+  // 単精度(!)
+  ["RND", "!"], ["CSNG", "!"],
+  // 倍精度(#)
+  ["SIN", "#"], ["COS", "#"], ["TAN", "#"], ["ATN", "#"], ["LOG", "#"], ["EXP", "#"],
+  ["SQR", "#"], ["VAL", "#"], ["CDBL", "#"], ["TIME", "#"], ["FRE", "#"],
+]);
+
 export const isBuiltinStatement = (name: string): boolean =>
   BUILTIN_STATEMENTS.has(name.toUpperCase());
 export const isBuiltinClauseWord = (name: string): boolean =>

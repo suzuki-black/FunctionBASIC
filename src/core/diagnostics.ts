@@ -36,6 +36,32 @@ const CTX_EN: Record<string, string> = {
 const ctx = (c: string | number, lang: Lang): string =>
   lang === "en" ? (CTX_EN[String(c)] ?? String(c)) : String(c);
 
+// 型不一致(E_TYPE_MISMATCH)の文脈キー・型トークンの局所化
+const TM_CTX: Record<string, [string, string]> = {
+  assign: ["代入", "assignment"],
+  arg: ["引数", "argument"],
+  ret: ["戻り値", "return value"],
+  op: ["演算", "operator"],
+  cmp: ["比較", "comparison"],
+  index: ["添字", "subscript"],
+};
+const TM_TYPE: Record<string, [string, string]> = {
+  num: ["数値", "numeric"],
+  str: ["文字列", "string"],
+  "$": ["文字列($)", "string($)"],
+  "%": ["整数(%)", "integer(%)"],
+  "!": ["単精度(!)", "single(!)"],
+  "#": ["倍精度(#)", "double(#)"],
+};
+const tmCtx = (c: string | number, lang: Lang): string => {
+  const e = TM_CTX[String(c)];
+  return e ? (lang === "en" ? e[1] : e[0]) : String(c);
+};
+const tmType = (t: string | number, lang: Lang): string => {
+  const e = TM_TYPE[String(t)];
+  return e ? (lang === "en" ? e[1] : e[0]) : String(t);
+};
+
 // コード別メッセージカタログ（日英）。key が公開 code と異なる場合は code を明示。
 const CATALOG: Record<string, Entry> = {
   // --- 字句 ---
@@ -95,6 +121,18 @@ const CATALOG: Record<string, Entry> = {
     code: "E_REF_NOT_VARIABLE",
     ja: (p) => `${p.fn}: REF 引数には変数を渡してください`,
     en: (p) => `${p.fn}: a REF argument must be a variable`,
+  },
+  E_STRICT_UNTYPED: {
+    code: "E_STRICT_UNTYPED",
+    ja: (p) => `STRICT: ${p.name} に型サフィックス(% / ! / # / $)が必要です`,
+    en: (p) => `STRICT: ${p.name} needs a type suffix (% / ! / # / $)`,
+  },
+  E_TYPE_MISMATCH: {
+    code: "E_TYPE_MISMATCH",
+    ja: (p) =>
+      `${tmCtx(p.ctx, "ja")}${p.detail ? " " + p.detail : ""}: 型が一致しません（${tmType(p.to, "ja")} に ${tmType(p.from, "ja")} は不可。CINT/CSNG/CDBL/INT/FIX/ASC 等で明示変換してください）`,
+    en: (p) =>
+      `${tmCtx(p.ctx, "en")}${p.detail ? " " + p.detail : ""}: type mismatch (${tmType(p.from, "en")} is not assignable to ${tmType(p.to, "en")}; convert explicitly with CINT/CSNG/CDBL/INT/FIX/ASC …)`,
   },
   E_DEF_UNSUPPORTED: {
     code: "E_DEF_UNSUPPORTED",

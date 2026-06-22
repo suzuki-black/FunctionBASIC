@@ -348,6 +348,56 @@ PRINT PAGE`);
   assert.ok(!/\bPAGE\b/.test(msx), "生の PAGE は残らない");
 });
 
+test("STRICT: 型付き・完全一致の正しいコードは通る（opt-in）", () => {
+  const ok = compile(`STRICT
+FUNCTION ADD%(A%, B%)
+    RETURN A% + B%
+END FUNCTION
+SC% = 0
+FOR I% = 1 TO 10
+    SC% = SC% + ADD%(I%, 1)
+NEXT I%
+MSG$ = "score:" + STR$(SC%)
+R! = CSNG(SC%) / 3
+PRINT MSG$; R!`);
+  assert.deepEqual(ok.diagnostics.filter((d) => d.severity === "error"), []);
+});
+
+test("STRICT: 未型変数は E_STRICT_UNTYPED", () => {
+  assert.ok(compile(`STRICT\nSCORE = 0`).diagnostics.some((d) => d.code === "E_STRICT_UNTYPED"));
+  assert.ok(compile(`STRICT\nFOR I = 1 TO 3\nNEXT I`).diagnostics.some((d) => d.code === "E_STRICT_UNTYPED"));
+});
+
+test("STRICT: 型不一致は E_TYPE_MISMATCH（縮小/小数→整数/文字列混在/引数/戻り値）", () => {
+  const cases = [
+    `STRICT\nA% = 3\nB# = 1.5\nA% = B#`, // # → % 縮小
+    `STRICT\nA% = 1.5`, // 小数 → 整数
+    `STRICT\nN% = 0\nS$ = "x"\nN% = S$`, // 文字列 → 数値
+    `STRICT\nFUNCTION F%(A%)\n RETURN A%\nEND FUNCTION\nB# = 1.5\nX% = F%(B#)`, // 引数
+    `STRICT\nFUNCTION G%()\n RETURN 1.5\nEND FUNCTION\nX% = G%()`, // 戻り値
+  ];
+  for (const c of cases)
+    assert.ok(compile(c).diagnostics.some((d) => d.code === "E_TYPE_MISMATCH"), c);
+});
+
+test("STRICT は opt-in: ディレクティブ無しなら従来どおり型チェックしない", () => {
+  // 非strict では #→% も未型変数も許容（MSXの暗黙変換のまま）
+  assert.equal(
+    compile(`A% = 3\nB# = 1.5\nA% = B#\nSCORE = 0`).diagnostics.filter((d) => d.severity === "error").length,
+    0,
+  );
+});
+
+test("サフィックス付き関数呼び出し ADD%() は関数として解決される（配列誤認しない）", () => {
+  const { msx, diagnostics } = compile(`FUNCTION ADD%(A%, B%)
+    RETURN A% + B%
+END FUNCTION
+X% = ADD%(1, 2)
+PRINT X%`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /GOSUB 1000/); // 配列参照でなく関数呼び出し
+});
+
 test("DEFINT/DEFSNG/DEFDBL/DEFSTR は未対応エラー（型はサフィックスで）", () => {
   for (const d of ["DEFINT A-Z", "DEFSNG A", "DEFDBL X-Z", "DEFSTR S"])
     assert.ok(

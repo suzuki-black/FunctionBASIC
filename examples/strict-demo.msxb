@@ -1,0 +1,31 @@
+' ============================================================
+'  STRICT mode demo (FunctionBASIC).
+'  Put STRICT at the top to turn on static type checking:
+'    - every variable / array / parameter / FOR var must carry a
+'      type suffix  (% integer, ! single, # double, $ string)
+'    - assignments, arguments and return values must match EXACTLY
+'      (no implicit conversion — convert with CINT/CSNG/CDBL/STR$ …)
+'  Integer (%) math is the fast path on the Z80, so STRICT also
+'  nudges you toward % where you do not need fractions.
+' ============================================================
+STRICT
+
+FUNCTION ADD%(A%, B%)            ' typed function: takes two %, returns %
+    RETURN A% + B%
+END FUNCTION
+
+SCREEN 0
+WIDTH 40
+CLS
+
+TOTAL% = 0
+FOR I% = 1 TO 10
+    TOTAL% = ADD%(TOTAL%, I%)    ' all % — fast, no conversions
+NEXT I%
+PRINT "sum 1..10 = "; TOTAL%
+
+AVG! = CSNG(TOTAL%) / 10         ' need a fraction -> single; convert explicitly
+PRINT "average   = "; AVG!
+
+MSG$ = "total is " + STR$(TOTAL%) ' number -> string via STR$
+PRINT MSG$

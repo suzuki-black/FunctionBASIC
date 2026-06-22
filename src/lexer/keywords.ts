@@ -27,6 +27,7 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "GLOBAL",
   "DIM",
   "INCLUDE",
+  "STRICT", // 厳格モード宣言（構造化専用ディレクティブ。MSX出力なし）
   // 語演算子（docs/01 §1.11.2）
   "AND",
   "OR",

@@ -20,6 +20,7 @@ import {
   BUILTIN_CLAUSE_WORDS,
 } from "../core/builtins.ts";
 import { NamePool } from "./names.ts";
+import { typeCheck } from "./typecheck.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
@@ -267,6 +268,82 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
     funcTable.set(fn.name, fn);
     funcNames.add(fn.name);
   }
+
+  // サフィックス付きの関数呼び出し（ADD%() 等）を基底名（ADD）へ正規化する。
+  // しないと funcTable（基底名キー）に当たらず配列参照に誤解釈される（無言の誤変換）。
+  {
+    const strip = (n: string) => (/[%!#$]$/.test(n) ? n.slice(0, -1) : n);
+    const normName = (name: string) =>
+      funcTable.has(name) ? name : funcTable.has(strip(name)) ? strip(name) : name;
+    const ne = (e: Expr): void => {
+      switch (e.type) {
+        case "CallExpr":
+          e.name = normName(e.name);
+          e.args.forEach((a) => ne(a.expr));
+          break;
+        case "ArrayRef":
+          e.indices.forEach(ne);
+          break;
+        case "Bin":
+          ne(e.left);
+          ne(e.right);
+          break;
+        case "Un":
+          ne(e.operand);
+          break;
+        case "Group":
+          e.items.forEach(ne);
+          break;
+      }
+    };
+    const ns = (stmts: Stmt[]): void => {
+      for (const s of stmts) {
+        switch (s.type) {
+          case "Let":
+            if (s.target.type === "ArrayRef") s.target.indices.forEach(ne);
+            ne(s.expr);
+            break;
+          case "Call":
+            ne(s.call);
+            break;
+          case "Return":
+            if (s.expr) ne(s.expr);
+            break;
+          case "Builtin":
+            s.parts.forEach((p) => p.kind === "expr" && ne(p.expr));
+            break;
+          case "Dim":
+            s.decls.forEach((d) => d.dims.forEach(ne));
+            break;
+          case "If":
+            ne(s.cond);
+            ns(s.then);
+            if (s.else) ns(s.else);
+            break;
+          case "For":
+            ne(s.from);
+            ne(s.to);
+            if (s.step) ne(s.step);
+            ns(s.body);
+            break;
+          case "While":
+            ne(s.cond);
+            ns(s.body);
+            break;
+          case "On":
+            if (s.arg) ne(s.arg);
+            break;
+          default:
+            break;
+        }
+      }
+    };
+    ns(program.toplevel);
+    for (const fn of program.functions) ns(fn.body);
+  }
+
+  // STRICT モードなら静的型チェック（型サフィックス必須・完全一致）。変換自体は通常どおり行う。
+  if (program.strict) diagnostics.push(...typeCheck(program));
 
   // 再帰検出（呼び出しグラフの循環）
   detectRecursion(program, funcTable, funcNames, diagnostics);

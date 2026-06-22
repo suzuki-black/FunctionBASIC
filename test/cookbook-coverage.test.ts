@@ -64,8 +64,17 @@ test("クックブック: 全組み込み（文・関数・節）が少なくと
   const used = (name: string): boolean =>
     new RegExp("(?<![A-Z0-9$])" + esc(name) + "(?![A-Z0-9$])").test(corpus);
 
-  // LET は LET A=1 → A=1 のように消えるため対象外。
-  const ALLOW_ABSENT = new Set(["LET"]);
+  // 対象外:
+  //  LET … LET A=1 → A=1 のように消える
+  //  DEFINT/DEFSNG/DEFDBL/DEFSTR … 構造化では未対応（E_DEF_UNSUPPORTED）。
+  //    型は変数サフィックス % / ! / # / $ で指定する。
+  const ALLOW_ABSENT = new Set([
+    "LET",
+    "DEFINT",
+    "DEFSNG",
+    "DEFDBL",
+    "DEFSTR",
+  ]);
 
   const all = [
     ...BUILTIN_STATEMENTS,

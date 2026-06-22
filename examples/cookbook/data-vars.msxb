@@ -1,25 +1,28 @@
 ' ============================================================
 '  Cookbook: data, variables, declarations.
 '  DATA READ RESTORE  /  DIM ERASE  /  LET SWAP CLEAR
-'  DEFINT DEFSNG DEFDBL DEFSTR
+'  Types are given by NAME SUFFIX (% integer, ! single, # double,
+'  $ string) — DEFINT/DEFSNG/DEFDBL/DEFSTR are NOT supported here
+'  (variables are renamed to 2-letter names, so first-letter DEF
+'  declarations cannot work; use suffixes instead).
 ' ============================================================
-DEFINT I-N                    ' I..N default to integer
-DEFSNG A-H                    ' single precision
-DEFDBL X-Z                    ' double precision
-DEFSTR S                      ' string
+COUNT% = 10                   ' integer (fast on Z80)
+RATIO! = 1.5                  ' single precision
+PRECISE# = 2.5               ' double precision
+LABEL$ = "score"             ' string
 
-DIM T(10)                     ' array
+DIM TABLE(10)                 ' array
 LET A = 1                     ' explicit LET assignment
 B = 2
 SWAP A, B                     ' exchange A and B
-PRINT A; B
+PRINT A; B; COUNT%; RATIO!; PRECISE#; LABEL$
 
 RESTORE
-READ T(0)
-READ T(1)
-PRINT T(0); T(1)
+READ TABLE(0)
+READ TABLE(1)
+PRINT TABLE(0); TABLE(1)
 
-ERASE T                       ' free the array
+ERASE TABLE                   ' free the array
 CLEAR                         ' clear all variables
 
 DATA 100, 200

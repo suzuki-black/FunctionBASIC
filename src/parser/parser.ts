@@ -339,6 +339,18 @@ export function parse(tokens: Token[]): ParseResult {
     if (cmd === "RESTORE" && parts.some((p) => p.kind === "expr")) {
       report("E_RESTORE_LINE", pos);
     }
+    // DEFINT/DEFSNG/DEFDBL/DEFSTR は不可（変数は2文字名へ改名されるため先頭文字
+    // ベースの型宣言が効かない）。型はサフィックス % / ! / # / $ で指定する。
+    if (cmd === "DEFINT" || cmd === "DEFSNG" || cmd === "DEFDBL" || cmd === "DEFSTR") {
+      report("E_DEF_UNSUPPORTED", pos, { kind: cmd });
+    }
+    // RESUME は RESUME / RESUME NEXT / RESUME 0 のみ。行番号は不可。
+    if (
+      cmd === "RESUME" &&
+      parts.some((p) => p.kind === "expr" && !(p.expr.type === "Num" && p.expr.value === 0))
+    ) {
+      report("E_RESUME_LINE", pos);
+    }
     return { type: "Builtin", name, parts, pos };
   };
 
@@ -438,8 +450,12 @@ export function parse(tokens: Token[]): ParseResult {
     const targets: OnTarget[] = [];
     const one = (): void => {
       if (checkKind("IDENT")) targets.push({ fn: advance().value });
-      else if (checkKind("NUMBER")) targets.push({ lit: advance().value });
-      else report("E_SYNTAX_IDENT", cur().pos, { ctx: dispatch });
+      else if (checkKind("NUMBER")) {
+        // 飛び先の数値は ON ERROR GOTO 0（無効化）の 0 だけ許可。行番号は不可。
+        const v = advance().value;
+        if (v === "0") targets.push({ lit: v });
+        else report("E_ON_LINE_TARGET", cur().pos);
+      } else report("E_SYNTAX_IDENT", cur().pos, { ctx: dispatch });
     };
     one();
     while (checkOp(",")) {

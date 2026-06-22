@@ -348,6 +348,28 @@ PRINT PAGE`);
   assert.ok(!/\bPAGE\b/.test(msx), "生の PAGE は残らない");
 });
 
+test("DEFINT/DEFSNG/DEFDBL/DEFSTR は未対応エラー（型はサフィックスで）", () => {
+  for (const d of ["DEFINT A-Z", "DEFSNG A", "DEFDBL X-Z", "DEFSTR S"])
+    assert.ok(
+      compile(d).diagnostics.some((x) => x.code === "E_DEF_UNSUPPORTED"),
+      `${d} は E_DEF_UNSUPPORTED`,
+    );
+  // サフィックス型は通る
+  assert.equal(
+    compile(`A% = 1\nB! = 2\nC# = 3\nD$ = "x"`).diagnostics.filter((x) => x.severity === "error").length,
+    0,
+  );
+});
+
+test("行番号の飛び先/復帰は不可（ON … GOTO 行 / RESUME 行）。0・NEXT・関数名はOK", () => {
+  const fn = `FUNCTION H()\n GLOBAL G\n G=1\nEND FUNCTION\n`;
+  assert.ok(compile(`X=1\nON X GOTO 100, 200`).diagnostics.some((d) => d.code === "E_ON_LINE_TARGET"));
+  assert.ok(compile(`RESUME 100`).diagnostics.some((d) => d.code === "E_RESUME_LINE"));
+  // 許可される形
+  for (const ok of [`${fn}X=1\nON X GOSUB H`, `${fn}ON ERROR GOTO 0`, `RESUME 0`, `RESUME NEXT`])
+    assert.equal(compile(ok).diagnostics.filter((d) => d.severity === "error").length, 0, ok);
+});
+
 test("RESTORE に行番号を付けるとエラー（構造化に行番号は無い）。bare はOK", () => {
   assert.ok(compile(`RESTORE 200`).diagnostics.some((d) => d.code === "E_RESTORE_LINE"));
   assert.equal(

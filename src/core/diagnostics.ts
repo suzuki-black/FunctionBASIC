@@ -96,6 +96,27 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `${p.fn}: REF 引数には変数を渡してください`,
     en: (p) => `${p.fn}: a REF argument must be a variable`,
   },
+  E_DEF_UNSUPPORTED: {
+    code: "E_DEF_UNSUPPORTED",
+    ja: (p) =>
+      `${p.kind} は未対応です（変数は2文字名に改名されるため、先頭文字ベースの DEF 型宣言は効きません）。型は変数名のサフィックス % / ! / # / $ で指定してください`,
+    en: (p) =>
+      `${p.kind} is not supported (variables are renamed to 2-letter names, so first-letter DEF type declarations cannot work); specify types with the name suffixes % / ! / # / $`,
+  },
+  E_RESUME_LINE: {
+    code: "E_RESUME_LINE",
+    ja: () =>
+      "RESUME に行番号は指定できません（RESUME / RESUME NEXT / RESUME 0 のみ）",
+    en: () =>
+      "RESUME cannot take a line number (only RESUME / RESUME NEXT / RESUME 0)",
+  },
+  E_ON_LINE_TARGET: {
+    code: "E_ON_LINE_TARGET",
+    ja: () =>
+      "ON … GOTO/GOSUB の飛び先に行番号は使えません（関数名を指定。ON ERROR GOTO 0 での無効化のみ可）",
+    en: () =>
+      "ON … GOTO/GOSUB targets cannot be line numbers (use FUNCTION names; only ON ERROR GOTO 0 is allowed)",
+  },
   E_RESTORE_LINE: {
     code: "E_RESTORE_LINE",
     ja: () =>

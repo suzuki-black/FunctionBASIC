@@ -335,6 +335,10 @@ export function parse(tokens: Token[]): ParseResult {
         if (p === before) advance(); // 進行保証（不正トークンで無限ループしない）
       }
     }
+    // RESTORE は引数なしのみ。構造化BASICには行番号が無いので RESTORE <行番号> は不可。
+    if (cmd === "RESTORE" && parts.some((p) => p.kind === "expr")) {
+      report("E_RESTORE_LINE", pos);
+    }
     return { type: "Builtin", name, parts, pos };
   };
 

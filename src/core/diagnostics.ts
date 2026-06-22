@@ -96,6 +96,20 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `${p.fn}: REF 引数には変数を渡してください`,
     en: (p) => `${p.fn}: a REF argument must be a variable`,
   },
+  E_RESTORE_LINE: {
+    code: "E_RESTORE_LINE",
+    ja: () =>
+      "RESTORE に行番号は指定できません（構造化BASICには行番号がありません）。引数なしの RESTORE を使ってください",
+    en: () =>
+      "RESTORE cannot take a line number (Structured BASIC has no line numbers); use a bare RESTORE",
+  },
+  E_HANDLER_PARAMS: {
+    code: "E_HANDLER_PARAMS",
+    ja: (p) =>
+      `ON … の飛び先 ${p.name} は引数を取れません（ハンドラ/分岐先は引数なしの FUNCTION にしてください）`,
+    en: (p) =>
+      `ON … target ${p.name} cannot take parameters (handlers / branch targets must be a no-arg FUNCTION)`,
+  },
   E_RECURSION_UNSUPPORTED: {
     code: "E_RECURSION_UNSUPPORTED",
     ja: (p) => `再帰は未対応です（${p.name} を含む循環）`,

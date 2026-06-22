@@ -348,6 +348,42 @@ PRINT PAGE`);
   assert.ok(!/\bPAGE\b/.test(msx), "生の PAGE は残らない");
 });
 
+test("RESTORE に行番号を付けるとエラー（構造化に行番号は無い）。bare はOK", () => {
+  assert.ok(compile(`RESTORE 200`).diagnostics.some((d) => d.code === "E_RESTORE_LINE"));
+  assert.equal(
+    compile(`RESTORE\nREAD A\nDATA 1`).diagnostics.filter((d) => d.severity === "error").length,
+    0,
+  );
+});
+
+test("ON … の飛び先に引数つき関数を指定するとエラー（ハンドラは無引数）", () => {
+  const withParam = compile(`FUNCTION H(X)
+    GLOBAL G
+    G = X
+END FUNCTION
+ON SPRITE GOSUB H
+SPRITE ON`);
+  assert.ok(withParam.diagnostics.some((d) => d.code === "E_HANDLER_PARAMS"));
+  const noParam = compile(`FUNCTION H()
+    GLOBAL G
+    G = 1
+END FUNCTION
+ON SPRITE GOSUB H
+SPRITE ON`);
+  assert.equal(noParam.diagnostics.filter((d) => d.severity === "error").length, 0);
+});
+
+test("1関数が100出力行を超えても行番号が衝突しない（昇順・重複なし）", () => {
+  let src = "FUNCTION BIG()\n  GLOBAL G\n";
+  for (let i = 0; i < 130; i++) src += `  G = G + ${i}\n`;
+  src += "END FUNCTION\nFUNCTION NX()\n  GLOBAL H\n  H = 1\nEND FUNCTION\nBIG()\nNX()";
+  const { code, diagnostics } = compile(src);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  const nos = code.map((l) => l.lineNo);
+  assert.deepEqual([...new Set(nos)].length, nos.length, "行番号は重複しない");
+  assert.ok(nos.every((n, i) => i === 0 || n > nos[i - 1]), "行番号は昇順");
+});
+
 test("戻り値の無い手続きFUNCTIONの末尾にRETURNが補われる", () => {
   const { msx, diagnostics } = compile(`FUNCTION SETUP()
     GLOBAL X

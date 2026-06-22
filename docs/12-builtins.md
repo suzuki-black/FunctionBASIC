@@ -78,6 +78,14 @@
 - 飛び先は原則ユーザ関数名。未定義名は `E_UNKNOWN_FUNCTION`。例: [`examples/event-traps.msxb`](../examples/event-traps.msxb)。
 - FM/ADPCM を実際に鳴らすには **MSX-MUSIC / MSX-AUDIO ハードウェア**が必要（変換は機種非依存で常に通る）。例: [`examples/msx-music-fm.msxb`](../examples/msx-music-fm.msxb)。
 
+#### DATA / READ / RESTORE と行番号の注意
+
+- `DATA` は文として素通しし、トップレベルの出現順を保って行番号化される。MSX は `DATA` を**行番号順の1プール**として集めるため、`DATA` を `READ` より後（例: ファイル末尾）に置いてもよい。`READ`/`RESTORE` も正しく動く（変数 `B` 等の READ 先はローカル変数として2文字名へ）。
+- ただし `DATA` プールの順序は**出力行番号順**＝トップレベル(100番台)→各 FUNCTION(1000番台〜)。`DATA` を main と関数に分散させると順序が直感とズレ得るので、`DATA` は1か所（通常 main）にまとめる。
+- **`RESTORE <行番号>` は不可**（構造化BASICにソース行番号が無い）。引数つきは `E_RESTORE_LINE`。引数なし `RESTORE`（先頭へ戻す）のみ可。
+- **`ON … GOSUB/GOTO` の飛び先関数は無引数**でなければならない（イベント/分岐は引数を渡せない）。引数つきは `E_HANDLER_PARAMS`。
+- 行番号割当: main=100番から+10、各 FUNCTION variant は 1000 の倍数（1000,2000,…）から+10。**1関数の出力が100行を超えた場合**は、次の関数を「使い切った行を超える次の1000の倍数」へ自動的に押し出して衝突を避ける（例: 130行の関数の次は 3000 から）。
+
 #### 予約システム変数
 
 `TIME` は読み（`T=TIME`）・書き（`TIME=0`）とも改名しない予約名として `BUILTIN_STATEMENTS`／`BUILTIN_FUNCTIONS` の双方に掲載（MSX-BASIC でも `TIME` はユーザ変数に使えない）。`KANJI` も `PUT KANJI` 用に `BUILTIN_STATEMENTS` で予約。

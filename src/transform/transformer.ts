@@ -695,9 +695,14 @@ function finishTransform(ctx: any): TransformResult {
           break;
         case "On":
           if (s.arg) scanExpr(s.arg, sc);
-          // 飛び先のユーザ関数を無引数 variant として登録（入口行を確保）
-          for (const t of s.targets)
-            if (t.fn) registerVariant(t.fn, [], sc, t);
+          // 飛び先のユーザ関数を無引数 variant として登録（入口行を確保）。
+          // ON … の飛び先は引数を渡せない＝引数つき FUNCTION は不可。
+          for (const t of s.targets) {
+            if (!t.fn) continue;
+            const tf = funcTable.get(t.fn);
+            if (tf && tf.params.length > 0) fail("E_HANDLER_PARAMS", { name: t.fn });
+            registerVariant(t.fn, [], sc, t);
+          }
           break;
         case "Dim":
           s.decls.forEach((d) => d.dims.forEach((x) => scanExpr(x, sc)));
@@ -1075,7 +1080,11 @@ function finishTransform(ctx: any): TransformResult {
       const lines = numberBlock(items, seg);
       entryLineOf.set(key, seg);
       out.push(...lines);
-      seg += 1000;
+      // 次のセグメントは「seg+1000」を基本とするが、この関数が 100 行(=1000番)を
+      // 超えて使い切った場合は、実際に使った最終行を確実に超える 1000 の倍数へ進める
+      // （関数同士で行番号が衝突しないように。1関数>100行でも壊れない）。
+      const lastNo = lines.length ? lines[lines.length - 1].lineNo : seg;
+      seg = Math.max(seg + 1000, (Math.floor(lastNo / 1000) + 1) * 1000);
     }
   }
 

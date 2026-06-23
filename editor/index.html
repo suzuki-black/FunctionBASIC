@@ -30,7 +30,14 @@
     <div class="menu" data-menu="edit">
       <span class="mtitle" data-i18n="m.edit">編集</span>
       <div class="dropdown">
-        <div class="mi" data-act="format"><span data-i18n="format">整形（大文字化）</span><span class="sc">Ctrl/Cmd+Shift+F</span></div>
+        <div class="mi" data-act="undo"><span data-i18n="undo">元に戻す</span><span class="sc">Ctrl/Cmd+Z</span></div>
+        <div class="mi" data-act="redo"><span data-i18n="redo">やり直し</span><span class="sc">Ctrl/Cmd+Shift+Z</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="find"><span data-i18n="m.find">検索</span><span class="sc">Ctrl/Cmd+F</span></div>
+        <div class="mi" data-act="replace"><span data-i18n="m.replace">置換</span><span class="sc">Ctrl/Cmd+R</span></div>
+        <div class="mi" data-act="gfind"><span data-i18n="m.gfind">全体検索</span><span class="sc">Ctrl/Cmd+Shift+F</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="format"><span data-i18n="format">整形（大文字化）</span><span class="sc">Ctrl/Cmd+Alt+L</span></div>
         <div class="sep"></div>
         <div class="mi" data-act="def"><span data-i18n="def">定義へ移動</span><span class="sc">Ctrl/Cmd+B</span></div>
         <div class="mi" data-act="usages"><span data-i18n="usages">使用箇所（順送り）</span><span class="sc">Alt+F7</span></div>
@@ -82,6 +89,18 @@
     </span>
   </div>
 
+  <!-- 作業領域: 左=プロジェクトツリー / 右=タブ＋ペイン -->
+  <div id="main">
+  <!-- プロジェクトツリー（左サイドバー。JSが描画）-->
+  <aside id="sidebar">
+    <div id="sidebarHead">
+      <span id="projName" data-i18n="proj.title">プロジェクト</span>
+      <button id="newFileBtn" class="sb-btn" data-i18n-title="proj.newfile" title="新規ファイル">＋</button>
+    </div>
+    <div id="fileTree"></div>
+  </aside>
+  <!-- 右側（タブ＋ペイン）-->
+  <div id="content">
   <!-- タブ列（2グループ。ドラッグで並べ替え／グループ間移動＝分割・統合。JSが描画）-->
   <div id="tabstrips">
     <div id="stripA" class="tabstrip" data-group="A"></div>
@@ -94,8 +113,26 @@
     <div id="structuredPane" class="pane">
       <div id="gutter"></div>
       <div id="editWrap">
+        <div id="curline" aria-hidden="true" hidden></div>
         <pre id="highlight" aria-hidden="true"></pre>
         <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <!-- 検索・置換バー（Ctrl/Cmd+F / +H）-->
+        <div id="findbar" hidden>
+          <div class="findbar-row">
+            <input id="findInput" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="find.find" />
+            <button id="findCase" class="findbtn" title="Aa" data-i18n-title="find.case">Aa</button>
+            <button id="findRegex" class="findbtn" title=".*" data-i18n-title="find.regex">.*</button>
+            <span id="findCount"></span>
+            <button id="findPrev" class="findbtn" title="↑" data-i18n-title="find.prev">↑</button>
+            <button id="findNext" class="findbtn" title="↓" data-i18n-title="find.next">↓</button>
+            <button id="findClose" class="findbtn" title="Esc" data-i18n-title="find.close">✕</button>
+          </div>
+          <div class="findbar-row" id="findReplaceRow" hidden>
+            <input id="replaceInput" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="find.replace" />
+            <button id="replaceOne" class="findbtn wide" data-i18n="find.one">置換</button>
+            <button id="replaceAllBtn" class="findbtn wide" data-i18n="find.all">全置換</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -114,6 +151,8 @@
       <iframe id="webmsxFrame" title="WebMSX" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
     </div>
   </div>
+  </div><!-- /#content -->
+  </div><!-- /#main -->
 
   <div id="status" data-i18n="ready">準備完了</div>
 
@@ -148,6 +187,11 @@
         <input id="setFontSize" type="number" min="9" max="28" step="1" />
       </div>
 
+      <div class="set-section" data-i18n="set.editor">エディタ支援</div>
+      <label class="set-check"><input id="setAutoIndent" type="checkbox" /><span data-i18n="set.autoindent">自動インデント（Enter）</span></label>
+      <label class="set-check"><input id="setAutoPair" type="checkbox" /><span data-i18n="set.autopair">括弧・引用符の自動補完</span></label>
+      <label class="set-check"><input id="setCurLine" type="checkbox" /><span data-i18n="set.curline">現在行をハイライト</span></label>
+
       <div class="set-section" data-i18n="set.webmsx">WebMSX 実行</div>
 
       <div class="set-row">
@@ -178,6 +222,33 @@
         <button id="setCancel" data-i18n="set.cancel">キャンセル</button>
         <button id="setSave" data-i18n="set.save">保存</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 全体検索（Ctrl/Cmd+Shift+F）: MAIN ＋ INCLUDE した lib ＋ MSX 変換結果。中央の独立ウィンドウ -->
+  <div id="searchResults" hidden>
+    <div class="gf-window">
+      <div class="gf-title"><span data-i18n="find.gtitle">Find in Files</span>
+        <button id="gfindClose" class="findbtn" data-i18n-title="find.close">✕</button>
+      </div>
+      <div class="gf-head">
+        <input id="gfindInput" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="find.gfind" />
+        <button id="gfindCase" class="findbtn" title="Aa" data-i18n-title="find.case">Aa</button>
+        <button id="gfindRegex" class="findbtn" title=".*" data-i18n-title="find.regex">.*</button>
+        <span id="gfindCount"></span>
+      </div>
+      <div id="gfindList"></div>
+    </div>
+  </div>
+
+  <!-- 読み取り専用ビューア（全体検索→lib ファイルの該当行表示）-->
+  <div id="viewer" hidden>
+    <div class="viewer-box">
+      <div class="viewer-head">
+        <span class="viewer-title" id="viewerTitle"></span>
+        <button id="viewerClose" class="findbtn" data-i18n-title="find.close">✕</button>
+      </div>
+      <pre class="viewer-body" id="viewerBody"></pre>
     </div>
   </div>
 

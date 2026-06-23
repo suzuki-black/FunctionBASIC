@@ -81,14 +81,44 @@ button:hover { background: #1177bb; }
 .tabstrip.dropping { background: rgba(14, 99, 156, 0.18); }
 #stripB { border-left: 1px solid #333; }
 .tab {
+  display: flex; align-items: center; gap: 8px;
   background: transparent; color: #aaa; border: none; border-radius: 0;
-  border-bottom: 2px solid transparent; padding: 8px 14px;
+  border-bottom: 2px solid transparent; padding: 8px 10px 8px 14px;
   white-space: nowrap; cursor: pointer; font-family: var(--mono); font-size: 13px;
   user-select: none;
 }
 .tab:hover { color: #ccc; background: rgba(255,255,255,0.04); }
 .tab.active { color: #fff; border-bottom-color: #0e639c; background: var(--bg); }
 .tab[draggable="true"]:active { cursor: grabbing; }
+.tab-x {
+  background: none; border: 0; color: inherit; cursor: pointer;
+  font-size: 11px; line-height: 1; padding: 2px 3px; border-radius: 3px;
+  opacity: 0; color: #999;
+}
+.tab:hover .tab-x, .tab.active .tab-x { opacity: 1; }
+.tab-x:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+/* 作業領域: 左サイドバー＋右コンテンツ */
+#main { flex: 1; display: flex; min-height: 0; }
+#content { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* プロジェクトツリー（左サイドバー）*/
+#sidebar { width: 220px; flex: none; background: var(--bg2); border-right: 1px solid #333; display: flex; flex-direction: column; min-height: 0; }
+#sidebar[hidden] { display: none; }
+#sidebarHead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid #333; font-size: 12px; color: #bbb; font-weight: 600; }
+.sb-btn { background: #333; color: var(--fg); border: 1px solid #555; border-radius: 4px; padding: 0 8px; font-size: 14px; cursor: pointer; line-height: 1.7; }
+.sb-btn:hover { background: #454545; }
+#fileTree { flex: 1; overflow: auto; padding: 4px 0; font-size: 13px; }
+.ft-row { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 12px; cursor: pointer; white-space: nowrap; color: var(--fg); }
+.ft-row:hover { background: #2a2d2e; }
+.ft-row.active { background: #37373d; }
+.ft-ico { opacity: .85; }
+.ft-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.ft-act { visibility: hidden; color: #aaa; padding: 0 3px; border: 0; background: none; cursor: pointer; font-size: 12px; }
+.ft-row:hover .ft-act { visibility: visible; }
+.ft-act:hover { color: #fff; }
+.ft-group { padding: 8px 10px 2px; font-size: 11px; color: #888; letter-spacing: .04em; }
+.ft-row.node-webmsx { color: #9cdcfe; }
 
 /* ペイン群: 既定は単一表示(タブ)、.split で左右2分割 */
 #panes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -127,6 +157,97 @@ button:hover { background: #1177bb; }
   resize: none; z-index: 2; outline: none;
 }
 #src::selection { background: #264f78; }
+
+/* 現在行ハイライト（テキストエリア背後の帯。z-index 0 で透過テキスト越しに見える）*/
+#curline {
+  position: absolute; left: 0; right: 0; z-index: 0;
+  background: rgba(255, 255, 255, 0.05); pointer-events: none;
+}
+
+/* 単純検索バー（タブ直下に全幅ドッキング。PhpStorm の in-file 検索風）*/
+#findbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  background: var(--bg2); border-bottom: 1px solid #444;
+  padding: 5px 8px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  display: flex; flex-direction: column; gap: 5px;
+}
+#findbar[hidden], #searchResults[hidden], #viewer[hidden] { display: none; }
+.findbar-row { display: flex; align-items: center; gap: 5px; }
+.findbar-row[hidden] { display: none; }
+#findbar input {
+  flex: 1; min-width: 0;
+  background: #333; color: var(--fg); border: 1px solid #555; border-radius: 4px;
+  padding: 4px 8px; font-size: 13px; outline: none;
+}
+#findbar input:focus { border-color: #0e639c; }
+#findCount { font-size: 12px; color: #999; min-width: 44px; text-align: center; }
+.findbtn {
+  background: #3a3a3a; color: var(--fg); border: 1px solid #555; border-radius: 4px;
+  padding: 3px 7px; font-size: 12px; cursor: pointer; line-height: 1.2;
+}
+.findbtn:hover { background: #454545; }
+.findbtn.wide { padding: 3px 10px; }
+.findbtn.on { background: #0e639c; border-color: #0e639c; color: #fff; }
+
+/* 全体検索（Find in Files）: 中央の独立ウィンドウ＋背景オーバーレイ */
+#searchResults {
+  position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 6vh;
+}
+.gf-window {
+  width: 78%; max-width: 980px; height: 72%; background: var(--bg2);
+  border: 1px solid #555; border-radius: 8px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.gf-title {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; font-size: 15px; font-weight: 600; color: var(--fg);
+  border-bottom: 1px solid #383838;
+}
+.gf-head { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #383838; }
+.gf-head input {
+  flex: 1; min-width: 0;
+  background: #333; color: var(--fg); border: 1px solid #555; border-radius: 4px;
+  padding: 5px 9px; font-size: 13px; outline: none;
+}
+.gf-head input:focus { border-color: #0e639c; }
+#gfindCount { font-size: 12px; color: #999; min-width: 90px; text-align: right; }
+#gfindList { flex: 1; overflow: auto; font-family: var(--mono); font-size: 13px; }
+.gf-file {
+  position: sticky; top: 0; background: #2d2d30; color: #9cdcfe;
+  padding: 3px 10px; font-size: 12px; border-bottom: 1px solid #383838;
+}
+.gf-row { display: flex; gap: 10px; padding: 2px 10px 2px 22px; cursor: pointer; white-space: pre; }
+.gf-row:hover { background: #2a2d2e; }
+.gf-ln { color: #6a9955; min-width: 38px; text-align: right; }
+.gf-txt { color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+
+/* 読み取り専用ビューア（lib ファイル表示）*/
+#viewer {
+  position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.viewer-box {
+  width: 80%; max-width: 900px; height: 75%; background: var(--bg);
+  border: 1px solid #555; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;
+}
+.viewer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid #444;
+}
+.viewer-title { color: #9cdcfe; font-family: var(--mono); font-size: 13px; }
+.viewer-body {
+  margin: 0; padding: 10px 12px; overflow: auto; flex: 1;
+  font-family: var(--mono); font-size: 13px; line-height: 1.5; color: var(--fg); white-space: pre;
+}
+.viewer-body mark { background: #5a4500; color: #fff; }
+
+/* 設定: チェックボックス行 */
+.set-check {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0;
+  color: var(--fg); font-size: 13px; cursor: pointer;
+}
+.set-check input { width: 15px; height: 15px; cursor: pointer; }
 
 /* シンタックス色 */
 .t-kw { color: var(--kw); }

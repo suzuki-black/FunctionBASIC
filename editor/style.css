@@ -171,7 +171,7 @@ button:hover { background: #1177bb; }
   padding: 5px 8px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
   display: flex; flex-direction: column; gap: 5px;
 }
-#findbar[hidden], #searchResults[hidden], #viewer[hidden] { display: none; }
+#findbar[hidden], #searchResults[hidden] { display: none; }
 .findbar-row { display: flex; align-items: center; gap: 5px; }
 .findbar-row[hidden] { display: none; }
 #findbar input {
@@ -222,25 +222,9 @@ button:hover { background: #1177bb; }
 .gf-ln { color: #6a9955; min-width: 38px; text-align: right; }
 .gf-txt { color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
 
-/* 読み取り専用ビューア（lib ファイル表示）*/
-#viewer {
-  position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.5);
-  display: flex; align-items: center; justify-content: center;
-}
-.viewer-box {
-  width: 80%; max-width: 900px; height: 75%; background: var(--bg);
-  border: 1px solid #555; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;
-}
-.viewer-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid #444;
-}
-.viewer-title { color: #9cdcfe; font-family: var(--mono); font-size: 13px; }
-.viewer-body {
-  margin: 0; padding: 10px 12px; overflow: auto; flex: 1;
-  font-family: var(--mono); font-size: 13px; line-height: 1.5; color: var(--fg); white-space: pre;
-}
-.viewer-body mark { background: #5a4500; color: #fff; }
+/* 読み取り専用ライブラリ表示中のエディタ表示 */
+#editWrap.readonly #src { caret-color: transparent; background: rgba(255, 200, 0, 0.03); }
+#filename:read-only { color: #9cdcfe; opacity: .85; cursor: default; }
 
 /* 設定: チェックボックス行 */
 .set-check {

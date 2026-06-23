@@ -1014,21 +1014,49 @@ const fileTreeEl = $("fileTree");
 const userFiles = () => Object.keys(project.files).sort();        // ユーザ編集可
 const libFiles = () => Object.keys(LIBS).filter((k) => k.includes("/")).sort(); // 埋め込み(読み取り専用)
 
-// 現在の編集内容をアクティブファイルへ書き戻す
+// lib を表示中ならそのパス（読み取り専用）。null=通常のプロジェクトファイル編集。
+let viewingLib = null;
+
+// 現在の編集内容をアクティブファイルへ書き戻す（lib 表示中は書き戻さない）
 function syncActiveFile() {
+  if (viewingLib) return;
   if (project.active && project.files[project.active] != null) {
     project.files[project.active] = srcEl.value;
   }
 }
+function setReadOnly(on) {
+  viewingLib = on || null;
+  srcEl.readOnly = !!on;
+  $("filename").readOnly = !!on;
+  $("editWrap").classList.toggle("readonly", !!on);
+}
 function openFile(name) {
   if (!(name in project.files)) return;
-  if (name !== project.active) syncActiveFile();
+  syncActiveFile();
+  setReadOnly(false);
   project.active = name;
   $("filename").value = name;
   setSource(project.files[name]);
   activateTab("structured");
   renderTree();
   saveProject();
+}
+// ライブラリ(読み取り専用)を構造化タブで開く。line 指定でその行へジャンプ。
+function openLib(path, line) {
+  syncActiveFile();
+  setReadOnly(path);
+  $("filename").value = path;
+  setSource(LIBS[path] ?? LIBS[path.split("/").pop()] ?? "");
+  activateTab("structured");
+  renderTree();
+  if (line != null) {
+    const off = (lineStartsOf(srcEl.value)[line] ?? 0);
+    srcEl.focus();
+    srcEl.setSelectionRange(off, off);
+    const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+    srcEl.scrollTop = Math.max(0, line * lh - srcEl.clientHeight / 2);
+    updateCurLine();
+  }
 }
 async function newFile() {
   const name = await sanitizeName(await showPrompt(t("proj.newfile"), t("proj.newfilemsg"), "untitled.msxb"));
@@ -1074,7 +1102,7 @@ async function sanitizeName(raw) {
 function renderTree() {
   let html = "";
   for (const f of userFiles()) {
-    const a = f === project.active ? " active" : "";
+    const a = !viewingLib && f === project.active ? " active" : "";
     html += `<div class="ft-row${a}" data-file="${esc(f)}">` +
       `<span class="ft-ico">📄</span><span class="ft-name">${esc(f)}</span>` +
       `<button class="ft-act" data-ren="${esc(f)}" title="${esc(t("proj.rename"))}">✎</button>` +
@@ -1083,8 +1111,10 @@ function renderTree() {
   const libs = libFiles();
   if (libs.length) {
     html += `<div class="ft-group">${esc(t("proj.libs"))}</div>`;
-    for (const f of libs)
-      html += `<div class="ft-row" data-lib="${esc(f)}"><span class="ft-ico">📦</span><span class="ft-name">${esc(f)}</span></div>`;
+    for (const f of libs) {
+      const a = viewingLib === f ? " active" : "";
+      html += `<div class="ft-row${a}" data-lib="${esc(f)}"><span class="ft-ico">📦</span><span class="ft-name">${esc(f)}</span></div>`;
+    }
   }
   html += `<div class="ft-group">${esc(t("proj.run"))}</div>`;
   html += `<div class="ft-row" data-node="msx"><span class="ft-ico">📄</span><span class="ft-name">${esc(t("tab.msx"))}</span></div>`;
@@ -1100,7 +1130,7 @@ fileTreeEl.addEventListener("click", (e) => {
   const row = e.target.closest(".ft-row");
   if (!row) return;
   if (row.dataset.file) openFile(row.dataset.file);
-  else if (row.dataset.lib) openViewer(row.dataset.lib, LIBS[row.dataset.lib] || "", 0);
+  else if (row.dataset.lib) openLib(row.dataset.lib);
   else if (row.dataset.node === "msx") openTab("msx");
   else if (row.dataset.node === "webmsx") openTab("webmsx");
 });
@@ -1615,7 +1645,8 @@ function gotoResult(i) {
   if (!r) return;
   const lh2 = (el) => parseFloat(getComputedStyle(el).lineHeight) || 20;
   if (r.kind === "main") {
-    activateTab("structured");
+    if (viewingLib) openFile(project.active); // lib 表示中なら MAIN へ戻す
+    else activateTab("structured");
     srcEl.focus();
     srcEl.setSelectionRange(r.index, r.index + r.len);
     srcEl.scrollTop = Math.max(0, r.line * lh2(srcEl) - srcEl.clientHeight / 2);
@@ -1625,23 +1656,12 @@ function gotoResult(i) {
     const pre = $("msxOut");
     pre.scrollTop = Math.max(0, r.line * lh2(pre) - pre.clientHeight / 2);
   } else {
-    openViewer(r.label, r.text, r.line);
+    openLib(r.label, r.line); // lib も構造化タブ（読み取り専用）で開く
   }
+  closeGlobal(); // 中央ウィンドウを閉じてエディタを見せる
 }
 // グループの所属するタブを表示（閉じていれば開く）
 const activateTab = (tab) => openTab(tab);
-
-// ---- 読み取り専用ビューア（lib ファイルの該当行を表示）----
-function openViewer(label, text, line) {
-  $("viewerTitle").textContent = label;
-  const body = $("viewerBody");
-  body.innerHTML = text.split("\n")
-    .map((l, i) => (i === line ? `<mark>${esc(l) || "&nbsp;"}</mark>` : esc(l) || "&nbsp;"))
-    .join("\n");
-  $("viewer").hidden = false;
-  body.querySelector("mark")?.scrollIntoView({ block: "center" });
-}
-function closeViewer() { $("viewer").hidden = true; }
 
 // ---- イベント ----
 let timer = null;
@@ -1775,7 +1795,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeMenus();
     if (!$("modal").hidden) resolveModal(null);
-    if (!$("viewer").hidden) closeViewer();
     else if (gfindOpen()) closeGlobal();
   }
 });
@@ -1854,8 +1873,6 @@ $("gfindList").addEventListener("click", (e) => {
 });
 
 // 読み取り専用ビューア
-$("viewerClose").addEventListener("click", closeViewer);
-$("viewer").addEventListener("click", (e) => { if (e.target.id === "viewer") closeViewer(); });
 
 // タブ: クリックで選択、ドラッグで並べ替え／グループ間移動（分割・統合）
 $("tabstrips").addEventListener("click", (e) => {

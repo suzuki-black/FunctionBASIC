@@ -7,7 +7,14 @@
 export interface DisasmLine {
   addr: number; // この命令の開始アドレス
   bytes: number[]; // 命令を構成するバイト列
-  text: string; // ニーモニック
+  text: string; // ニーモニック（データ run は "DB ..."）
+  kind?: "code" | "data"; // 制御フロー解析時のみ設定（既定は code）
+}
+
+// 制御フロー情報: fallthrough=次命令へ落ちるか、target=分岐/呼び出し先（無ければ null）
+interface Flow {
+  fallthrough: boolean;
+  target: number | null;
 }
 
 const R = ["B", "C", "D", "E", "H", "L", "(HL)", "A"];
@@ -39,7 +46,7 @@ function decodeOne(
   start: number,
   addr: number,
   symbols?: ReadonlyMap<number, string>,
-): { text: string; len: number } {
+): { text: string; len: number; flow: Flow } {
   let p = start;
   const u8 = () => (mem[p++] ?? 0) & 0xff;
   const s8 = () => {
@@ -52,9 +59,19 @@ function decodeOne(
     return (lo | (hi << 8)) & 0xffff;
   };
   const symw = (a: number) => symbols?.get(a & 0xffff) ?? hexn(a, 4);
+  const flow: Flow = { fallthrough: true, target: null };
+  // 相対分岐先（数値）を flow.target に記録しつつ表示文字列を返す
   const rel = () => {
     const d = s8();
-    return symw((addr + (p - start) + d) & 0xffff); // p は d 読了後 = 次命令位置
+    const tgt = (addr + (p - start) + d) & 0xffff; // p は d 読了後 = 次命令位置
+    flow.target = tgt;
+    return symw(tgt);
+  };
+  // 絶対分岐/呼び出し先（u16）を flow.target に記録しつつ表示文字列を返す
+  const abs = () => {
+    const nn = u16();
+    flow.target = nn;
+    return symw(nn);
   };
 
   // DD/FD プレフィックス（最後が有効）
@@ -99,7 +116,7 @@ function decodeOne(
       else if (X === 2) t = `RES ${Y},${tgt}`;
       else t = `SET ${Y},${tgt}`;
       if (Z !== 6 && X !== 1) t += `,${R[Z]}`; // 未公開: 結果をレジスタにも
-      return { text: t, len: p - start };
+      return { text: t, len: p - start, flow };
     }
     const cb = u8();
     const X = (cb >> 6) & 3, Y = (cb >> 3) & 7, Z = cb & 7;
@@ -108,7 +125,7 @@ function decodeOne(
     else if (X === 1) t = `BIT ${Y},${R[Z]}`;
     else if (X === 2) t = `RES ${Y},${R[Z]}`;
     else t = `SET ${Y},${R[Z]}`;
-    return { text: t, len: p - start };
+    return { text: t, len: p - start, flow };
   }
 
   // ---- ED ----
@@ -129,7 +146,8 @@ function decodeOne(
       t = BLK[Y - 4][Z];
     }
     if (t === null) t = `DB 0EDh,${b8(e)}`;
-    return { text: t, len: p - start };
+    if (t === "RETI" || t === "RETN") flow.fallthrough = false;
+    return { text: t, len: p - start, flow };
   }
 
   // ---- 無印（DD/FD で HL→IX/IY 置換あり）----
@@ -143,7 +161,7 @@ function decodeOne(
       if (Y === 0) t = "NOP";
       else if (Y === 1) t = "EX AF,AF'";
       else if (Y === 2) t = `DJNZ ${rel()}`;
-      else if (Y === 3) t = `JR ${rel()}`;
+      else if (Y === 3) { t = `JR ${rel()}`; flow.fallthrough = false; }
       else t = `JR ${CC[Y - 4]},${rel()}`;
     } else if (Z === 1) {
       t = Q === 0 ? `LD ${rp(P)},${symw(u16())}` : `ADD ${rp(2)},${rp(P)}`;
@@ -183,17 +201,17 @@ function decodeOne(
     t = `${ALU[Y]}${reg(Z)}`;
   } else {
     // X === 3
-    if (Z === 0) t = `RET ${CC[Y]}`;
+    if (Z === 0) t = `RET ${CC[Y]}`; // 条件RET: 落ちる
     else if (Z === 1) {
       if (Q === 0) t = `POP ${rp2(P)}`;
-      else if (P === 0) t = "RET";
+      else if (P === 0) { t = "RET"; flow.fallthrough = false; }
       else if (P === 1) t = "EXX";
-      else if (P === 2) t = `JP (${ix ?? "HL"})`;
+      else if (P === 2) { t = `JP (${ix ?? "HL"})`; flow.fallthrough = false; } // 間接=追えない
       else t = `LD SP,${rp(2)}`;
     } else if (Z === 2) {
-      t = `JP ${CC[Y]},${symw(u16())}`;
+      t = `JP ${CC[Y]},${abs()}`; // 条件JP: 分岐先＋落ちる
     } else if (Z === 3) {
-      if (Y === 0) t = `JP ${symw(u16())}`;
+      if (Y === 0) { t = `JP ${abs()}`; flow.fallthrough = false; } // 無条件JP
       else if (Y === 2) t = `OUT (${b8(u8())}),A`;
       else if (Y === 3) t = `IN A,(${b8(u8())})`;
       else if (Y === 4) t = `EX (SP),${rp(2)}`;
@@ -201,18 +219,19 @@ function decodeOne(
       else if (Y === 6) t = "DI";
       else t = "EI";
     } else if (Z === 4) {
-      t = `CALL ${CC[Y]},${symw(u16())}`;
+      t = `CALL ${CC[Y]},${abs()}`; // 条件CALL
     } else if (Z === 5) {
       // q=0: PUSH rp2 / q=1,P=0: CALL nn（P!=0 はプレフィックスで既出）
-      t = Q === 0 ? `PUSH ${rp2(P)}` : `CALL ${symw(u16())}`;
+      t = Q === 0 ? `PUSH ${rp2(P)}` : `CALL ${abs()}`;
     } else if (Z === 6) {
       t = `${ALU[Y]}${b8(u8())}`;
     } else {
       t = `RST ${b8(Y * 8)}`;
+      flow.target = Y * 8; // 通常は BIOS/低位＝範囲外で追跡対象外
     }
   }
 
-  return { text: t, len: p - start };
+  return { text: t, len: p - start, flow };
 }
 
 // バイト列を逆アセンブル。base=先頭バイトのアドレス。symbols で絶対アドレスを名前解決。
@@ -228,6 +247,57 @@ export function disassemble(
     const n = Math.max(1, len);
     out.push({ addr: (base + pos) & 0xffff, bytes: bytes.slice(pos, pos + n), text });
     pos += n;
+  }
+  return out;
+}
+
+// 制御フロー追跡（recursive traversal）でコードとデータを分離して逆アセンブル。
+// entries（既定=base）から JP/CALL/JR/分岐を辿って「到達したコード」だけを命令化し、
+// 未到達バイトは DB データとして出力する（best-effort: 間接ジャンプ/計算分岐は追えない）。
+export function disassembleCFG(
+  bytes: number[],
+  base = 0,
+  symbols?: ReadonlyMap<number, string>,
+  entries?: number[],
+): DisasmLine[] {
+  base &= 0xffff;
+  const end = base + bytes.length;
+  const inRange = (a: number) => a >= base && a < end;
+  const code = new Map<number, { len: number; text: string }>(); // 命令開始 addr → 命令
+  const seen = new Set<number>();
+  const work = (entries && entries.length ? entries : [base]).filter(inRange);
+
+  while (work.length) {
+    let a = work.pop()!;
+    while (inRange(a) && !seen.has(a)) {
+      seen.add(a);
+      const { text, len, flow } = decodeOne(bytes, a - base, a & 0xffff, symbols);
+      const n = Math.max(1, len);
+      code.set(a, { len: n, text });
+      if (flow.target != null && inRange(flow.target)) work.push(flow.target);
+      if (!flow.fallthrough) break;
+      a += n;
+    }
+  }
+
+  // 線形に走査: code 開始は命令、それ以外の連続バイトは DB（8バイト区切り）
+  const out: DisasmLine[] = [];
+  let pos = base;
+  while (pos < end) {
+    const ins = code.get(pos);
+    if (ins) {
+      out.push({ addr: pos, bytes: bytes.slice(pos - base, pos - base + ins.len), text: ins.text, kind: "code" });
+      pos += ins.len;
+      continue;
+    }
+    let runEnd = pos + 1;
+    while (runEnd < end && !code.has(runEnd)) runEnd++;
+    for (let q = pos; q < runEnd; q += 8) {
+      const e = Math.min(q + 8, runEnd);
+      const slice = bytes.slice(q - base, e - base);
+      out.push({ addr: q, bytes: slice, text: "DB " + slice.map((b) => b8(b)).join(","), kind: "data" });
+    }
+    pos = runEnd;
   }
   return out;
 }

@@ -1,7 +1,7 @@
 // Z80 逆アセンブラの既知バイト列検証。
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { disassemble } from "../src/disasm/z80.ts";
+import { disassemble, disassembleCFG } from "../src/disasm/z80.ts";
 import { MSX_BIOS } from "../src/disasm/msx-bios.ts";
 
 // 単一命令: bytes → 期待ニーモニック（base 既定 0）
@@ -56,4 +56,28 @@ test("disasm: 連続した複数命令を順に分解する", () => {
   const lines = disassemble([0x3e, 0x01, 0xcd, 0xa2, 0x00, 0xc9], 0xc000, MSX_BIOS);
   assert.deepEqual(lines.map((l) => l.text), ["LD A,01h", "CALL CHPUT", "RET"]);
   assert.deepEqual(lines.map((l) => l.addr), [0xc000, 0xc002, 0xc005]);
+});
+
+// ---- 制御フロー追跡（disassembleCFG）: コード/データ分離 ----
+test("CFG: RET の後ろのデータは DB（線形だと誤デコード）", () => {
+  const b = [0x3e, 0x05, 0xc9, 0xff, 0xff]; // LD A,5 / RET / FF FF(データ)
+  const cfg = disassembleCFG(b, 0xc000);
+  assert.deepEqual(cfg.map((l) => l.text), ["LD A,05h", "RET", "DB 0FFh,0FFh"]);
+  assert.deepEqual(cfg.map((l) => l.kind), ["code", "code", "data"]);
+  // 線形掃引は FF をコード(RST 38h)として誤デコードする（=CFGの優位性）
+  assert.equal(disassemble(b, 0xc000).some((l) => l.text === "RST 38h"), true);
+});
+
+test("CFG: JR が跨いだ中間バイトはデータ扱い", () => {
+  // C000: JR C004 / C002: AA BB(データ) / C004: RET
+  const cfg = disassembleCFG([0x18, 0x02, 0xaa, 0xbb, 0xc9], 0xc000);
+  assert.deepEqual(cfg.map((l) => l.text), ["JR 0C004h", "DB 0AAh,0BBh", "RET"]);
+  assert.deepEqual(cfg.map((l) => l.kind), ["code", "data", "code"]);
+});
+
+test("CFG: CALL は飛び先も辿りつつ次へ落ちる／到達しない隙間はデータ", () => {
+  // C000: CALL C005 / C003: RET / C004: 00(データ) / C005: RET
+  const cfg = disassembleCFG([0xcd, 0x05, 0xc0, 0xc9, 0x00, 0xc9], 0xc000);
+  assert.deepEqual(cfg.map((l) => l.text), ["CALL 0C005h", "RET", "DB 00h", "RET"]);
+  assert.deepEqual(cfg.map((l) => l.kind), ["code", "code", "data", "code"]);
 });

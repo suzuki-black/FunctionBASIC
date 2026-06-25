@@ -7,6 +7,9 @@ import { isBuiltin } from "./core/core/builtins.js";
 import { localize } from "./core/core/diagnostics.js";
 import { resolveIncludes } from "./core/preprocess/include.js";
 import { LIBS } from "./core/libs.js";
+import { findDataBlobs } from "./core/disasm/detect.js";
+import { buildAnnotationLines, stripMnemonicComments } from "./core/disasm/annotate.js";
+import { MSX_BIOS } from "./core/disasm/msx-bios.js";
 
 const $ = (id) => document.getElementById(id);
 const srcEl = $("src");
@@ -28,6 +31,9 @@ const I18N = {
     "m.file": "ファイル", "m.edit": "編集", "m.view": "表示", "m.run": "実行", "m.help": "ヘルプ",
     "save": "変換して保存", "dsk": "ディスク(.dsk)を保存…", "sav": "MSXPLAYer用(.sav)を保存…",
     "undo": "元に戻す", "redo": "やり直し", "m.find": "検索", "m.replace": "置換", "m.gfind": "全体検索",
+    "m.asm": "機械語DATAを逆アセンブル注釈", "m.asmclear": "注釈を消す",
+    "asm.done": (n) => `機械語DATAを注釈しました（${n}件）`, "asm.none": "機械語DATAは見つかりませんでした",
+    "asm.cleared": "ニーモニック注釈を消しました",
     "undo.none": "これ以上戻せません", "redo.none": "これ以上やり直せません",
     "format": "整形（大文字化）", "def": "定義へ移動", "usages": "使用箇所（順送り）", "goline": "行へ移動…",
     "back": "戻る", "fwd": "進む", "bm": "ブックマーク切替", "bmnext": "次のブックマーク",
@@ -92,6 +98,9 @@ const I18N = {
     "m.file": "File", "m.edit": "Edit", "m.view": "View", "m.run": "Run", "m.help": "Help",
     "save": "Convert & Save", "dsk": "Save Disk (.dsk)…", "sav": "Save for MSXPLAYer (.sav)…",
     "undo": "Undo", "redo": "Redo", "m.find": "Find", "m.replace": "Replace", "m.gfind": "Find Everywhere",
+    "m.asm": "Disassemble machine-code DATA", "m.asmclear": "Clear annotations",
+    "asm.done": (n) => `Annotated machine-code DATA (${n})`, "asm.none": "No machine-code DATA found",
+    "asm.cleared": "Cleared mnemonic annotations",
     "undo.none": "Nothing to undo", "redo.none": "Nothing to redo",
     "format": "Format (Uppercase)", "def": "Go to Definition", "usages": "Find Usages (cycle)", "goline": "Go to Line…",
     "back": "Back", "fwd": "Forward", "bm": "Toggle Bookmark", "bmnext": "Next Bookmark",
@@ -404,6 +413,7 @@ function highlightHtml(src) {
       continue;
     }
     let klass = cls[t.kind] ?? null;
+    if (t.kind === "COMMENT" && /^'@/.test(t.raw)) klass = "t-mnem"; // ニーモニック注釈は別色
     if (t.kind === "IDENT" && isBuiltin(t.value)) klass = "t-builtin";
     html += klass ? `<span class="${klass}">${esc(t.raw)}</span>` : esc(t.raw);
     pos = s + t.raw.length;
@@ -1289,6 +1299,41 @@ function onFormat() {
   flash("整形しました（大文字化）");
 }
 
+// ---- 機械語DATAの逆アセンブル注釈（ニーモニックコメント '@。MSX変換時に除去）----
+function annotateMachineCode() {
+  if (viewingLib) return; // 読み取り専用ライブラリには注釈しない
+  const base = stripMnemonicComments(srcEl.value); // 既存注釈を除去（冪等）
+  let prog;
+  try {
+    prog = parse(tokenize(base).tokens).program;
+  } catch (e) {
+    logErr("annotate parse", e);
+    return;
+  }
+  const blobs = findDataBlobs(prog).filter((b) => b.kind === "machine-code");
+  if (!blobs.length) {
+    srcEl.value = base;
+    render();
+    flash(t("asm.none"));
+    return;
+  }
+  const lines = base.split("\n");
+  // ローダ行の上に注釈ブロックを挿入。行番号ズレ回避のため下から。
+  blobs
+    .map((b) => ({ line: b.pos.line, block: buildAnnotationLines(b, MSX_BIOS) }))
+    .sort((a, b) => b.line - a.line)
+    .forEach((ins) => lines.splice(Math.max(0, ins.line - 1), 0, ...ins.block));
+  srcEl.value = lines.join("\n");
+  render();
+  flash(t("asm.done", blobs.length));
+}
+function clearAnnotations() {
+  if (viewingLib) return;
+  srcEl.value = stripMnemonicComments(srcEl.value);
+  render();
+  flash(t("asm.cleared"));
+}
+
 // ---- スニペット（行頭の trigger + Tab で展開）----
 const SNIPPETS = {
   FN: (ind) => [`FUNCTION NAME()`, `${ind}    `, `${ind}END FUNCTION`],
@@ -1741,6 +1786,8 @@ function runAction(act) {
     case "replace": return openFind(true);
     case "gfind": return openGlobal();
     case "format": return onFormat();
+    case "asm-annotate": return annotateMachineCode();
+    case "asm-clear": return clearAnnotations();
     case "def": return goToDefinition();
     case "usages": return findUsages();
     case "goline": return goToLine();

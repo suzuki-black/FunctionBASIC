@@ -5,8 +5,19 @@ import { tokenize } from "../src/lexer/lexer.ts";
 import { parse } from "../src/parser/parser.ts";
 import { findDataBlobs, collectData, evalConst } from "../src/disasm/detect.ts";
 import { disassemble } from "../src/disasm/z80.ts";
+import { transform, renderMsx } from "../src/transform/transformer.ts";
 
 const prog = (src: string) => parse(tokenize(src).tokens).program;
+
+test("transform: '@ ニーモニックコメントはMSX出力から除去、通常'コメントは残る", () => {
+  const p = prog(`'@ C000  3E 0A      LD A,0Ah
+' 普通のコメント
+PRINT 1
+`);
+  const msx = renderMsx(transform(p).code);
+  assert.ok(!/LD A,0Ah/.test(msx), "ニーモニックは出力から消える");
+  assert.ok(/普通のコメント/.test(msx), "通常コメントは残る");
+});
 
 test("detect: READ→POKE ローダ＋USR呼び出し → 機械語と判定", () => {
   // 49152 = &HC000。62,10,201 = 3E 0A C9 = LD A,0Ah / RET

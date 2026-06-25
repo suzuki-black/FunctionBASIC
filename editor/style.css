@@ -239,6 +239,8 @@ button:hover { background: #1177bb; }
 .t-str { color: var(--str); }
 .t-num { color: var(--num); }
 .t-com { color: var(--com); font-style: italic; }
+/* ニーモニック注釈コメント('@): 通常コメントと別色。MSX変換時に除去される目印 */
+.t-mnem { color: #c8924a; font-style: italic; }
 .t-op { color: var(--op); }
 .errline { background: rgba(241,76,76,0.12); }
 

@@ -1001,7 +1001,8 @@ function finishTransform(ctx: any): TransformResult {
         case "Include":
           break;
         case "Comment":
-          items.push({ kind: "line", text: simpleStmtText(s, sc)! });
+          // ニーモニックコメント('@)は構造化側だけの注釈＝MSX出力からは除去
+          if (!/^\s*'@/.test(s.text)) items.push({ kind: "line", text: simpleStmtText(s, sc)! });
           break;
         case "Let":
           if (s.expr.type === "CallExpr" && funcTable.has(s.expr.name)) {

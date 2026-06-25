@@ -38,7 +38,7 @@ function decodeOne(
   mem: number[],
   start: number,
   addr: number,
-  symbols?: Map<number, string>,
+  symbols?: ReadonlyMap<number, string>,
 ): { text: string; len: number } {
   let p = start;
   const u8 = () => (mem[p++] ?? 0) & 0xff;
@@ -219,7 +219,7 @@ function decodeOne(
 export function disassemble(
   bytes: number[],
   base = 0,
-  symbols?: Map<number, string>,
+  symbols?: ReadonlyMap<number, string>,
 ): DisasmLine[] {
   const out: DisasmLine[] = [];
   let pos = 0;

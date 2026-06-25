@@ -35,7 +35,11 @@ export function splitStatements(body: string): string[] {
     cur += c;
   }
   out.push(cur);
-  return out.map((s) => s.trim()).filter((s) => s.length > 0);
+  // IF 文は THEN/ELSE 分岐が行末まで続く（その : は分岐内の区切り）。
+  // 先頭が IF の文以降は結合して1文に戻す。
+  const fi = out.findIndex((s) => /^\s*IF\b/i.test(s));
+  const merged = fi >= 0 ? [...out.slice(0, fi), out.slice(fi).join(":")] : out;
+  return merged.map((s) => s.trim()).filter((s) => s.length > 0);
 }
 
 export function readBasic(src: string): ReadResult {

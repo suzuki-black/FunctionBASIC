@@ -13,7 +13,7 @@ export interface RestructureResult {
 const UNIT = "    ";
 
 // 文字列/REM/' を保護して top-level の : で分割（IF 分岐内の展開用）。
-function splitColonSafe(s: string): string[] {
+export function splitColonSafe(s: string): string[] {
   const out: string[] = [];
   let cur = "";
   let inStr = false;
@@ -31,7 +31,7 @@ function splitColonSafe(s: string): string[] {
 }
 
 // 文字列外の top-level ELSE の位置（無ければ -1）。
-function findElse(s: string): number {
+export function findElse(s: string): number {
   let inStr = false;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
@@ -52,6 +52,13 @@ function toComment(s: string): string {
 }
 
 export function restructure(lines: BasicLine[]): RestructureResult {
+  return restructureStmts(lines.flatMap((l) => l.stmts));
+}
+
+// 文ストリームを構造化整形。元の明示構造（単行IF/FOR/WHILE）に加え、
+// 既にブロック形に整形済みの行（`IF … THEN` 末尾空 / `ELSE` / `END IF` /
+// `FUNCTION …` / `END FUNCTION`）も字下げできる（#15 のデコンパイル出力用）。
+export function restructureStmts(stmts: string[]): RestructureResult {
   const out: string[] = [];
   const diagnostics: Diagnostic[] = [];
   let depth = 0;
@@ -66,6 +73,12 @@ export function restructure(lines: BasicLine[]): RestructureResult {
     if (!stmt) return;
 
     if (stmt.startsWith("'") || /^REM\b/i.test(stmt)) { push(toComment(stmt)); return; }
+
+    // 既にブロック形に整形済みの行（#15 のデコンパイル出力）
+    if (/^FUNCTION\b/i.test(stmt)) { push(stmt); depth++; return; }
+    if (/^END\s+FUNCTION\b/i.test(stmt)) { depth--; if (depth < 0) depth = 0; push("END FUNCTION"); return; }
+    if (/^END\s+IF\b/i.test(stmt)) { depth--; if (depth < 0) depth = 0; push("END IF"); return; }
+    if (/^ELSE$/i.test(stmt)) { depth--; if (depth < 0) depth = 0; push("ELSE"); depth++; return; }
 
     if (/^FOR\b/i.test(stmt)) { push(stmt); depth++; return; }
     if (/^NEXT\b/i.test(stmt)) {
@@ -91,6 +104,7 @@ export function restructure(lines: BasicLine[]): RestructureResult {
     if (ifm) {
       const cond = ifm[1].trim();
       const after = ifm[2].trim();
+      if (after === "") { push(`IF ${cond} THEN`); depth++; return; } // 既にブロック形
       const ei = findElse(after);
       const thenPart = (ei >= 0 ? after.slice(0, ei) : after).trim();
       const elsePart = ei >= 0 ? after.slice(ei + 4).trim() : "";
@@ -114,7 +128,7 @@ export function restructure(lines: BasicLine[]): RestructureResult {
     push(stmt);
   };
 
-  for (const ln of lines) for (const s of ln.stmts) emit(s);
+  for (const s of stmts) emit(s);
   if (depth !== 0) warn(`ブロックが閉じていません（残り深さ ${depth}）`);
   return { source: out.join("\n"), diagnostics };
 }

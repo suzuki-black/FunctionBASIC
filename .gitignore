@@ -7,3 +7,6 @@ src-tauri/target/
 editor/core/
 src-tauri/gen/
 .claude/
+
+# 逆変換の評価コーパス（第三者コードは非コミット・ローカル限定）
+corpus/

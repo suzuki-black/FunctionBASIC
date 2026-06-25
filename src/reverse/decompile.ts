@@ -24,18 +24,27 @@ export function decompile(lines: BasicLine[]): DecompileResult {
   lines.forEach((l, i) => posOf.set(l.lineNo, i));
   const lastStmt = (i: number) => lines[i].stmts[lines[i].stmts.length - 1] ?? "";
 
-  // 全ジャンプ先（GOTO/GOSUB/THEN行/ON …）
+  // 全ジャンプ先（GOTO/GOSUB/THEN行/ON …）。制御移行は参照元indexも記録（ループ解析用）。
   const targets = new Set<number>();
   const gosubTargets = new Set<number>();
-  for (const l of lines) {
+  const refsTo = new Map<number, number[]>(); // 行番号 → それを GOTO/THEN行/ON で参照する行index群
+  const addRef = (t: number, from: number) => { targets.add(t); if (!refsTo.has(t)) refsTo.set(t, []); refsTo.get(t)!.push(from); };
+  const loopEnd = new Map<number, number>(); // ループ開始index → 末尾後方GOTO行index（競合は -1）
+  lines.forEach((l, idx) => {
     for (const s of l.stmts) {
       let m: RegExpMatchArray | null;
       if ((m = s.match(/\bGOSUB\s+(\d+)/i))) { gosubTargets.add(+m[1]); targets.add(+m[1]); }
-      for (const g of s.matchAll(/\bGOTO\s+(\d+)/gi)) targets.add(+g[1]);
-      if ((m = s.match(/^IF\s+[\s\S]+?\s+THEN\s+(\d+)/i))) targets.add(+m[1]);
-      if (/^ON\b/i.test(s)) for (const g of s.matchAll(/(\d+)/g)) targets.add(+g[1]);
+      for (const g of s.matchAll(/\bGOTO\s+(\d+)/gi)) addRef(+g[1], idx);
+      if ((m = s.match(/^IF\s+[\s\S]+?\s+THEN\s+(\d+)/i))) addRef(+m[1], idx);
+      if (/^ON\b/i.test(s)) for (const g of s.matchAll(/(\d+)/g)) addRef(+g[1], idx);
     }
-  }
+    const last = (l.stmts[l.stmts.length - 1] ?? "").trim();
+    const gm = last.match(/^GOTO\s+(\d+)$/i); // 末尾の無条件GOTO
+    if (gm) {
+      const s = posOf.get(+gm[1]);
+      if (s != null && s <= idx) loopEnd.set(s, loopEnd.has(s) ? -1 : idx); // 後方（自己含む）。競合は -1
+    }
+  });
 
   // 関数領域（GOSUB先 .. RETURN）を抽出
   const inFunc = new Array<boolean>(lines.length).fill(false);
@@ -100,22 +109,79 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     return [s];
   };
 
-  // 行範囲 [lo..hi] を書き換えて out へ。前方IF-skip を IF ブロックへ。
-  const rewriteRange = (lo: number, hi: number, out: string[]): void => {
+  // ループ内の脱出: GOTO <ループ直後行> は BREAK に。
+  const rwStmtExit = (stmt: string, exit?: number): string[] => {
+    if (exit != null) { const m = stmt.trim().match(/^GOTO\s+(\d+)\s*$/i); if (m && +m[1] === exit) return ["BREAK"]; }
+    return rwStmt(stmt);
+  };
+
+  // i が後方GOTOループの開始なら情報を返す。構造化できない（外部侵入/不明脱出）場合は null。
+  const loopInfo = (i: number, hi: number): { g: number; kind: "while1" | "whilenot"; cond?: string; exit?: number } | null => {
+    const g = loopEnd.get(i);
+    if (g == null || g < 0 || g < i || g > hi) return null;
+    const exit = lines[g + 1]?.lineNo; // ループ直後の行番号（脱出先）
+    for (let k = i; k <= g; k++) {
+      if (k > i) for (const from of refsTo.get(lines[k].lineNo) ?? []) if (from < i || from > g) return null; // 外部から内部へ侵入
+      for (const s of lines[k].stmts) {
+        const outs: number[] = [];
+        let m = s.match(/^IF\s+[\s\S]+?\s+THEN\s+(?:GOTO\s+)?(\d+)\s*$/i); if (m) outs.push(+m[1]);
+        m = s.match(/^IF\s+[\s\S]+?\s+GOTO\s+(\d+)\s*$/i); if (m) outs.push(+m[1]);
+        for (const gg of s.matchAll(/\bGOTO\s+(\d+)/gi)) outs.push(+gg[1]);
+        for (const t of outs) {
+          const tp = posOf.get(t);
+          if (!(tp != null && tp >= i && tp <= g) && t !== exit) return null; // 範囲外かつ脱出先でない＝不明な脱出
+        }
+      }
+    }
+    const s0 = lines[i].stmts;
+    if (s0.length === 1) { const cj = condJump(s0[0]); if (cj && cj.target === exit) return { g, kind: "whilenot", cond: cj.cond, exit }; }
+    return { g, kind: "while1", exit };
+  };
+
+  // ループ末尾行の文（末尾の戻りGOTOは除去）を out へ。
+  const emitLoopTail = (g: number, out: string[], exit?: number) => {
+    const st = lines[g].stmts;
+    const drop = /^GOTO\s+\d+\s*$/i.test((st[st.length - 1] ?? "").trim());
+    for (let k = 0; k < (drop ? st.length - 1 : st.length); k++) for (const o of rwStmtExit(st[k], exit)) out.push(o);
+  };
+
+  // 行範囲 [lo..hi] を書き換えて out へ。後方GOTOループ→WHILE、前方IF-skip→IFブロック、脱出→BREAK。
+  const rewriteRange = (lo: number, hi: number, out: string[], lex?: number): void => {
     let i = lo;
     while (i <= hi) {
+      const li = loopInfo(i, hi);
+      if (li) {
+        if (li.kind === "whilenot") {
+          out.push(`WHILE NOT(${li.cond})`);
+          rewriteRange(i + 1, li.g - 1, out, li.exit);
+        } else {
+          out.push("WHILE 1");
+          rewriteRange(i, li.g - 1, out, li.exit);
+        }
+        emitLoopTail(li.g, out, li.exit);
+        out.push("WEND");
+        i = li.g + 1;
+        continue;
+      }
       const stmts = lines[i].stmts;
       const cj = condJump(stmts[stmts.length - 1] ?? "");
+      // 条件付き脱出 → BREAK
+      if (cj && lex != null && cj.target === lex) {
+        for (let k = 0; k < stmts.length - 1; k++) for (const o of rwStmtExit(stmts[k], lex)) out.push(o);
+        out.push(`IF ${cj.cond} THEN`, "BREAK", "END IF");
+        i++;
+        continue;
+      }
       const tp = cj ? posOf.get(cj.target) : undefined;
       const safe = cj && tp != null && tp > i && tp <= hi && noEntryInto(i + 1, tp - 1);
       if (cj && safe) {
-        for (let k = 0; k < stmts.length - 1; k++) for (const o of rwStmt(stmts[k])) out.push(o);
+        for (let k = 0; k < stmts.length - 1; k++) for (const o of rwStmtExit(stmts[k], lex)) out.push(o);
         out.push(`IF NOT(${cj.cond}) THEN`);
-        rewriteRange(i + 1, tp! - 1, out);
+        rewriteRange(i + 1, tp! - 1, out, lex);
         out.push("END IF");
         i = tp!;
       } else {
-        for (const st of stmts) for (const o of rwStmt(st)) out.push(o);
+        for (const st of stmts) for (const o of rwStmtExit(st, lex)) out.push(o);
         i++;
       }
     }

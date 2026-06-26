@@ -72,6 +72,16 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     funcNames.add(funcName(t));
   }
 
+  // DEF FN（インライン関数）→ FUNCTION FN<名>() に巻き上げ。FN <名>( 呼び出しは FN<名>( へ。
+  const defFns: { name: string; params: string; expr: string }[] = [];
+  for (const l of lines) for (const s of l.stmts) {
+    const m = s.match(/^DEF\s+FN\s*([A-Za-z][A-Za-z0-9]*)\s*(?:\(([^)]*)\))?\s*=\s*([\s\S]+)$/i);
+    if (m) { defFns.push({ name: m[1].toUpperCase(), params: (m[2] ?? "").trim(), expr: m[3].trim() }); funcNames.add("FN" + m[1].toUpperCase()); }
+  }
+  // FN <名>( … ) 呼び出しを FN<名>( … ) へ（文字列内は保護）
+  const convFn = (s: string): string =>
+    s.replace(/"[^"]*"|(\bFN)\s+([A-Za-z][A-Za-z0-9]*)\s*\(/gi, (m, fn, name) => (fn ? `${fn}${name}(` : m));
+
   // 前方条件ジャンプ（IF cond THEN n / IF cond THEN GOTO n / IF cond GOTO n）
   const condJump = (stmt: string): { cond: string; target: number } | null => {
     let m = stmt.match(/^IF\s+([\s\S]+?)\s+THEN\s+(?:GOTO\s+)?(\d+)\s*$/i);
@@ -88,11 +98,13 @@ export function decompile(lines: BasicLine[]): DecompileResult {
 
   // 1文の書き換え（行レベルの前方スキップは rewriteRange 側で処理）
   const rwStmt = (stmt: string): string[] => {
-    const s = stmt.trim();
+    let s = stmt.trim();
     if (!s) return [];
     if (s.startsWith("'") || /^REM\b/i.test(s)) return [s];
     // DEFINT/DEFSNG/DEFDBL/DEFSTR は構造化では型サフィックスで表現＝コメント化（意味の既定型は失われる旨を残す）
     if (/^DEF(INT|SNG|DBL|STR)\b/i.test(s)) return [`' ${s}（型既定。構造化では型サフィックスで表現）`];
+    if (/^DEF\s+FN\b/i.test(s)) return []; // DEF FN は FUNCTION として巻き上げ済み（ここでは除去）
+    s = convFn(s); // FN <名>( → FN<名>(
     let m = s.match(/^GOSUB\s+(\d+)\s*$/i);
     if (m) return [funcName(+m[1]) + "()"];
     if (/^RETURN\b/i.test(s)) return ["RETURN"];
@@ -239,6 +251,15 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     if (gv.length) stmts.push(`GLOBAL ${gv.join(", ")}`);
     stmts.push(...body);
     stmts.push("END FUNCTION");
+  }
+  // DEF FN → FUNCTION FN<名>(params) / RETURN expr / END FUNCTION（式内の FN 呼び出しも変換）
+  for (const d of defFns) {
+    const ret = `RETURN ${convFn(d.expr)}`;
+    const params = d.params.split(",").map((x) => x.trim()).filter(Boolean);
+    stmts.push(`FUNCTION FN${d.name}(${params.join(", ")})`);
+    const gv = globalVars([ret]).filter((v) => !params.some((p) => p.toUpperCase() === v));
+    if (gv.length) stmts.push(`GLOBAL ${gv.join(", ")}`);
+    stmts.push(ret, "END FUNCTION");
   }
 
   const r = restructureStmts(stmts);

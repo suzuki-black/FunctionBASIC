@@ -144,6 +144,8 @@ export function tokenize(source: string): LexResult {
           if (peek() === "+" || peek() === "-") raw += advance();
           while (i < n && isDigit(peek())) raw += advance();
         }
+        // 数値リテラルの型サフィックス（%整数 / !単精度 / #倍精度）。例: 2.8# / 50000! / .5!
+        if (peek() === "%" || peek() === "!" || peek() === "#") raw += advance();
       }
       push("NUMBER", raw.toUpperCase(), raw, start);
       continue;

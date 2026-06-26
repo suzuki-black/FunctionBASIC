@@ -27,3 +27,11 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith(".msxbas")).sort()) {
     assert.equal(/'\s*\[未対応\]/.test(structured), false, `${f} に未対応フォールバックが残っている:\n${structured}`);
   });
 }
+
+test("数値リテラルの型サフィックス(!/#/%)・先頭ドットを受理", () => {
+  const src = "A=2.8#\nB=.5!\nC=50000!\nD=.119#\nPRINT A;B;C;D\n";
+  const { tokens, diagnostics: ld } = tokenize(src);
+  const { program, diagnostics: pd } = parse(tokens);
+  const errs = [...ld, ...pd, ...transform(program).diagnostics].filter((d) => d.severity === "error");
+  assert.deepEqual(errs, []);
+});

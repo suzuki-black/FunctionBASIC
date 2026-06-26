@@ -26,9 +26,11 @@ export function splitStatements(body: string): string[] {
       continue;
     }
     if (c === '"') { inStr = true; cur += c; continue; }
-    if (c === "'") { cur += body.slice(i); break; } // ' コメントは行末まで
+    // ' / REM コメントは行末まで。直前の文と分離して別文（コメント）にする
+    // （例: GOSUB 660 ' note → ["GOSUB 660", "' note"]）。
+    if (c === "'") { out.push(cur); out.push(body.slice(i)); cur = ""; break; }
     if ((c === "R" || c === "r") && /^REM\b/i.test(body.slice(i))) {
-      cur += body.slice(i); // REM コメントは行末まで
+      out.push(cur); out.push(body.slice(i)); cur = "";
       break;
     }
     if (c === ":") { out.push(cur); cur = ""; continue; }

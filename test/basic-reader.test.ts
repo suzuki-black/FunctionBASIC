@@ -44,3 +44,9 @@ test("read: 行番号なし行は警告してスキップ・空行は無視", ()
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0].severity, "warning");
 });
+
+test("split: 行末インラインコメントを文と分離", () => {
+  assert.deepEqual(splitStatements("GOSUB 660 ' note"), ["GOSUB 660", "' note"]);
+  assert.deepEqual(splitStatements("A=1:B=2 'c"), ["A=1", "B=2", "'c"]);
+  assert.deepEqual(splitStatements("X=5 REM hi"), ["X=5", "REM hi"]);
+});

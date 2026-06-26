@@ -36,7 +36,11 @@ export function decompile(lines: BasicLine[]): DecompileResult {
       if ((m = s.match(/\bGOSUB\s+(\d+)/i))) { gosubTargets.add(+m[1]); targets.add(+m[1]); }
       for (const g of s.matchAll(/\bGOTO\s+(\d+)/gi)) addRef(+g[1], idx);
       if ((m = s.match(/^IF\s+[\s\S]+?\s+THEN\s+(\d+)/i))) addRef(+m[1], idx);
-      if (/^ON\b/i.test(s)) for (const g of s.matchAll(/(\d+)/g)) addRef(+g[1], idx);
+      // ON …(イベント/式) GOTO|GOSUB <行[,行…]>。GOSUB の飛び先はハンドラ関数として抽出。
+      if (/^ON\b/i.test(s)) {
+        const om = s.match(/\b(GOSUB|GOTO)\s+([\d,\s]+)$/i);
+        if (om) for (const num of om[2].match(/\d+/g) ?? []) { addRef(+num, idx); if (/GOSUB/i.test(om[1])) gosubTargets.add(+num); }
+      }
     }
     const last = (l.stmts[l.stmts.length - 1] ?? "").trim();
     const gm = last.match(/^GOTO\s+(\d+)$/i); // 末尾の無条件GOTO
@@ -51,13 +55,18 @@ export function decompile(lines: BasicLine[]): DecompileResult {
   const funcName = (t: number) => "SUB" + t;
   const funcNames = new Set<string>();
   const funcs: { name: string; lo: number; hi: number }[] = [];
-  for (const t of [...gosubTargets].sort((a, b) => a - b)) {
-    const start = posOf.get(t);
-    if (start == null) { warn(`GOSUB ${t} の飛び先が見つかりません`); continue; }
+  const sortedTargets = [...gosubTargets].filter((t) => posOf.has(t)).sort((a, b) => a - b);
+  for (const t of [...gosubTargets]) if (!posOf.has(t)) warn(`GOSUB ${t} の飛び先が見つかりません`);
+  for (const t of sortedTargets) {
+    const start = posOf.get(t)!;
     if (inFunc[start]) continue;
-    let end = start;
-    while (end < lines.length && !/\bRETURN\b/i.test(lastStmt(end))) end++;
-    if (end >= lines.length) { warn(`GOSUB ${t} に対応する RETURN が見つかりません`); continue; }
+    // 次のサブルーチン開始＝境界。条件付きRETURNでの誤検出を避けるため、
+    // [start, 境界) 内で「末尾が無条件 RETURN」の最後の行を終端に。無ければ境界直前まで。
+    let nextStart = lines.length;
+    for (const u of sortedTargets) { const p2 = posOf.get(u)!; if (p2 > start && p2 < nextStart) nextStart = p2; }
+    let end = -1;
+    for (let k = start; k < nextStart; k++) if (/^RETURN\b/i.test(lastStmt(k).trim())) end = k;
+    if (end < 0) end = nextStart - 1;
     for (let k = start; k <= end; k++) inFunc[k] = true;
     funcs.push({ name: funcName(t), lo: start, hi: end });
     funcNames.add(funcName(t));
@@ -82,13 +91,20 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     const s = stmt.trim();
     if (!s) return [];
     if (s.startsWith("'") || /^REM\b/i.test(s)) return [s];
+    // DEFINT/DEFSNG/DEFDBL/DEFSTR は構造化では型サフィックスで表現＝コメント化（意味の既定型は失われる旨を残す）
+    if (/^DEF(INT|SNG|DBL|STR)\b/i.test(s)) return [`' ${s}（型既定。構造化では型サフィックスで表現）`];
     let m = s.match(/^GOSUB\s+(\d+)\s*$/i);
     if (m) return [funcName(+m[1]) + "()"];
     if (/^RETURN\b/i.test(s)) return ["RETURN"];
     if (/^GOTO\s+\d+\s*$/i.test(s)) { warn(`未対応の GOTO: ${s}`); return [`' [未対応] ${s}`]; }
-    if (/^ON\b/i.test(s) && /\b(GOTO|GOSUB)\b/i.test(s)) {
-      warn(`未対応の ON ${/GOSUB/i.test(s) ? "GOSUB" : "GOTO"}: ${s}`);
-      return [`' [未対応] ${s}`];
+    if (/^ON\b/i.test(s)) {
+      // ON …(SPRITE/KEY/STRIG/INTERVAL/式) GOSUB <行[,…]> → ハンドラ関数参照 SUB<行> へ
+      const m2 = s.match(/^(ON\s+[\s\S]+?\s+GOSUB)\s+([\d,\s]+)$/i);
+      if (m2) {
+        const subs = (m2[2].match(/\d+/g) ?? []).map((n) => funcName(+n));
+        return [`${m2[1].replace(/\s+/g, " ").trim()} ${subs.join(", ")}`];
+      }
+      if (/\bGOTO\b/i.test(s)) { warn(`未対応の ON GOTO: ${s}`); return [`' [未対応] ${s}`]; }
     }
     // IF に GOTO が絡む（前方スキップにできなかった残り）→ フォールバック
     if (/^IF\b/i.test(s) && /\bGOTO\b/i.test(s)) { warn(`未対応の IF…GOTO: ${s}`); return [`' [未対応] ${s}`]; }

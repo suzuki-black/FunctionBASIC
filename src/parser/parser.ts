@@ -355,10 +355,17 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "Builtin", name, parts, pos };
   };
 
+  // 終端キーワード判定。"END" は END IF / END FUNCTION のみ終端とし、
+  // 裸の END（プログラム終了文）はブロック内の文として扱う（終端にしない）。
+  const atTerminator = (t: string): boolean => {
+    if (!checkKw(t)) return false;
+    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION");
+    return true;
+  };
   const parseBlockBody = (terminators: string[]): Stmt[] => {
     const body: Stmt[] = [];
     skipNewlines();
-    while (!atEof() && !terminators.some((t) => checkKw(t))) {
+    while (!atEof() && !terminators.some(atTerminator)) {
       if (checkKw("FUNCTION")) {
         report("E_NESTED_FUNCTION", cur().pos);
         synchronize();

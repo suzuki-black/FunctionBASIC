@@ -84,3 +84,21 @@ test("ループ内の条件脱出 → BREAK", () => {
   assert.equal(source,
     'WHILE 1\n    A=A+1\n    IF A=5 THEN\n        BREAK\n    END IF\n    PRINT A\nWEND\nPRINT "DONE"');
 });
+
+// ---- コーパスで判明した改善の回帰 ----
+test("ON …GOSUB はハンドラ関数化（イベントトラップ）", () => {
+  const { source } = conv('10 ON SPRITE GOSUB 100\n20 SPRITE ON\n30 END\n100 PRINT "HIT"\n110 RETURN\n');
+  assert.match(source, /ON SPRITE GOSUB SUB100/);
+  assert.match(source, /FUNCTION SUB100\(\)/);
+});
+
+test("DEFINT 等はコメント化（構造化では型サフィックス）", () => {
+  const { source } = conv("10 DEFINT A-Z\n20 PRINT 1\n");
+  assert.match(source, /'\s*DEFINT A-Z/);
+});
+
+test("条件付きRETURNだけのサブルーチンも関数抽出（終端誤検出しない）", () => {
+  const { source } = conv('10 GOSUB 100\n20 END\n100 READ A$\n110 IF A$="" THEN RETURN\n120 PRINT A$\n130 GOTO 100\n');
+  assert.match(source, /FUNCTION SUB100\(\)/);
+  assert.match(source, /SUB100\(\)/);
+});

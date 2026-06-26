@@ -3,6 +3,7 @@
 
 // 文として使われる組み込み（行頭に来る）
 export const BUILTIN_STATEMENTS: ReadonlySet<string> = new Set([
+  "RUN", // プログラム実行/再起動・別プログラム起動（RUN "file"）
   "PRINT",
   "LPRINT", // プリンタ出力（PRINT のプリンタ版）
   "LLIST", // プリンタへプログラム一覧

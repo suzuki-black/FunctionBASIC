@@ -3,6 +3,26 @@
 // 文の区切りは ":"。ただし文字列 "..."・REM/' コメント内の ":" は区切らない
 // （REM/' は行末までを1文として扱う。DATA の ":" は MSX 同様に文を終端する）。
 import type { Diagnostic } from "../core/diagnostics.ts";
+import { BUILTIN_STATEMENTS } from "../core/builtins.ts";
+
+// MSX は命令と引数の間の空白が不要（COLOR5,1,1 / DEFINTA-Z / LOCATE9,3）。
+// 先頭が命令キーワードで直後が数字/記号（DEF* は英字）なら空白を補う。長い順に判定。
+const SPLIT_KW = [...BUILTIN_STATEMENTS, "GOTO", "GOSUB", "DEFINT", "DEFSNG", "DEFDBL", "DEFSTR"]
+  .sort((a, b) => b.length - a.length);
+function normLeadingKw(stmt: string): string {
+  const up = stmt.toUpperCase();
+  for (const kw of SPLIT_KW) {
+    if (!up.startsWith(kw)) continue;
+    const nx = stmt[kw.length];
+    if (!nx) return stmt;
+    // 数字が続く（COLOR5 等。記号/" は字句側で既に区切られるため対象外）
+    if (/[0-9]/.test(nx)) return kw + " " + stmt.slice(kw.length);
+    // DEF* は英字引数（DEFINTA-Z）
+    if (/^DEF(INT|SNG|DBL|STR)$/.test(kw) && /[A-Za-z]/.test(nx)) return kw + " " + stmt.slice(kw.length);
+    return stmt; // それ以外（空白・記号・英字続きの変数）はそのまま
+  }
+  return stmt;
+}
 
 export interface BasicLine {
   lineNo: number;
@@ -64,7 +84,7 @@ export function readBasic(src: string): ReadResult {
       });
       continue;
     }
-    lines.push({ lineNo: parseInt(m[1], 10), stmts: splitStatements(m[2]) });
+    lines.push({ lineNo: parseInt(m[1], 10), stmts: splitStatements(m[2]).map(normLeadingKw) });
   }
   return { lines, diagnostics };
 }

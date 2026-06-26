@@ -50,3 +50,12 @@ test("split: 行末インラインコメントを文と分離", () => {
   assert.deepEqual(splitStatements("A=1:B=2 'c"), ["A=1", "B=2", "'c"]);
   assert.deepEqual(splitStatements("X=5 REM hi"), ["X=5", "REM hi"]);
 });
+
+test("read: 無空白の命令+引数に空白を補う（MSX流）", () => {
+  const f = (s: string) => readBasic(s).lines[0].stmts;
+  assert.deepEqual(f("10 COLOR5,1,1\n"), ["COLOR 5,1,1"]);
+  assert.deepEqual(f("10 DEFINTA-Z\n"), ["DEFINT A-Z"]);
+  assert.deepEqual(f("10 LOCATE9,3\n"), ["LOCATE 9,3"]);
+  assert.deepEqual(f("10 SCORE=5\n"), ["SCORE=5"]); // 変数は分割しない
+  assert.deepEqual(f("10 PSET(2,3)\n"), ["PSET(2,3)"]); // 記号は字句側で区切れる＝そのまま
+});

@@ -109,3 +109,9 @@ test("DEF FN → FUNCTION 巻き上げ＋FN呼び出し変換", () => {
   assert.match(source, /RETURN X\*X/);
   assert.match(source, /Y=FNSQ\(3\)/);
 });
+
+test("双方向ジャンプ IF…THEN GOTO a ELSE GOTO b は不正生成せず未対応化", () => {
+  const { source } = conv('10 IF A$="p" THEN GOTO 70 ELSE GOTO 20\n20 PRINT "X"\n70 PRINT "Y"\n');
+  assert.doesNotMatch(source, /IF NOT\([\s\S]*\b(THEN|ELSE|GOTO)\b/); // 壊れた IF NOT(...) を出さない
+  assert.match(source, /'\s*\[未対応\]/);
+});

@@ -82,12 +82,17 @@ export function decompile(lines: BasicLine[]): DecompileResult {
   const convFn = (s: string): string =>
     s.replace(/"[^"]*"|(\bFN)\s+([A-Za-z][A-Za-z0-9]*)\s*\(/gi, (m, fn, name) => (fn ? `${fn}${name}(` : m));
 
-  // 前方条件ジャンプ（IF cond THEN n / IF cond THEN GOTO n / IF cond GOTO n）
+  // 前方条件ジャンプ（IF cond THEN n / IF cond THEN GOTO n / IF cond GOTO n）。
+  // 条件部に THEN/ELSE/GOTO を巻き込まないこと（双方向ジャンプ IF…THEN GOTO a ELSE GOTO b 等は対象外）。
+  const noKw = (c: string) => !/\b(THEN|ELSE|GOTO)\b/i.test(c);
   const condJump = (stmt: string): { cond: string; target: number } | null => {
     let m = stmt.match(/^IF\s+([\s\S]+?)\s+THEN\s+(?:GOTO\s+)?(\d+)\s*$/i);
-    if (m) return { cond: m[1].trim(), target: +m[2] };
-    m = stmt.match(/^IF\s+([\s\S]+?)\s+GOTO\s+(\d+)\s*$/i);
-    if (m) return { cond: m[1].trim(), target: +m[2] };
+    if (m && noKw(m[1])) return { cond: m[1].trim(), target: +m[2] };
+    // IF cond GOTO n は THEN/ELSE を含まない場合のみ
+    if (!/\bTHEN\b/i.test(stmt) && !/\bELSE\b/i.test(stmt)) {
+      m = stmt.match(/^IF\s+([\s\S]+?)\s+GOTO\s+(\d+)\s*$/i);
+      if (m && noKw(m[1])) return { cond: m[1].trim(), target: +m[2] };
+    }
     return null;
   };
   // [a..b] が範囲外からジャンプされていない（途中侵入なし）か

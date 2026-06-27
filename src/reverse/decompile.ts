@@ -135,7 +135,9 @@ export function decompile(lines: BasicLine[]): DecompileResult {
       const ei = findElse(after);
       const thenP = (ei >= 0 ? after.slice(0, ei) : after).trim();
       const elseP = ei >= 0 ? after.slice(ei + 4).trim() : "";
-      if (/^\d+$/.test(thenP) || (ei >= 0 && /^\d+$/.test(elseP))) { warn(`未対応の IF…THEN 行ジャンプ: ${s}`); return [`' [未対応] ${s}`]; }
+      // THEN/ELSE の先頭が行番号 → 行ジャンプ（後続の :文 や 'コメントを伴っても）。素通しせずコメント化。
+      const firstSeg = (p: string) => (splitColonSafe(p)[0] ?? "").trim();
+      if (/^\d+$/.test(firstSeg(thenP)) || (ei >= 0 && /^\d+$/.test(firstSeg(elseP)))) { warn(`未対応の IF…THEN 行ジャンプ: ${s}`); return [`' [未対応] ${s}`]; }
       const body: string[] = [`IF ${cond} THEN`];
       for (const x of splitColonSafe(thenP)) body.push(...rwStmt(x));
       if (ei >= 0) { body.push("ELSE"); for (const x of splitColonSafe(elseP)) body.push(...rwStmt(x)); }

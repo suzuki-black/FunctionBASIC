@@ -45,12 +45,15 @@ function respace(stmt: string): string {
     if (c === '"') {
       let j = i + 1;
       while (j < n && s[j] !== '"') j++;
-      if (j < n) j++;
-      emit(s.slice(i, j), true);
+      const closed = j < n;
+      if (closed) j++;
+      emit(closed ? s.slice(i, j) : s.slice(i, j) + '"', true); // MSXは行末の閉じ忘れ可→補完
       i = j;
       continue;
     }
     if (c === "'") { out += (prevWord ? " " : "") + s.slice(i); break; } // 行内コメント
+    // MSX の別表記 =< / => を <= / >= に正規化
+    if (c === "=" && (s[i + 1] === "<" || s[i + 1] === ">")) { out += s[i + 1] + "="; prevWord = false; i += 2; continue; }
     if (isAlpha(c)) {
       let kw = "";
       for (const W of RESERVED) {

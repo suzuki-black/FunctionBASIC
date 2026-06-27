@@ -81,3 +81,15 @@ test("read: 識別子に埋もれた長制御語(THEN/GOTO)を区切る", () => 
   assert.deepEqual(f("10 ONSTGOTO20,30\n"), ["ON ST GOTO 20,30"]);
   assert.deepEqual(f("10 DELAY=5\n"), ["DELAY=5"]); // キーワード始まりでない変数は割らない
 });
+
+test("read: 行末の未閉じ文字列を補完（MSXは閉じ忘れ可）", () => {
+  const f = (s: string) => readBasic(s).lines[0].stmts;
+  assert.deepEqual(f('10 PRINT "HELLO\n'), ['PRINT "HELLO"']);
+  assert.deepEqual(f('10 A$="X":PRINT A$\n'), ['A$="X"', "PRINT A$"]); // 閉じている文字列は不変
+});
+
+test("read: MSX別表記 =< / => を <= / >= に正規化", () => {
+  const f = (s: string) => readBasic(s).lines[0].stmts;
+  assert.deepEqual(f("10 IF K=<127 THEN A=1\n"), ["IF K<=127 THEN A=1"]);
+  assert.deepEqual(f("10 IF K=>0 THEN A=1\n"), ["IF K>=0 THEN A=1"]);
+});

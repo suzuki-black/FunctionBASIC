@@ -68,3 +68,16 @@ test("read: 完全に空白なしの行をMSX流に再トークン化", () => {
   assert.deepEqual(f("10 SCORE=SCORE+1\n"), ["SCORE=SCORE+1"]); // 予約語を含む変数は割らない
   assert.deepEqual(f('10 PRINT"HELLO"\n'), ['PRINT "HELLO"']);
 });
+
+test("read: PRINT#1 等のファイル番号#を分離（型サフィックス誤読を回避）", () => {
+  const f = (s: string) => readBasic(s).lines[0].stmts;
+  assert.deepEqual(f('10 PRINT#1,"A"\n'), ['PRINT #1,"A"']);
+  assert.deepEqual(f("10 A#=1.5\n"), ["A#=1.5"]); // 倍精度変数のサフィックスは保持
+});
+
+test("read: 識別子に埋もれた長制御語(THEN/GOTO)を区切る", () => {
+  const f = (s: string) => readBasic(s).lines[0].stmts;
+  assert.deepEqual(f("10 IFMCTHENMS=MS+1\n"), ["IF MC THEN MS=MS+1"]);
+  assert.deepEqual(f("10 ONSTGOTO20,30\n"), ["ON ST GOTO 20,30"]);
+  assert.deepEqual(f("10 DELAY=5\n"), ["DELAY=5"]); // キーワード始まりでない変数は割らない
+});

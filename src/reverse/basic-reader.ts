@@ -15,6 +15,9 @@ const RESERVED: string[] = [
   "GOTO", "GOSUB", "DEF", "FN", "DEFINT", "DEFSNG", "DEFDBL", "DEFSTR",
 ].filter((w, i, a) => a.indexOf(w) === i).sort((a, b) => b.length - a.length);
 
+// 識別子の途中でも区切る制御語（長く実変数名に埋もれにくい）。短い OR/TO/ON 等は対象外。
+const MIDKW = ["GOSUB", "GOTO", "THEN", "ELSE", "STEP"];
+
 const isAlpha = (c: string) => /[A-Za-z]/.test(c);
 const isAlnum = (c: string) => /[A-Za-z0-9]/.test(c);
 const isDig = (c: string) => c >= "0" && c <= "9";
@@ -54,8 +57,15 @@ function respace(stmt: string): string {
         if (i + W.length <= n && s.slice(i, i + W.length).toUpperCase() === W) { kw = s.slice(i, i + W.length); break; }
       }
       if (kw) { emit(kw, true); i += kw.length; continue; }
-      let j = i + 1; // 予約語でなければ英数字の連なり＋型サフィックスを変数として読む
-      while (j < n && isAlnum(s[j])) j++;
+      // 予約語でなければ英数字の連なり＋型サフィックスを変数として読む。
+      // ただし途中でも THEN/ELSE/GOTO/GOSUB/STEP（長く実変数名にまず埋もれない制御語）は
+      // 区切る（IFMCTHENMS→IF MC THEN MS、ONSTGOTO825→ON ST GOTO 825）。短い OR/TO/ON 等は
+      // SCORE/TONE 等を割らないよう対象外。
+      let j = i + 1;
+      while (j < n && isAlnum(s[j])) {
+        if (MIDKW.some((k) => s.slice(j, j + k.length).toUpperCase() === k)) break;
+        j++;
+      }
       if (j < n && /[%!#$]/.test(s[j])) j++;
       emit(s.slice(i, j), true);
       i = j;
@@ -78,6 +88,10 @@ function respace(stmt: string): string {
       i = j;
       continue;
     }
+    // キーワード直後の '#' はファイル番号（PRINT#1 / INPUT#1 / PUT#1）。空白で分離して
+    // 型サフィックス（PRINT# という識別子）と誤読されないようにする。A#（倍精度変数）は
+    // 識別子側で消費済みのためここには来ない。
+    if (c === "#" && prevWord) { out += " #"; prevWord = false; i++; continue; }
     out += c; prevWord = false; i++; // 演算子・記号
   }
   return out;

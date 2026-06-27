@@ -31,6 +31,9 @@ function respace(stmt: string): string {
 
   const s = stmt;
   const n = s.length;
+  // FOR 文は範囲に必ず TO を伴うので、その時だけ短語 TO も識別子途中で区切る
+  // （FOR I=UTOQ→FOR I=U TO Q、FOR L=W1TOW2→FOR L=W1 TO W2）。
+  const midKw = /^FOR/i.test(s) ? [...MIDKW, "TO"] : MIDKW;
   let out = "";
   let prevWord = false; // 直前が語(キーワード/識別子/数値/文字列)か
   let i = 0;
@@ -66,7 +69,7 @@ function respace(stmt: string): string {
       // SCORE/TONE 等を割らないよう対象外。
       let j = i + 1;
       while (j < n && isAlnum(s[j])) {
-        if (MIDKW.some((k) => s.slice(j, j + k.length).toUpperCase() === k)) break;
+        if (midKw.some((k) => s.slice(j, j + k.length).toUpperCase() === k)) break;
         j++;
       }
       if (j < n && /[%!#$]/.test(s[j])) j++;

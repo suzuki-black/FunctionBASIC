@@ -80,6 +80,8 @@ test("read: 識別子に埋もれた長制御語(THEN/GOTO)を区切る", () => 
   assert.deepEqual(f("10 IFMCTHENMS=MS+1\n"), ["IF MC THEN MS=MS+1"]);
   assert.deepEqual(f("10 ONSTGOTO20,30\n"), ["ON ST GOTO 20,30"]);
   assert.deepEqual(f("10 DELAY=5\n"), ["DELAY=5"]); // キーワード始まりでない変数は割らない
+  assert.deepEqual(f("10 FORI=UTOQ STEP8\n"), ["FOR I=U TO Q STEP 8"]); // FOR内は短語TOも区切る
+  assert.deepEqual(f("10 X=STORE\n"), ["X=STORE"]); // FOR外ではTOを割らない（STORE保持）
 });
 
 test("read: 行末の未閉じ文字列を補完（MSXは閉じ忘れ可）", () => {

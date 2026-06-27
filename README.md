@@ -182,66 +182,79 @@ DATA 62, 42, 205, 162, 0, ...
 **1. A simple function** — find the first zero in an array.
 
 Structured BASIC:
-' find the first zero in an array <br>
-FUNCTION FIND_ZERO(REF IDX) <br>
-&nbsp;&nbsp;&nbsp;&nbsp;GLOBAL A <br>
-&nbsp;&nbsp;&nbsp;&nbsp;FOR I = 1 TO 10 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;IF A(I) = 0 THEN <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;IDX = I <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RETURN 1 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;END IF <br>
-&nbsp;&nbsp;&nbsp;&nbsp;NEXT I <br>
-&nbsp;&nbsp;&nbsp;&nbsp;RETURN 0 <br>
-END FUNCTION <br>
-&nbsp; <br>
-DIM A(10) <br>
-A(3) = 0 <br>
-RESULT = FIND_ZERO(POS) <br>
+
+```basic
+' find the first zero in an array
+FUNCTION FIND_ZERO(REF IDX)
+    GLOBAL A
+    FOR I = 1 TO 10
+        IF A(I) = 0 THEN
+            IDX = I
+            RETURN 1
+        END IF
+    NEXT I
+    RETURN 0
+END FUNCTION
+
+DIM A(10)
+A(3) = 0
+RESULT = FIND_ZERO(POS)
 PRINT "FOUND="; RESULT; " AT "; POS
+```
 
 Generated MSX-BASIC:
-100 ' === MAIN === <br>
-110 ' find the first zero in an array <br>
-120 DIM A(10) <br>
-130 A(3)=0 <br>
-140 GOSUB 1000: B=E <br>
-150 PRINT "FOUND=";B;" AT ";C <br>
-160 END <br>
-1000 ' === FUNCTION FIND_ZERO (IDX-&gt;C) === <br>
-1010 FOR D=1 TO 10 <br>
-1020 IF A(D)=0 THEN C=D: E=1: RETURN <br>
-1030 NEXT <br>
+
+```basic
+100 ' === MAIN ===
+110 ' find the first zero in an array
+120 DIM A(10)
+130 A(3)=0
+140 GOSUB 1000: B=E
+150 PRINT "FOUND=";B;" AT ";C
+160 END
+1000 ' === FUNCTION FIND_ZERO (IDX->C) ===
+1010 FOR D=1 TO 10
+1020 IF A(D)=0 THEN C=D: E=1: RETURN
+1030 NEXT
 1040 E=0: RETURN
+```
 
 **2. Multicolour cat from two overlapping sprites (MSX2)** — MSX hardware sprites are a single colour each, so a classic trick is to stack two sprites at the same position to get more colours. A cat (a white face sprite over an orange body sprite) bounces around the screen on its own. Full, convert-tested source: [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb).
 
 The heart of it — one cat is two sprites drawn at the same spot, then moved:
 
-' one cat = two sprites at the same spot, in two colours <br>
-PUT SPRITE 0, (CATX, CATY), 15, 0&nbsp;&nbsp;' front: white face <br>
-PUT SPRITE 1, (CATX, CATY), 9, 1&nbsp;&nbsp;' behind: orange body
+```basic
+' one cat = two sprites at the same spot, in two colours
+PUT SPRITE 0, (CATX, CATY), 15, 0  ' front: white face
+PUT SPRITE 1, (CATX, CATY), 9, 1   ' behind: orange body
+```
 
 …which the transpiler turns into authentic MSX-BASIC (variables allocated, coordinates preserved):
 
-300 PUT SPRITE 0,(A,B),15,0 <br>
+```basic
+300 PUT SPRITE 0,(A,B),15,0
 310 PUT SPRITE 1,(A,B),9,1
+```
 
 **3. Game skeleton** — a minimal main loop (illustrative).
 
 Structured BASIC:
-FUNCTION UPDATE() <br>
-&nbsp;&nbsp;&nbsp;&nbsp;GLOBAL SCORE <br>
-&nbsp;&nbsp;&nbsp;&nbsp;SCORE = SCORE + 1 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;LOCATE 0, 0 : PRINT "SCORE"; SCORE <br>
-END FUNCTION <br>
-&nbsp; <br>
-SCREEN 1 <br>
-SCORE = 0 <br>
-WHILE 1 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;UPDATE() <br>
-&nbsp;&nbsp;&nbsp;&nbsp;IF STRIG(0) THEN BREAK <br>
-WEND <br>
+
+```basic
+FUNCTION UPDATE()
+    GLOBAL SCORE
+    SCORE = SCORE + 1
+    LOCATE 0, 0 : PRINT "SCORE"; SCORE
+END FUNCTION
+
+SCREEN 1
+SCORE = 0
+WHILE 1
+    UPDATE()
+    IF STRIG(0) THEN BREAK
+WEND
 PRINT "GAME OVER"
+```
 
 **4. MSX2 graphics + BGM/SE** — a `SCREEN 5` demo that sets a custom palette with `COLOR=(n,r,g,b)`, draws with `LINE …,BF` / `CIRCLE` / `PAINT` / `POINT`, double-buffers with `SET PAGE`, block-transfers VRAM with `COPY … TO …`, plays background music with `PLAY`, and fires a sound effect with `SOUND`. All of these MSX2-specific forms (the `=` palette syntax, the `TO` clause, the `B`/`BF` line options, and `POINT` / `PLAY` used as functions) are preserved verbatim through transpilation while your variables are still renamed. Full, convert-tested source: [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb).
 
@@ -467,66 +480,79 @@ DATA 62, 42, 205, 162, 0, ...
 **1. 簡単な関数** — 配列の中から最初の 0 を見つける。
 
 構造化BASIC:
-' 配列の中から最初に 0 を見つけて返す <br>
-FUNCTION FIND_ZERO(REF IDX) <br>
-&nbsp;&nbsp;&nbsp;&nbsp;GLOBAL A <br>
-&nbsp;&nbsp;&nbsp;&nbsp;FOR I = 1 TO 10 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;IF A(I) = 0 THEN <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;IDX = I <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RETURN 1 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;END IF <br>
-&nbsp;&nbsp;&nbsp;&nbsp;NEXT I <br>
-&nbsp;&nbsp;&nbsp;&nbsp;RETURN 0 <br>
-END FUNCTION <br>
-&nbsp; <br>
-DIM A(10) <br>
-A(3) = 0 <br>
-RESULT = FIND_ZERO(POS) <br>
+
+```basic
+' 配列の中から最初に 0 を見つけて返す
+FUNCTION FIND_ZERO(REF IDX)
+    GLOBAL A
+    FOR I = 1 TO 10
+        IF A(I) = 0 THEN
+            IDX = I
+            RETURN 1
+        END IF
+    NEXT I
+    RETURN 0
+END FUNCTION
+
+DIM A(10)
+A(3) = 0
+RESULT = FIND_ZERO(POS)
 PRINT "FOUND="; RESULT; " AT "; POS
+```
 
 変換後 MSX-BASIC:
-100 ' === MAIN === <br>
-110 ' 配列の中から最初に 0 を見つけて返す <br>
-120 DIM A(10) <br>
-130 A(3)=0 <br>
-140 GOSUB 1000: B=E <br>
-150 PRINT "FOUND=";B;" AT ";C <br>
-160 END <br>
-1000 ' === FUNCTION FIND_ZERO (IDX-&gt;C) === <br>
-1010 FOR D=1 TO 10 <br>
-1020 IF A(D)=0 THEN C=D: E=1: RETURN <br>
-1030 NEXT <br>
+
+```basic
+100 ' === MAIN ===
+110 ' 配列の中から最初に 0 を見つけて返す
+120 DIM A(10)
+130 A(3)=0
+140 GOSUB 1000: B=E
+150 PRINT "FOUND=";B;" AT ";C
+160 END
+1000 ' === FUNCTION FIND_ZERO (IDX->C) ===
+1010 FOR D=1 TO 10
+1020 IF A(D)=0 THEN C=D: E=1: RETURN
+1030 NEXT
 1040 E=0: RETURN
+```
 
 **2. 2枚重ねスプライトの多色猫（MSX2）** — MSXのハードウェアスプライトは1枚＝1色なので、同じ位置に2枚重ねて多色にするのが定番技です。白い顔スプライトをオレンジの体スプライトに重ねた猫が、画面内を自分で跳ね回ります。変換確認済みの全ソース：[`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)。
 
 肝は「1匹の猫＝同じ位置に2枚のスプライト」を描いて動かすこと：
 
-' 1匹の猫＝同じ位置に2枚のスプライト（2色） <br>
-PUT SPRITE 0, (CATX, CATY), 15, 0&nbsp;&nbsp;' 前面：白い顔 <br>
-PUT SPRITE 1, (CATX, CATY), 9, 1&nbsp;&nbsp;' 背面：オレンジの体
+```basic
+' 1匹の猫＝同じ位置に2枚のスプライト（2色）
+PUT SPRITE 0, (CATX, CATY), 15, 0  ' 前面：白い顔
+PUT SPRITE 1, (CATX, CATY), 9, 1   ' 背面：オレンジの体
+```
 
 …これを変換器が本物のMSX-BASICにします（変数割当・座標は保持）：
 
-300 PUT SPRITE 0,(A,B),15,0 <br>
+```basic
+300 PUT SPRITE 0,(A,B),15,0
 310 PUT SPRITE 1,(A,B),9,1
+```
 
 **3. ゲームの雛形** — 最小のメインループ（説明用）。
 
 構造化BASIC:
-FUNCTION UPDATE() <br>
-&nbsp;&nbsp;&nbsp;&nbsp;GLOBAL SCORE <br>
-&nbsp;&nbsp;&nbsp;&nbsp;SCORE = SCORE + 1 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;LOCATE 0, 0 : PRINT "SCORE"; SCORE <br>
-END FUNCTION <br>
-&nbsp; <br>
-SCREEN 1 <br>
-SCORE = 0 <br>
-WHILE 1 <br>
-&nbsp;&nbsp;&nbsp;&nbsp;UPDATE() <br>
-&nbsp;&nbsp;&nbsp;&nbsp;IF STRIG(0) THEN BREAK <br>
-WEND <br>
+
+```basic
+FUNCTION UPDATE()
+    GLOBAL SCORE
+    SCORE = SCORE + 1
+    LOCATE 0, 0 : PRINT "SCORE"; SCORE
+END FUNCTION
+
+SCREEN 1
+SCORE = 0
+WHILE 1
+    UPDATE()
+    IF STRIG(0) THEN BREAK
+WEND
 PRINT "GAME OVER"
+```
 
 **4. MSX2グラフィック＋BGM/SE** — `SCREEN 5` のデモ。`COLOR=(n,r,g,b)` で独自パレットを設定し、`LINE …,BF` / `CIRCLE` / `PAINT` / `POINT` で描画、`SET PAGE` でダブルバッファ、`COPY … TO …` でVRAMブロック転送、`PLAY` でBGM、`SOUND` でSEを鳴らします。これらMSX2固有の書式（パレットの `=` 構文、`TO` 節、`B`/`BF` のラインオプション、関数として使う `POINT` / `PLAY`）は変換後もそのまま保たれ、ユーザ変数だけが2文字名へ割り当てられます。変換確認済みの全ソース：[`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)。
 

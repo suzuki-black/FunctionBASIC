@@ -142,6 +142,12 @@ export function decompile(lines: BasicLine[]): DecompileResult {
       body.push("END IF");
       return body;
     }
+    // 最終フォールバック: 構造化に乗らない制御語（GOTO/GOSUB/THEN/孤立ELSE）が残る断片は
+    // コメント化（forward で ELSE がブロックを開いたまま→FUNCTION ネスト等を防ぐ）。
+    if (/\b(GOTO|GOSUB|THEN|ELSE)\b/i.test(s.replace(/"[^"]*"/g, '""'))) {
+      warn(`未対応の構文: ${s}`);
+      return [`' [未対応] ${s}`];
+    }
     return [s];
   };
 
@@ -240,25 +246,48 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     return [...set].sort();
   };
 
-  // main（関数領域外の連続ブロック）→ 関数、の順に書き換え
-  const stmts: string[] = [];
+  // ブロック(FOR/WHILE/IFブロック形)の開閉を均す: 不足クローザを末尾に補い、余剰クローザは捨てる。
+  // 領域ごとに均すことで、未閉のブロックに後続の FUNCTION がネストするのを防ぐ。
+  const balanceBlocks = (src: string[]): string[] => {
+    const out: string[] = [];
+    const stack: string[] = [];
+    for (const s of src) {
+      const u = s.trim().toUpperCase();
+      if (/^FOR\b/.test(u)) { out.push(s); stack.push("NEXT"); }
+      else if (/^WHILE\b/.test(u)) { out.push(s); stack.push("WEND"); }
+      else if (/^IF\b[\s\S]*\bTHEN$/.test(u)) { out.push(s); stack.push("END IF"); }
+      else if (u === "NEXT" || /^NEXT\b/.test(u)) { if (stack[stack.length - 1] === "NEXT") { stack.pop(); out.push("NEXT"); } }
+      else if (u === "WEND") { if (stack[stack.length - 1] === "WEND") { stack.pop(); out.push(s); } }
+      else if (u === "END IF") { if (stack[stack.length - 1] === "END IF") { stack.pop(); out.push(s); } }
+      else out.push(s);
+    }
+    while (stack.length) out.push(stack.pop()!);
+    return out;
+  };
+
+  // main（関数領域外の連続ブロック）を集める。RETURN が main に残るのは未抽出サブルーチン
+  // の取りこぼし＝構造化では不正なのでコメント化（best-effort）。
+  const mainRaw: string[] = [];
   let i = 0;
   while (i < lines.length) {
     if (inFunc[i]) { i++; continue; }
     let j = i;
     while (j < lines.length && !inFunc[j]) j++;
-    rewriteRange(i, j - 1, stmts);
+    rewriteRange(i, j - 1, mainRaw);
     i = j;
   }
+  const stmts: string[] = balanceBlocks(mainRaw.map((s) =>
+    s.trim().toUpperCase() === "RETURN" ? (warn("RETURN が関数の外にあります（コメント化）"), `' [未対応] ${s.trim()}`) : s,
+  ));
   for (const f of funcs) {
-    stmts.push(`FUNCTION ${f.name}()`);
     const body: string[] = [];
     rewriteRange(f.lo, f.hi, body);
     while (body.length && body[body.length - 1] === "RETURN") body.pop(); // 末尾の冗長 RETURN
-    const gv = globalVars(body);
+    const balanced = balanceBlocks(body);
+    stmts.push(`FUNCTION ${f.name}()`);
+    const gv = globalVars(balanced);
     if (gv.length) stmts.push(`GLOBAL ${gv.join(", ")}`);
-    stmts.push(...body);
-    stmts.push("END FUNCTION");
+    stmts.push(...balanced, "END FUNCTION");
   }
   // DEF FN → FUNCTION FN<名>(params) / RETURN expr / END FUNCTION（式内の FN 呼び出しも変換）
   for (const d of defFns) {
@@ -268,6 +297,16 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     const gv = globalVars([ret]).filter((v) => !params.some((p) => p.toUpperCase() === v));
     if (gv.length) stmts.push(`GLOBAL ${gv.join(", ")}`);
     stmts.push(ret, "END FUNCTION");
+  }
+  // 呼ばれているのに定義が無い SUB<n>（GOSUB先が未抽出/不存在）→ 空スタブ＋警告（コンパイル可能に）。
+  const called = new Set<string>();
+  for (const s of stmts) for (const m of s.matchAll(/\bSUB(\d+)\b/g)) called.add("SUB" + m[1]);
+  for (const name of called) {
+    if (!funcNames.has(name)) {
+      warn(`${name} の定義が見つかりません（空スタブを生成）`);
+      stmts.push(`FUNCTION ${name}()`, "END FUNCTION");
+      funcNames.add(name);
+    }
   }
 
   const r = restructureStmts(stmts);

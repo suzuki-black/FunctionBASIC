@@ -13,7 +13,9 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "TO",
   "STEP",
   "NEXT",
-  "AS", // OPEN/NAME/FIELD … AS（節キーワード。文中で word として素通し）
+  // 注: AS は予約語にしない。OPEN/NAME/FIELD の文脈でだけ節キーワードとして扱い（builtins の
+  //     BUILTIN_CLAUSE_WORDS + parser 側で限定）、それ以外では通常の変数名として使える
+  //     （実MSXでも AS=1.2 は有効。AS をグローバル予約すると素のBASIC取込で誤検出する）。
   "ON", // 末尾修飾: _TURBO ON / SPRITE ON / STOP ON 等（文中で word 素通し）
   "OFF", // 末尾修飾: _TURBO OFF / SPRITE OFF 等
   "WHILE",

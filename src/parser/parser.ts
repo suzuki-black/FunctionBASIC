@@ -318,6 +318,9 @@ export function parse(tokens: Token[]): ParseResult {
           (parts.length === 0 &&
             (cmd === "PRINT" || cmd === "LPRINT") &&
             w === "USING") ||
+          // OPEN/FIELD/NAME … AS（この文脈でだけ AS を節キーワードとして保護。
+          // それ以外では AS は通常の変数名として式解析される）
+          (w === "AS" && (cmd === "OPEN" || cmd === "FIELD" || cmd === "NAME")) ||
           (last?.kind === "word" && last.word === "="));
       if (checkOp(";") || checkOp(",")) {
         parts.push({ kind: "sep", sep: advance().value });

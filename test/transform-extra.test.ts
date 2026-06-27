@@ -468,3 +468,15 @@ PRINT X`);
   const fnPart = msx.slice(msx.indexOf("=== FUNCTION SETUP"));
   assert.match(fnPart.trim(), /RETURN\s*$/);
 });
+
+test("AS は OPEN/FIELD 文脈では節キーワード、それ以外では変数名（文脈依存予約）", () => {
+  // 変数としての AS（実MSXでも有効。素のBASIC取込で誤検出しないように）
+  const v = compile("AS=1.2\nX=10*AS\nPRINT AS\n");
+  assert.equal(v.diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(v.msx, /=1\.2/); // AS は変数として扱われる（短縮改名されるが構文エラーにならない）
+  // 節キーワードとしての AS（OPEN/FIELD では保護され改名されない）
+  const o = compile('OPEN "D" FOR INPUT AS #1\nFIELD #1, 20 AS N$\n');
+  assert.equal(o.diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(o.msx, /OPEN "D" FOR INPUT AS#1/);
+  assert.match(o.msx, /FIELD#1,20 AS [A-Z]+\$/);
+});

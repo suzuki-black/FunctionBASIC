@@ -173,6 +173,7 @@ export const BUILTIN_CLAUSE_WORDS: ReadonlySet<string> = new Set([
   "NEW", // COLOR=NEW（パレット初期化・MSX2）
   "RESTORE", // COLOR=RESTORE ※RESTORE 文とも両立
   "USING", // PRINT USING / LPRINT USING（書式付き出力）
+  "AS", // OPEN/FIELD/NAME … AS（その文脈でのみ節キーワード。他では変数名として使える）
 ]);
 
 // 組み込み関数の戻り値型（STRICT の静的型チェック用）。"$"終わりは文字列なので表に持たず

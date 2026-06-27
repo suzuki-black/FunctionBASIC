@@ -105,7 +105,7 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     if (/^DEF(INT|SNG|DBL|STR)\b/i.test(s)) return [`' ${s}（型既定。構造化では型サフィックスで表現）`];
     if (/^DEF\s+FN\b/i.test(s)) return []; // DEF FN は FUNCTION として巻き上げ済み（ここでは除去）
     s = convFn(s); // FN <名>( → FN<名>(
-    let m = s.match(/^GOSUB\s+(\d+)\s*$/i);
+    const m = s.match(/^GOSUB\s+(\d+)\s*$/i);
     if (m) return [funcName(+m[1]) + "()"];
     if (/^RETURN\b/i.test(s)) return ["RETURN"];
     if (/^GOTO\s+\d+\s*$/i.test(s)) { warn(`未対応の GOTO: ${s}`); return [`' [未対応] ${s}`]; }

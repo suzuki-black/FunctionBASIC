@@ -3,6 +3,9 @@ import { tokenize } from "./core/lexer/lexer.js";
 import { parse } from "./core/parser/parser.js";
 import { transform, renderMsx } from "./core/transform/transformer.js";
 import { reverse } from "./core/reverse/reverse.js";
+import { readBasic } from "./core/reverse/basic-reader.js";
+import { renameVars } from "./core/reverse/rename-vars.js";
+import { decompile } from "./core/reverse/decompile.js";
 import { isBuiltin } from "./core/core/builtins.js";
 import { localize } from "./core/core/diagnostics.js";
 import { resolveIncludes } from "./core/preprocess/include.js";
@@ -86,6 +89,10 @@ const I18N = {
       `.sav作成: ${path}${backup ? `（既存ファイルを ${backup} にバックアップ）` : ""} → MSXPLAYerのワークドライブに置き FILES で確認、RUN"${name}"`,
     "sav.err": (e) => ".sav作成に失敗: " + e,
     "rev.noerr": "エラーがあるため逆変換できません",
+    "import": "素のMSX-BASICを取込…",
+    "import.done": (name, warns) => `取込完了: ${name}` + (warns ? `（要確認 ${warns} 件は ' [未対応] コメントを参照）` : "（警告なし）"),
+    "import.empty": "取込できる行がありませんでした（行番号付きMSX-BASICのテキストを選んでください）",
+    "import.err": (e) => "取込に失敗: " + e,
     "copy.ok": "コピーしました", "copy.err": "コピーに失敗（手動で選択してコピー）",
     "ok": "OK", "cancel": "キャンセル",
     "confirm.title": "確認", "confirm.reverse": "逆変換（MSX→構造化）の結果でエディタを置き換えますか？（往復確認）",
@@ -153,6 +160,10 @@ const I18N = {
       `.sav created: ${path}${backup ? ` (existing file backed up to ${backup})` : ""} → place on the MSXPLAYer work drive, then FILES / RUN"${name}"`,
     "sav.err": (e) => ".sav creation failed: " + e,
     "rev.noerr": "Cannot reverse: there are errors.",
+    "import": "Import plain MSX-BASIC…",
+    "import.done": (name, warns) => `Imported: ${name}` + (warns ? ` (${warns} item(s) need review — see the ' [未対応] comments)` : " (no warnings)"),
+    "import.empty": "Nothing to import (choose a text listing of line-numbered MSX-BASIC).",
+    "import.err": (e) => "Import failed: " + e,
     "copy.ok": "Copied.", "copy.err": "Copy failed (select and copy manually).",
     "ok": "OK", "cancel": "Cancel",
     "confirm.title": "Confirm", "confirm.reverse": "Replace the editor with the reverse-converted result (MSX → Structured)?",
@@ -855,6 +866,52 @@ async function onReverse() {
   if (await showConfirm(t("confirm.title"), t("confirm.reverse"))) {
     setSource(rev.source + "\n");
   }
+}
+
+// ---- 素のMSX-BASIC取込（デコンパイラ。マップ不要）----
+// 行番号付きのMSX-BASICテキストを読み、構造化BASICへ逆変換して「新規ファイル」として開く。
+// 既存の編集内容は失わない（新しいファイルを作るだけ）。
+function onImportBasic() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".bas,.asc,.txt,.msxbas,.msx";
+  input.style.display = "none";
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      // MSX のテキスト保存は Shift-JIS。非SJISは置換しつつ読む（UTF-8でも壊れない）。
+      let text;
+      try { text = new TextDecoder("shift_jis", { fatal: false }).decode(buf); }
+      catch (_) { text = new TextDecoder("utf-8", { fatal: false }).decode(buf); }
+      importBasicText(text, file.name);
+    } catch (e) {
+      logErr("取込", e);
+      setStatus("err", t("import.err", e && e.message ? e.message : e));
+    }
+  });
+  document.body.appendChild(input);
+  input.click();
+  // クリック後は不要（change は input への参照が残るので発火する）
+  setTimeout(() => input.remove(), 0);
+}
+
+function importBasicText(text, srcName) {
+  const read = readBasic(text || "");
+  if (!read.lines.length) { setStatus("err", t("import.empty")); return; }
+  const renamed = renameVars(read.lines);
+  const dec = decompile(renamed.lines);
+  // 元ファイル名から重複しない .msxb 名を作る
+  const base = (srcName || "imported").replace(/\.[^.]*$/, "").replace(/[\\/]/g, "_") || "imported";
+  let name = base + ".msxb";
+  for (let i = 2; project.files[name] != null; i++) name = base + "-" + i + ".msxb";
+  syncActiveFile();
+  project.files[name] = (dec.source || "") + "\n";
+  saveProject();
+  openFile(name); // 新規ファイルを構造化タブで開く
+  const warns = [...read.diagnostics, ...dec.diagnostics].filter((d) => d.severity === "warning").length;
+  setStatus(warns ? "warn" : "ok", t("import.done", name, warns));
 }
 
 // ---- タブ（JetBrains方式: 2グループ。ドラッグで並べ替え＆グループ間移動=分割/統合。状態は永続化）----
@@ -1803,6 +1860,7 @@ function runAction(act) {
     case "settings": return openSettings();
     case "run": return onPlayWebMSX();
     case "reverse": return onReverse();
+    case "import-basic": return onImportBasic();
     case "help": return showModal(t("sc.title"), t("sc.body"));
     case "about": return showModal("FunctionBASIC", t("about.body"));
     case "lang-ja": return setLang("ja");

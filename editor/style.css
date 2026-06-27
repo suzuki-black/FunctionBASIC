@@ -262,6 +262,7 @@ button:hover { background: #1177bb; }
 
 #status { font-size: 13px; color: #bbb; }
 #status.ok { color: #4ec9b0; }
+#status.warn { color: #d7a35a; }
 #status.err { color: var(--err); }
 
 /* 自前モーダル */

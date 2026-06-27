@@ -13,6 +13,7 @@ PSET (10, 10), 15             ' plot a dot
 PRESET (10, 10)              ' erase it
 LINE (0, 0)-(50, 50), 8       ' line
 LINE (60, 0)-(90, 30), 4, BF  ' filled box
+LINE (10, 60)-STEP(40, 20), 8 ' STEP=相対座標（前点/始点からの差分）
 CIRCLE (128, 96), 30, 15      ' circle
 PAINT (128, 96), 15           ' flood fill
 DRAW "BM100,100 R20 D20 L20 U20"   ' turtle graphics

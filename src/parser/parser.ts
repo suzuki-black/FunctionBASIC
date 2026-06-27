@@ -170,7 +170,9 @@ export function parse(tokens: Token[]): ParseResult {
       expectOp(")", "括弧");
       return { type: "Group", items };
     }
-    if (t.kind === "IDENT") {
+    // 図形命令の相対座標 STEP(dx,dy)。STEP は FOR 用キーワードだが、式中（LINE/PSET の
+    // 座標）では組込関数 STEP として素通しする（BUILTIN_FUNCTIONS に登録済み＝改名されない）。
+    if (t.kind === "IDENT" || (t.kind === "KEYWORD" && t.value === "STEP")) {
       const name = advance().value;
       if (checkOp("(")) {
         const args = parseArgList();
@@ -278,6 +280,23 @@ export function parse(tokens: Token[]): ParseResult {
     const name = advance().value;
     const cmd = name.toUpperCase();
     const parts: BuiltinPart[] = [];
+    // DATA は項を式として解釈せず生テキストで取り込む（DATA * / DATA "a,b" / 任意リテラル）。
+    if (cmd === "DATA") {
+      let raw = "";
+      let prevEnd = -1;
+      let prevLine = -1;
+      while (!atEof() && !checkKind("NEWLINE") && !checkKind("COMMENT") && !checkOp(":")) {
+        const tk = cur();
+        if (prevLine === tk.pos.line && prevEnd >= 0 && tk.pos.column > prevEnd) {
+          raw += " ".repeat(tk.pos.column - prevEnd); // 同一行の空白を復元（"HELLO WORLD" 等）
+        }
+        raw += tk.raw;
+        prevEnd = tk.pos.column + tk.raw.length;
+        prevLine = tk.pos.line;
+        advance();
+      }
+      return { type: "Builtin", name, parts: raw.length ? [{ kind: "word", word: " " + raw }] : [], pos };
+    }
     while (
       !atEof() &&
       !checkKind("NEWLINE") &&

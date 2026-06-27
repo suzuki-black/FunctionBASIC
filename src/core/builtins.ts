@@ -72,6 +72,7 @@ export const BUILTIN_STATEMENTS: ReadonlySet<string> = new Set([
 
 // 式中で使われる組み込み関数
 export const BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
+  "STEP", // 図形命令の相対座標 STEP(dx,dy)（LINE/PSET 等）。式中で素通しするため関数扱い
   "ABS",
   "INT",
   "SQR",

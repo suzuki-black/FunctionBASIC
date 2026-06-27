@@ -73,13 +73,36 @@ function walkStmts(program: Program, fn: (s: Stmt) => void): void {
 const exprParts = (s: any): Expr[] =>
   s.parts.filter((p: any) => p.kind === "expr").map((p: any) => p.expr);
 
+// DATA 文（生テキストの word 1個）をカンマ分割（引用内は保護）。
+const splitDataItems = (w: string): string[] => {
+  const out: string[] = [];
+  let cur = "";
+  let q = false;
+  for (const c of w) {
+    if (c === '"') q = !q;
+    if (c === "," && !q) { out.push(cur); cur = ""; } else cur += c;
+  }
+  out.push(cur);
+  return out;
+};
+// DATA 項を数値化（&H/&O/&B/10進）。文字列等は null。
+const parseDataNum = (it: string): number | null => {
+  const t = it.trim();
+  if (/^&H[0-9A-F]+$/i.test(t)) return parseInt(t.slice(2), 16);
+  if (/^&O[0-7]+$/i.test(t)) return parseInt(t.slice(2), 8);
+  if (/^&B[01]+$/i.test(t)) return parseInt(t.slice(2), 2);
+  if (/^[+-]?\d+(\.\d+)?$/.test(t)) return Number(t);
+  return null;
+};
+
 // DATA プールを出力行順（toplevel → 関数）で収集。非定数は null。
 export function collectData(program: Program): Array<number | null> {
   const out: Array<number | null> = [];
   const grab = (stmts: Stmt[]) => {
     for (const s of stmts) {
       if (s.type === "Builtin" && s.name.toUpperCase() === "DATA") {
-        for (const e of exprParts(s)) out.push(evalConst(e));
+        const word = (s.parts.find((p: any) => p.kind === "word") as any)?.word ?? "";
+        for (const it of splitDataItems(word)) out.push(parseDataNum(it));
       }
       switch (s.type) {
         case "If": grab(s.then); if (s.else) grab(s.else); break;

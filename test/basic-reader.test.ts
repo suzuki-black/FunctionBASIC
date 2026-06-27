@@ -59,3 +59,12 @@ test("read: 無空白の命令+引数に空白を補う（MSX流）", () => {
   assert.deepEqual(f("10 SCORE=5\n"), ["SCORE=5"]); // 変数は分割しない
   assert.deepEqual(f("10 PSET(2,3)\n"), ["PSET(2,3)"]); // 記号は字句側で区切れる＝そのまま
 });
+
+test("read: 完全に空白なしの行をMSX流に再トークン化", () => {
+  const f = (s: string) => readBasic(s).lines[0].stmts;
+  assert.deepEqual(f("10 FORI=0TO32\n"), ["FOR I=0 TO 32"]);
+  assert.deepEqual(f("10 IFA<-16THENA=255\n"), ["IF A<-16 THEN A=255"]);
+  assert.deepEqual(f("10 PUTSPRITE0,(X,Y),7\n"), ["PUT SPRITE 0,(X,Y),7"]);
+  assert.deepEqual(f("10 SCORE=SCORE+1\n"), ["SCORE=SCORE+1"]); // 予約語を含む変数は割らない
+  assert.deepEqual(f('10 PRINT"HELLO"\n'), ['PRINT "HELLO"']);
+});

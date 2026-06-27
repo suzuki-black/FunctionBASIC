@@ -108,12 +108,15 @@ export function decompile(lines: BasicLine[]): DecompileResult {
     if (s.startsWith("'") || /^REM\b/i.test(s)) return [s];
     // DEFINT/DEFSNG/DEFDBL/DEFSTR は構造化では型サフィックスで表現＝コメント化（意味の既定型は失われる旨を残す）
     if (/^DEF(INT|SNG|DBL|STR)\b/i.test(s)) return [`' ${s}（型既定。構造化では型サフィックスで表現）`];
+    if (/^DEF\s+USR/i.test(s)) return [`' ${s}（USR定義。構造化では未対応）`]; // DEF USR[n]=addr
     if (/^DEF\s+FN\b/i.test(s)) return []; // DEF FN は FUNCTION として巻き上げ済み（ここでは除去）
     s = convFn(s); // FN <名>( → FN<名>(
     const m = s.match(/^GOSUB\s+(\d+)\s*$/i);
     if (m) return [funcName(+m[1]) + "()"];
     if (/^RETURN\b/i.test(s)) return ["RETURN"];
     if (/^GOTO\s+\d+\s*$/i.test(s)) { warn(`未対応の GOTO: ${s}`); return [`' [未対応] ${s}`]; }
+    // RESTORE <行番号> は構造化に無い（引数なしRESTOREのみ）→ コメント化＋警告
+    if (/^RESTORE\s+\d+/i.test(s)) { warn(`RESTORE 行番号は未対応: ${s}`); return [`' [未対応] ${s}`]; }
     if (/^ON\b/i.test(s)) {
       // ON …(SPRITE/KEY/STRIG/INTERVAL/式) GOSUB <行[,…]> → ハンドラ関数参照 SUB<行> へ
       const m2 = s.match(/^(ON\s+[\s\S]+?\s+GOSUB)\s+([\d,\s]+)$/i);

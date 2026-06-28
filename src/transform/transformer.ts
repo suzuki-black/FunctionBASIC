@@ -21,6 +21,7 @@ import {
 } from "../core/builtins.ts";
 import { NamePool } from "./names.ts";
 import { typeCheck } from "./typecheck.ts";
+import { inlineConsts } from "./const-inline.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
@@ -259,6 +260,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   const diagnostics: Diagnostic[] = [];
   const fail = (key: string, params: DiagParams = {}) =>
     diagnostics.push(error(key, ORIGIN, params));
+
+  // CONST のインライン展開（名前解決より前。定数参照はリテラル化し CONST 文は消える）。
+  diagnostics.push(...inlineConsts(program));
 
   // 関数表
   const funcNames = new Set<string>();

@@ -122,6 +122,26 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `${p.fn}: REF 引数には変数を渡してください`,
     en: (p) => `${p.fn}: a REF argument must be a variable`,
   },
+  E_CONST_ASSIGN: {
+    code: "E_CONST_ASSIGN",
+    ja: (p) => `定数 ${p.name} には再代入できません（CONST は初期化のみ）`,
+    en: (p) => `Cannot assign to constant ${p.name} (CONST is initialize-only)`,
+  },
+  E_CONST_NOT_CONSTANT: {
+    code: "E_CONST_NOT_CONSTANT",
+    ja: (p) => `CONST ${p.name} の初期化式は定数畳み込みできません（リテラル/演算/既出の定数のみ可）`,
+    en: (p) => `CONST ${p.name}: initializer is not a foldable constant (only literals, operators, and earlier constants)`,
+  },
+  E_DUP_CONST: {
+    code: "E_DUP_CONST",
+    ja: (p) => `定数 ${p.name} が重複しています`,
+    en: (p) => `Duplicate constant: ${p.name}`,
+  },
+  E_CONST_TYPE: {
+    code: "E_CONST_TYPE",
+    ja: (p) => `CONST ${p.name}: 型サフィックスと初期値の型が一致しません`,
+    en: (p) => `CONST ${p.name}: type suffix does not match the initializer type`,
+  },
   E_STRICT_UNTYPED: {
     code: "E_STRICT_UNTYPED",
     ja: (p) => `STRICT: ${p.name} に型サフィックス(% / ! / # / $)が必要です`,

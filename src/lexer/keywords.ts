@@ -25,6 +25,7 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "CONTINUE",
   // 宣言・引数
   "LET",
+  "CONST",
   "REF",
   "GLOBAL",
   "DIM",

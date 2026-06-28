@@ -1,0 +1,33 @@
+' ============================================================
+'  Cookbook: CONST — named compile-time constants.
+'  References are inlined as literals in the MSX-BASIC output
+'  (no runtime variable is emitted). Re-assigning a CONST is a
+'  transpile error, so accidental writes are caught early.
+' ============================================================
+
+' Numeric constants and constant expressions (folded at compile time)
+CONST COLS   = 32
+CONST ROWS   = 24
+CONST CELLS  = COLS * ROWS         ' folded to 768
+CONST CENTER = COLS \ 2            ' integer divide -> 16
+
+' Typed constants (suffix must match the value)
+CONST PI#    = 3.14159
+CONST TITLE$ = "FUNCTIONBASIC"
+
+SCREEN 0
+WIDTH 40
+
+LOCATE CENTER, 0
+PRINT TITLE$                       ' -> PRINT "FUNCTIONBASIC"
+PRINT "CELLS="; CELLS              ' -> PRINT "CELLS=";768
+PRINT "PI*2="; PI# * 2
+
+' CONST is great for loop bounds: the literal goes straight into FOR
+FOR I = 1 TO ROWS
+    PRINT I
+NEXT
+
+' --- If you uncomment the next line, transpiling fails with
+'     E_CONST_ASSIGN (constants are initialize-only):
+' COLS = 64

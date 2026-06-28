@@ -27,6 +27,7 @@ export interface FunctionDef {
 
 export type Stmt =
   | LetStmt
+  | ConstStmt
   | DimStmt
   | GlobalStmt
   | ReturnStmt
@@ -46,6 +47,14 @@ export interface LetStmt {
   target: LValue;
   expr: Expr;
   hadLet: boolean;
+  pos: Position;
+}
+// 名前付き定数。初期化式は定数畳み込み可能でなければならず、参照は出力でリテラルに
+// インライン展開される（MSX変数は生成しない）。初期化以外の代入はトランスパイルエラー。
+export interface ConstStmt {
+  type: "Const";
+  name: string; // 型サフィックス込み（例 "MAX", "PI#", "MSG$"）
+  expr: Expr;
   pos: Position;
 }
 export interface ArrayDecl {

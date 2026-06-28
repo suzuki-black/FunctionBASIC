@@ -249,6 +249,14 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "Dim", decls, pos };
   };
 
+  const parseConst = (pos: Position): Stmt => {
+    advance(); // CONST
+    const name = expectIdent("CONST");
+    expectOp("=", "CONST");
+    const expr = parseExpr();
+    return { type: "Const", name, expr, pos };
+  };
+
   const parseGlobal = (pos: Position): Stmt => {
     advance(); // GLOBAL
     const names: string[] = [expectIdent("GLOBAL")];
@@ -558,6 +566,11 @@ export function parse(tokens: Token[]): ParseResult {
           advance();
           const s = parseAssignment(true, pos);
           endOfStmt("代入");
+          return s;
+        }
+        case "CONST": {
+          const s = parseConst(pos);
+          endOfStmt("CONST");
           return s;
         }
         case "DIM": {

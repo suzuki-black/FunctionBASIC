@@ -393,8 +393,8 @@ END FUNCTION
 
 DIM A(10)
 A(3) = 0
-RESULT = FIND_ZERO(POS)
-PRINT "FOUND="; RESULT; " AT "; POS
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE
 `;
 
 let last = { diags: [], msx: "", map: null, code: [] };

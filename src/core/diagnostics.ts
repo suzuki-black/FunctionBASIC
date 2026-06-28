@@ -122,6 +122,11 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `${p.fn}: REF 引数には変数を渡してください`,
     en: (p) => `${p.fn}: a REF argument must be a variable`,
   },
+  E_NAME_IS_BUILTIN: {
+    code: "E_NAME_IS_BUILTIN",
+    ja: (p) => `${p.name} は組み込み（命令/関数）名のため変数には使えません。別名にしてください`,
+    en: (p) => `${p.name} is a built-in (statement/function) name and cannot be used as a variable — rename it`,
+  },
   E_CONST_ASSIGN: {
     code: "E_CONST_ASSIGN",
     ja: (p) => `定数 ${p.name} には再代入できません（CONST は初期化のみ）`,

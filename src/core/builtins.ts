@@ -204,3 +204,16 @@ export const isBuiltinFunction = (name: string): boolean =>
   BUILTIN_FUNCTIONS.has(name.toUpperCase());
 export const isBuiltin = (name: string): boolean =>
   isBuiltinStatement(name) || isBuiltinFunction(name);
+
+// 括弧/引数なしの「裸」で値として読める組み込み擬似変数（システム変数）。
+// これら以外の組み込み関数は引数必須（例 POS(0)）なので、裸の識別子として書くと
+// MSX上で Syntax error になる＝ユーザ変数名との衝突として弾く（E_NAME_IS_BUILTIN）。
+export const BARE_READ_BUILTINS: ReadonlySet<string> = new Set([
+  "INKEY$", "TIME", "CSRLIN", "ERR", "ERL",
+]);
+// 代入できるシステム変数（TIME=0 等）。
+export const ASSIGNABLE_BUILTINS: ReadonlySet<string> = new Set(["TIME"]);
+export const isBareReadBuiltin = (name: string): boolean =>
+  BARE_READ_BUILTINS.has(name.toUpperCase());
+export const isAssignableBuiltin = (name: string): boolean =>
+  ASSIGNABLE_BUILTINS.has(name.toUpperCase());

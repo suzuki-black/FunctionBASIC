@@ -22,6 +22,7 @@ import {
 import { NamePool } from "./names.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
+import { checkNameCollisions } from "./check-names.ts";
 import { foldProgram } from "./fold-expr.ts";
 import { reduceStrengthProgram } from "./strength-reduce.ts";
 import { stripComments } from "./strip-comments.ts";
@@ -267,6 +268,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   const diagnostics: Diagnostic[] = [];
   const fail = (key: string, params: DiagParams = {}) =>
     diagnostics.push(error(key, ORIGIN, params));
+
+  // 変数名と組み込み（命令/関数）名の衝突検出（黙って誤変換しない）。
+  diagnostics.push(...checkNameCollisions(program));
 
   // CONST のインライン展開（名前解決より前。定数参照はリテラル化し CONST 文は消える）。
   diagnostics.push(...inlineConsts(program));

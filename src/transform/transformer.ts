@@ -24,6 +24,7 @@ import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
 import { foldProgram } from "./fold-expr.ts";
 import { reduceStrengthProgram } from "./strength-reduce.ts";
+import { stripComments } from "./strip-comments.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
@@ -258,6 +259,7 @@ export interface TransformOptions {
   source?: string; // エントリファイル名
   optimize?: boolean; // 定数畳み込み最適化（オプトイン・既定OFF）
   strengthReduce?: boolean; // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
+  stripComments?: boolean; // コメント除去（オプトイン・既定OFF。飛び先は安全に保持）
 }
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
@@ -1231,7 +1233,8 @@ function finishTransform(ctx: any): TransformResult {
     controlFlow,
   };
 
-  return { code: out, diagnostics, varNameMap, map };
+  const code = ctx.opts?.stripComments ? stripComments(out) : out;
+  return { code, diagnostics, varNameMap, map };
 }
 
 export function renderMsx(lines: MsxLine[]): string {

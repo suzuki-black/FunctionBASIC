@@ -49,6 +49,7 @@ const I18N = {
     "set.curline": "現在行をハイライト",
     "set.transpile": "変換（最適化）", "set.optimize": "定数畳み込み（リテラル同士の演算を事前計算）",
     "set.strength": "べき乗の強度低減（X^2→X*X・指数2〜4）",
+    "set.stripcomments": "コメント除去（速度/サイズ優先・飛び先は保持）",
     "find.find": "検索", "find.replace": "置換後", "find.one": "置換", "find.all": "全置換",
     "find.case": "大文字小文字を区別", "find.regex": "正規表現", "find.prev": "前へ", "find.next": "次へ", "find.close": "閉じる (Esc)",
     "find.replaced": (n) => `${n} 件置換しました`,
@@ -122,6 +123,7 @@ const I18N = {
     "set.curline": "Highlight current line",
     "set.transpile": "Transpile (optimization)", "set.optimize": "Constant folding (precompute literal arithmetic)",
     "set.strength": "Power strength reduction (X^2 → X*X, exponent 2-4)",
+    "set.stripcomments": "Strip comments (size/speed build; jump targets kept)",
     "find.find": "Find", "find.replace": "Replace with", "find.one": "Replace", "find.all": "All",
     "find.case": "Match case", "find.regex": "Regular expression", "find.prev": "Previous", "find.next": "Next", "find.close": "Close (Esc)",
     "find.replaced": (n) => `Replaced ${n} occurrence(s)`,
@@ -190,6 +192,7 @@ const DEFAULT_SETTINGS = {
   curLine: true, // 現在行ハイライト
   optimize: false, // 定数畳み込み最適化（オプトイン・既定OFF）
   strengthReduce: false, // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
+  stripComments: false, // コメント除去（オプトイン・既定OFF）
   findCase: false, // 検索の大文字小文字を区別
   findRegex: false, // 検索を正規表現として扱う（単純/全体で共有）
 };
@@ -298,6 +301,7 @@ function openSettings() {
   $("setCurLine").checked = settings.curLine;
   $("setOptimize").checked = settings.optimize;
   $("setStrengthReduce").checked = settings.strengthReduce;
+  $("setStripComments").checked = settings.stripComments;
   $("setMachine").value = settings.webmsxMachine;
   $("setPresets").value = settings.webmsxPresets;
   $("setUrl").value = settings.webmsxUrl;
@@ -314,6 +318,7 @@ function applySettingsFromForm() {
   settings.curLine = $("setCurLine").checked;
   settings.optimize = $("setOptimize").checked;
   settings.strengthReduce = $("setStrengthReduce").checked;
+  settings.stripComments = $("setStripComments").checked;
   settings.webmsxMachine = $("setMachine").value;
   settings.webmsxPresets = $("setPresets").value.trim();
   settings.webmsxUrl = $("setUrl").value.trim() || DEFAULT_SETTINGS.webmsxUrl;
@@ -469,7 +474,7 @@ function compile(src) {
   const { program, diagnostics: pd } = parse(tokens);
   let t;
   try {
-    t = transform(program, { optimize: settings.optimize, strengthReduce: settings.strengthReduce });
+    t = transform(program, { optimize: settings.optimize, strengthReduce: settings.strengthReduce, stripComments: settings.stripComments });
   } catch (e) {
     return {
       diags: [...incDiags, ...ld, ...pd, { code: "E_INTERNAL", key: "E_INTERNAL", params: { detail: String(e.message ?? e) }, message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],

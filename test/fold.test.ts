@@ -51,3 +51,30 @@ test("ON: CONST インライン後に生じた定数式も畳む", () => {
   // CONST は畳み込みOFFでも初期化時に畳むが、参照式は fold で更に畳む
   assert.match(compile("CONST K=10\nA=K*2+5\n", true), /A=25/);
 });
+
+// ---- 可換再結合（定数畳み込みトグルに統合） ----
+test("ON: + 連鎖の離れた定数をまとめる（1+X+2→X+3）", () => {
+  assert.match(compile("A=1+X+2\n", true), /A=[A-Z]+\+3/);
+  assert.match(compile("A=1+X+Y+4\n", true), /A=[A-Z]+\+[A-Z]+\+5/);
+});
+
+test("ON: * 連鎖の離れた定数をまとめる（2*X*3→X*6）", () => {
+  assert.match(compile("A=2*X*3\n", true), /A=[A-Z]+\*6/);
+});
+
+test("ON: 恒等の簡約 X+0→X, X*1→X", () => {
+  assert.match(compile("A=X+0\n", true), /A=[A-Z]+$/m);
+  assert.match(compile("A=X*1\n", true), /A=[A-Z]+$/m);
+});
+
+test("ON: X*0 は副作用喪失回避のため簡約しない", () => {
+  assert.match(compile("A=X*0\n", true), /A=[A-Z]+\*0/);
+});
+
+test("ON: 文字列連結(+)は非可換なので再結合しない", () => {
+  assert.match(compile('A$="x"+B$+"y"\n', true), /A\$="x"\+[A-Z]+\$\+"y"/);
+});
+
+test("ON: 単一定数は無意味に並べ替えない（1+X のまま）", () => {
+  assert.match(compile("A=1+X\n", true), /A=1\+[A-Z]+/);
+});

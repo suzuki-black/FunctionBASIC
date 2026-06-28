@@ -25,6 +25,39 @@ const numLit = (v: number): Expr | null => {
 };
 const strLit = (v: string): Expr => ({ type: "Str", value: v });
 
+// 同一演算子(op)の純粋な連鎖を平坦化して葉を集める（a op b op c → [a,b,c]）。
+function flatten(e: Expr, op: string, out: Expr[]): void {
+  if (e.type === "Bin" && e.op === op) {
+    flatten(e.left, op, out);
+    flatten(e.right, op, out);
+  } else {
+    out.push(e);
+  }
+}
+
+// 可換再結合: + / * 連鎖の定数葉をまとめる。文字列連結(+ に文字列)は非可換なので対象外。
+// 定数が2個以上まとまる時、または恒等(+0 / *1)を消せる時だけ書き換える。
+function cluster(e: Extract<Expr, { type: "Bin" }>): Expr {
+  const op = e.op;
+  const leaves: Expr[] = [];
+  flatten(e, op, leaves);
+  if (op === "+" && leaves.some((x) => x.type === "Str")) return e; // 文字列連結は触らない
+  const consts = leaves.filter((x): x is Extract<Expr, { type: "Num" }> => x.type === "Num");
+  const others = leaves.filter((x) => x.type !== "Num");
+  let acc = op === "+" ? 0 : 1;
+  for (const c of consts) acc = op === "+" ? acc + c.value : acc * c.value;
+  const isIdentity = (op === "+" && acc === 0) || (op === "*" && acc === 1);
+  // 効果がある時だけ（定数を2個以上統合 or 恒等を除去）。それ以外は元のまま。
+  if (!(consts.length >= 2 || (isIdentity && consts.length >= 1 && others.length >= 1))) return e;
+  const combined = numLit(acc);
+  if (!combined) return e; // ガード(桁/範囲)で畳めないなら触らない
+  if (others.length === 0) return combined; // 全部定数（通常はここに来ない）
+  let rebuilt = others[0];
+  for (let i = 1; i < others.length; i++) rebuilt = { type: "Bin", op, left: rebuilt, right: others[i] };
+  if (!isIdentity) rebuilt = { type: "Bin", op, left: rebuilt, right: combined };
+  return rebuilt;
+}
+
 // 式を部分畳み込み（破壊的に子を畳んだ上で、可能なら自身をリテラル化）。
 export function foldExpr(e: Expr): Expr {
   switch (e.type) {
@@ -44,24 +77,28 @@ export function foldExpr(e: Expr): Expr {
       e.left = l;
       e.right = r;
       if (l.type === "Str" && r.type === "Str" && e.op === "+") return strLit(l.value + r.value);
-      if (l.type !== "Num" || r.type !== "Num") return e;
-      const a = l.value, b = r.value;
-      const bothInt = isInt16(a) && isInt16(b);
-      switch (e.op) {
-        case "+": return numLit(a + b) ?? e;
-        case "-": return numLit(a - b) ?? e;
-        case "*": return numLit(a * b) ?? e;
-        case "/": return b === 0 ? e : (numLit(a / b) ?? e); // 0除算は残す
-        case "^": return numLit(a ** b) ?? e;
-        case "\\": return bothInt && b !== 0 ? (numLit(Math.trunc(a / b)) ?? e) : e;
-        case "MOD": return bothInt && b !== 0 ? (numLit(a % b) ?? e) : e;
-        case "AND": return bothInt ? (numLit(a & b) ?? e) : e;
-        case "OR": return bothInt ? (numLit(a | b) ?? e) : e;
-        case "XOR": return bothInt ? (numLit(a ^ b) ?? e) : e;
-        case "EQV": return bothInt ? (numLit(~(a ^ b)) ?? e) : e;
-        case "IMP": return bothInt ? (numLit(~a | b) ?? e) : e;
-        default: return e; // 比較演算子は対象外（v1）
+      if (l.type === "Num" && r.type === "Num") {
+        const a = l.value, b = r.value;
+        const bothInt = isInt16(a) && isInt16(b);
+        switch (e.op) {
+          case "+": return numLit(a + b) ?? e;
+          case "-": return numLit(a - b) ?? e;
+          case "*": return numLit(a * b) ?? e;
+          case "/": return b === 0 ? e : (numLit(a / b) ?? e); // 0除算は残す
+          case "^": return numLit(a ** b) ?? e;
+          case "\\": return bothInt && b !== 0 ? (numLit(Math.trunc(a / b)) ?? e) : e;
+          case "MOD": return bothInt && b !== 0 ? (numLit(a % b) ?? e) : e;
+          case "AND": return bothInt ? (numLit(a & b) ?? e) : e;
+          case "OR": return bothInt ? (numLit(a | b) ?? e) : e;
+          case "XOR": return bothInt ? (numLit(a ^ b) ?? e) : e;
+          case "EQV": return bothInt ? (numLit(~(a ^ b)) ?? e) : e;
+          case "IMP": return bothInt ? (numLit(~a | b) ?? e) : e;
+          default: return e; // 比較演算子は対象外（v1）
+        }
       }
+      // 可換再結合: + / * の連鎖で離れた定数をまとめる（1+X+2→X+3, 2*X*3→X*6）。
+      if (e.op === "+" || e.op === "*") return cluster(e);
+      return e;
     }
     case "Group":
       e.items = e.items.map(foldExpr);

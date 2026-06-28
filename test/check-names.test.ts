@@ -44,6 +44,19 @@ test("命令・二面名のサブキーワードは誤検出しない（PUT SPRI
   assert.ok(!hasBuiltinErr('SPRITE$(0)=STRING$(8,255)\n'));
 });
 
+test("関数名が組み込み名と衝突したらエラー（FUNCTION LEN/POS/PRINT…）", () => {
+  assert.ok(hasBuiltinErr("FUNCTION LEN()\nRETURN 1\nEND FUNCTION\nX=LEN(1)\n"));
+  assert.ok(hasBuiltinErr("FUNCTION POS()\nRETURN 1\nEND FUNCTION\n"));
+  assert.ok(hasBuiltinErr("FUNCTION PRINT()\nRETURN 1\nEND FUNCTION\n")); // 命令名もダメ
+  assert.ok(!hasBuiltinErr("FUNCTION HOGE()\nRETURN 1\nEND FUNCTION\nX=HOGE()\n")); // 普通の名前はOK
+});
+
+test("配列名が組み込み名と衝突したらエラー（DIM POS(10)）／正常配列はOK", () => {
+  assert.ok(hasBuiltinErr("DIM POS(10)\nPOS(0)=1\n"));
+  assert.ok(!hasBuiltinErr("DIM SCORES(10)\nSCORES(0)=1\n"));
+  assert.ok(!hasBuiltinErr("SCREEN 5\nSPRITE$(0)=STRING$(8,255)\n")); // 組み込みの配列形は合法
+});
+
 test("POS を REF 実引数・PRINT に使う旧サンプルはエラーになる（回帰）", () => {
   const src = 'FUNCTION FIND_ZERO(REF IDX)\nGLOBAL A\nFOR I=1 TO 10\nIF A(I)=0 THEN\nIDX=I\nRETURN 1\nEND IF\nNEXT I\nRETURN 0\nEND FUNCTION\nDIM A(10)\nA(3)=0\nR=FIND_ZERO(POS)\nPRINT "AT ";POS\n';
   assert.ok(hasBuiltinErr(src));

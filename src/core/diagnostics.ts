@@ -124,8 +124,8 @@ const CATALOG: Record<string, Entry> = {
   },
   E_NAME_IS_BUILTIN: {
     code: "E_NAME_IS_BUILTIN",
-    ja: (p) => `${p.name} は組み込み（命令/関数）名のため変数には使えません。別名にしてください`,
-    en: (p) => `${p.name} is a built-in (statement/function) name and cannot be used as a variable — rename it`,
+    ja: (p) => `${p.name} は組み込み（命令/関数）名のため、変数名・関数名には使えません。別名にしてください`,
+    en: (p) => `${p.name} is a built-in (statement/function) name and cannot be used as a variable or function name — rename it`,
   },
   E_CONST_ASSIGN: {
     code: "E_CONST_ASSIGN",

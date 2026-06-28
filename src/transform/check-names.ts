@@ -8,7 +8,7 @@ import type { Program, Stmt, Expr, FunctionDef, LValue } from "../ast/nodes.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import {
-  isBuiltinFunction, isBuiltinStatement, isBareReadBuiltin, isAssignableBuiltin,
+  isBuiltin, isBuiltinFunction, isBuiltinStatement, isBareReadBuiltin, isAssignableBuiltin,
 } from "../core/builtins.ts";
 
 // 衝突対象＝「純粋な組み込み関数名」（POS/LEN/SIN/MID$ 等。引数必須で裸では使えない）。
@@ -79,7 +79,10 @@ export function checkNameCollisions(program: Program): Diagnostic[] {
           s.call.args.forEach((a) => readExpr(a.expr, pos));
           break;
         case "Dim":
-          for (const d of s.decls) d.dims.forEach((x) => readExpr(x, pos));
+          for (const d of s.decls) {
+            if (collides(d.name)) at(d.name, pos); // DIM POS(10) 等（組み込み名は配列にできない）
+            d.dims.forEach((x) => readExpr(x, pos));
+          }
           break;
         case "On":
           if (s.arg) readExpr(s.arg, pos);
@@ -93,14 +96,16 @@ export function checkNameCollisions(program: Program): Diagnostic[] {
     }
   };
 
-  // 関数の値/参照引数名も検査（引数名が組み込みだと本体で衝突する）。
-  const checkParams = (fn: FunctionDef): void => {
+  // 関数名・引数名の検査。関数名は呼び出しが組み込みと曖昧化する（FUNCTION LEN() が
+  // 組み込み LEN を隠す）ため、命令/関数いずれの組み込み名も不可（isBuiltin）。
+  const checkFunc = (fn: FunctionDef): void => {
+    if (isBuiltin(fn.name)) at(fn.name, fn.pos);
     for (const p of fn.params) if (collides(p.name)) at(p.name, fn.pos);
   };
 
   walk(program.toplevel);
   for (const fn of program.functions) {
-    checkParams(fn);
+    checkFunc(fn);
     walk(fn.body);
   }
   return diags;

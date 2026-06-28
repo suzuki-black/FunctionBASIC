@@ -1,0 +1,40 @@
+' ============================================================
+'  Recursion demo. The transpiler turns recursive FUNCTIONs into
+'  GOSUB subroutines and saves/restores each frame on a software
+'  stack, so self- and mutual-recursion both work on a real MSX.
+'  (Stack depth is configurable in the editor settings.)
+' ============================================================
+
+' --- self-recursion: factorial ---
+FUNCTION FACT(N)
+    IF N <= 1 THEN
+        RETURN 1
+    END IF
+    RETURN N * FACT(N - 1)
+END FUNCTION
+
+' --- double recursion: Fibonacci (each frame's temp is preserved) ---
+FUNCTION FIB(N)
+    IF N < 2 THEN
+        RETURN N
+    END IF
+    RETURN FIB(N - 1) + FIB(N - 2)
+END FUNCTION
+
+' --- mutual recursion: even / odd via a shared stack ---
+FUNCTION ISEVEN(N)
+    IF N = 0 THEN
+        RETURN 1
+    END IF
+    RETURN ISODD(N - 1)
+END FUNCTION
+FUNCTION ISODD(N)
+    IF N = 0 THEN
+        RETURN 0
+    END IF
+    RETURN ISEVEN(N - 1)
+END FUNCTION
+
+PRINT "5! ="; FACT(5)
+PRINT "FIB(10) ="; FIB(10)
+PRINT "ISEVEN(4) ="; ISEVEN(4)

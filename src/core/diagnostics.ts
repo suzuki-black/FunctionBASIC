@@ -194,6 +194,11 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `再帰は未対応です（${p.name} を含む循環）`,
     en: (p) => `Recursion is not supported (cycle involving ${p.name})`,
   },
+  E_RECURSION_REF_UNSUPPORTED: {
+    code: "E_RECURSION_REF_UNSUPPORTED",
+    ja: (p) => `再帰関数では REF（参照渡し）引数は未対応です（${p.name}）`,
+    en: (p) => `REF (by-reference) parameters are not supported in a recursive function (${p.name})`,
+  },
   E_UNKNOWN_FUNCTION: {
     code: "E_UNKNOWN_FUNCTION",
     ja: (p) => `未定義の関数: ${p.name}`,

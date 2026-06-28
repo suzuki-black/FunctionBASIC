@@ -65,13 +65,15 @@ test("REF名前置換: 呼び出し側の実変数を関数内で直接書き換
   assert.ok(!/=PX\b|PX=/.test(msx.replace(/PRINT.*/g, "")), "受渡変数/コピーバックが無い");
 });
 
-test("再帰は E_RECURSION_UNSUPPORTED", () => {
-  const { diagnostics } = compile(`FUNCTION F(N)
+test("再帰はソフトスタックで変換される（エラーにしない）", () => {
+  const { diagnostics, msx } = compile(`FUNCTION F(N)
     LET X = F(N)
     RETURN X
 END FUNCTION
 LET Y = F(1)`);
-  assert.ok(diagnostics.some((d) => d.code === "E_RECURSION_UNSUPPORTED"));
+  assert.ok(!diagnostics.some((d) => d.code === "E_RECURSION_UNSUPPORTED"));
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.match(msx, /DIM /);   // 再帰スタックの DIM が生成される
 });
 
 test("未定義関数の文呼び出しは E_UNKNOWN_FUNCTION", () => {

@@ -45,6 +45,12 @@ test("例: cat-sprite.msxb はエラーなしで変換される", () => {
   assert.deepEqual(errorsOf("cat-sprite.msxb"), []);
 });
 
+test("例: recursion.msxb（自己/二重/相互再帰）はエラーなしで変換される", () => {
+  const { msx, diagnostics } = compileExample("recursion.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /DIM /); // 再帰スタックの確保
+});
+
 test("例: msx2-graphics-sound.msxb はエラーなしで変換される", () => {
   const { msx, diagnostics } = compileExample("msx2-graphics-sound.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

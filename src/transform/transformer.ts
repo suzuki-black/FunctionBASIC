@@ -260,6 +260,7 @@ export interface TransformOptions {
   optimize?: boolean; // 定数畳み込み最適化（オプトイン・既定OFF）
   strengthReduce?: boolean; // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
   stripComments?: boolean; // コメント除去（オプトイン・既定OFF。飛び先は安全に保持）
+  recursionDepth?: number; // 再帰スタックの最大深さ（DIMサイズ・既定100）
 }
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
@@ -360,11 +361,26 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   // STRICT モードなら静的型チェック（型サフィックス必須・完全一致）。変換自体は通常どおり行う。
   if (program.strict) diagnostics.push(...typeCheck(program));
 
-  // 再帰検出（呼び出しグラフの循環）
-  detectRecursion(program, funcTable, funcNames, diagnostics);
+  // 再帰検出（呼び出しグラフの循環）。再帰は GOSUB＋ソフトスタックでフレーム退避して対応する。
+  const recursiveFns = detectRecursion(program, funcTable, funcNames);
+  // 再帰関数の REF 引数は variant 展開と相性が悪く未対応 → 明示エラー
+  for (const name of recursiveFns) {
+    const fn = funcTable.get(name);
+    if (fn && fn.params.some((p) => p.byRef)) fail("E_RECURSION_REF_UNSUPPORTED", { name });
+  }
 
   // ---- 名前割当 ----
   const pool = new NamePool();
+  // 再帰用ソフトスタック（数値=倍精度配列／文字列=文字列配列＋各ポインタ）。再帰がある時だけ確保。
+  const recStack = recursiveFns.size > 0
+    ? {
+        numPtr: pool.next("%"),
+        strPtr: pool.next("%"),
+        numArr: pool.next("#"),
+        strArr: pool.next("$"),
+        depth: Math.max(1, Math.floor(opts.recursionDepth ?? 100)),
+      }
+    : null;
   const globalMap = new Map<string, string>(); // original → msxName
   const localMaps = new Map<string, Map<string, string>>(); // funcName → (orig→msx)
   const retVarOf = new Map<string, string>();
@@ -601,16 +617,17 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
     simpleStmtText,
     varNameMap,
     opts,
+    recursiveFns,
+    recStack,
   });
 }
 
-// 再帰検出
+// 再帰検出。循環に含まれる（＝自分自身へ到達できる）関数名の集合を返す。
 function detectRecursion(
   program: Program,
   funcTable: Map<string, FunctionDef>,
   funcNames: Set<string>,
-  diagnostics: Diagnostic[],
-): void {
+): Set<string> {
   const callsOf = (fn: FunctionDef): Set<string> => {
     const out = new Set<string>();
     const we = (e: Expr) => {
@@ -663,29 +680,20 @@ function detectRecursion(
   const graph = new Map<string, Set<string>>();
   for (const fn of program.functions) graph.set(fn.name, callsOf(fn));
 
-  const WHITE = 0,
-    GRAY = 1,
-    BLACK = 2;
-  const color = new Map<string, number>();
-  const visit = (n: string): boolean => {
-    color.set(n, GRAY);
-    for (const m of graph.get(n) ?? []) {
-      if (!graph.has(m)) continue;
-      const c = color.get(m) ?? WHITE;
-      if (c === GRAY) return true;
-      if (c === WHITE && visit(m)) return true;
-    }
-    color.set(n, BLACK);
-    return false;
-  };
-  for (const fn of program.functions) {
-    if ((color.get(fn.name) ?? WHITE) === WHITE && visit(fn.name)) {
-      diagnostics.push(
-        error("E_RECURSION_UNSUPPORTED", ORIGIN, { name: fn.name }),
-      );
-      break;
+  // 各関数 F について、F の呼び出し先から F 自身へ到達できれば F は再帰（循環内）。
+  const recursive = new Set<string>();
+  for (const start of graph.keys()) {
+    const seen = new Set<string>();
+    const stack = [...(graph.get(start) ?? [])];
+    while (stack.length) {
+      const n = stack.pop()!;
+      if (n === start) { recursive.add(start); break; }
+      if (seen.has(n) || !graph.has(n)) continue;
+      seen.add(n);
+      for (const m of graph.get(n) ?? []) stack.push(m);
     }
   }
+  return recursive;
 }
 
 // 行番号割当・REF variant 展開・GOSUB解決をまとめる
@@ -704,7 +712,12 @@ function finishTransform(ctx: any): TransformResult {
     emitExpr,
     simpleStmtText,
     varNameMap,
+    recursiveFns,
+    recStack,
   } = ctx;
+  const recSet: Set<string> = recursiveFns ?? new Set();
+  // 関数ごとに作られた一時変数(temp)のMSX名。再帰のフレーム退避に必要。
+  const tempVarsOf = new Map<string, Set<string>>();
 
   interface Line {
     text: string;
@@ -843,7 +856,8 @@ function finishTransform(ctx: any): TransformResult {
   // ---- 文ブロックの emit（Itemモデル: 行 or ラベル）----
   type Item =
     | { kind: "line"; text: string; no?: number }
-    | { kind: "label"; id: number };
+    | { kind: "label"; id: number }
+    | { kind: "frameop"; op: "push" | "pop"; func: string }; // 再帰: フレーム退避/復元（後で展開）
   let labelCounter = 0;
   const newLabel = (): number => ++labelCounter;
   const loopStack: { b: number; c: number }[] = [];
@@ -904,6 +918,36 @@ function finishTransform(ctx: any): TransformResult {
       return;
     }
     const lmap = localMaps.get(name);
+    // 再帰呼び出し（呼び元・呼び先がともに循環内）なら、呼び元のフレームを退避/復元する。
+    const isRec = sc.func && recSet.has(sc.func) && recSet.has(name);
+    const valParams = fn.params.filter((p: any) => !p.byRef);
+
+    if (isRec) {
+      items.push({ kind: "frameop", op: "push", func: sc.func });
+      const segs: string[] = [];
+      if (valParams.length >= 2) {
+        // 多引数の自己再帰は引数評価順のエイリアシングを避けるため一旦 temp へ。
+        const tmps: string[] = [];
+        valParams.forEach((p: any, i: number) => {
+          const idx = fn.params.indexOf(p);
+          const tn = resolveVar(`__A${++tempCounter}${suffixOf(p.name)}`, sc);
+          tmps.push(tn);
+          segs.push(`${tn}=${emitExpr(args[idx].expr, sc)}`);
+        });
+        valParams.forEach((p: any, i: number) => segs.push(`${lmap.get(p.name)}=${tmps[i]}`));
+      } else {
+        valParams.forEach((p: any) => {
+          const idx = fn.params.indexOf(p);
+          segs.push(`${lmap.get(p.name)}=${emitExpr(args[idx].expr, sc)}`);
+        });
+      }
+      segs.push(`GOSUB @@ENTRY:${key}@@`);
+      items.push({ kind: "line", text: segs.join(": ") });
+      items.push({ kind: "frameop", op: "pop", func: sc.func });
+      if (lhs) items.push({ kind: "line", text: `${lhs}=${retVarOf.get(name)}` });
+      return;
+    }
+
     const segs: string[] = [];
     fn.params.forEach((p: any, i: number) => {
       if (p.byRef) return;
@@ -970,6 +1014,10 @@ function finishTransform(ctx: any): TransformResult {
           const fn = funcTable.get(e.name)!;
           const t = `__T${++tempCounter}${fn.retSuffix}`;
           const tMsx = resolveVar(t, sc); // 一時変数を割当
+          if (sc.func) {
+            if (!tempVarsOf.has(sc.func)) tempVarsOf.set(sc.func, new Set());
+            tempVarsOf.get(sc.func)!.add(tMsx);
+          }
           emitCall(items, e.name, args, e, tMsx, sc);
           return { type: "Var", name: t };
         }
@@ -1113,10 +1161,39 @@ function finishTransform(ctx: any): TransformResult {
   };
 
   // ブロックを行番号付与し、ラベル位置を解決
+  // 再帰フレーム（値引数＋ローカル＋call結果temp）のMSX変数列。
+  const frameVarsOf = (func: string): string[] => {
+    const lm = localMaps.get(func);
+    const locals = lm ? [...lm.values()] : [];
+    const temps = tempVarsOf.get(func) ? [...tempVarsOf.get(func)!] : [];
+    return [...locals, ...temps];
+  };
+  // push/pop の文列を生成（数値は倍精度スタック、文字列は文字列スタックへ）。
+  const frameSeq = (func: string, op: "push" | "pop"): string => {
+    if (!recStack) return "";
+    let vars = frameVarsOf(func);
+    if (op === "pop") vars = [...vars].reverse();
+    const { numPtr, strPtr, numArr, strArr } = recStack;
+    const parts: string[] = [];
+    for (const v of vars) {
+      const isStr = v.endsWith("$");
+      const ptr = isStr ? strPtr : numPtr;
+      const arr = isStr ? strArr : numArr;
+      if (op === "push") parts.push(`${ptr}=${ptr}+1`, `${arr}(${ptr})=${v}`);
+      else parts.push(`${v}=${arr}(${ptr})`, `${ptr}=${ptr}-1`);
+    }
+    return parts.join(":");
+  };
+
   const numberBlock = (rawItems: Item[], start: number): MsxLine[] => {
     // 255バイト超過行を自動分割（番号付与の前なのでラベル/GOSUBは正しく解決される）
     const items: Item[] = [];
     for (const it of rawItems) {
+      if (it.kind === "frameop") {
+        const text = frameSeq(it.func, it.op);
+        if (text) for (const t of splitLongLine(text)) items.push({ kind: "line", text: t });
+        continue;
+      }
       if (it.kind !== "line") {
         items.push(it);
         continue;
@@ -1147,6 +1224,12 @@ function finishTransform(ctx: any): TransformResult {
   const mainItems: Item[] = [{ kind: "line", text: "' === MAIN ===" }];
   emitInto(program.toplevel, { func: undefined }, mainItems);
   mainItems.push({ kind: "line", text: "END" });
+  // 再帰スタックの DIM をMAIN先頭（ヘッダ直後）に挿入。最初の再帰呼び出しより前に確保する。
+  if (recStack)
+    mainItems.splice(1, 0, {
+      kind: "line",
+      text: `DIM ${recStack.numArr}(${recStack.depth}), ${recStack.strArr}(${recStack.depth})`,
+    });
   const out: MsxLine[] = [...numberBlock(mainItems, 100)];
 
   // 関数 variant ブロック

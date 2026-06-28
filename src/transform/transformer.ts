@@ -22,6 +22,7 @@ import {
 import { NamePool } from "./names.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
+import { foldProgram } from "./fold-expr.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
@@ -254,6 +255,7 @@ export interface TransformOptions {
   lineMap?: Array<{ file: string; line: number }>; // 統合ソース行 → 由来（INCLUDE provenance）
   sources?: string[]; // 取り込んだ全ファイル（先頭=エントリ）
   source?: string; // エントリファイル名
+  optimize?: boolean; // 定数畳み込み最適化（オプトイン・既定OFF）
 }
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
@@ -263,6 +265,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
 
   // CONST のインライン展開（名前解決より前。定数参照はリテラル化し CONST 文は消える）。
   diagnostics.push(...inlineConsts(program));
+
+  // 定数畳み込み最適化（オプトイン）。CONST 展開後に走らせ、生じた定数式も畳む。
+  if (opts.optimize) foldProgram(program);
 
   // 関数表
   const funcNames = new Set<string>();

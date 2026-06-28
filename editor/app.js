@@ -47,6 +47,7 @@ const I18N = {
     "set.editor": "エディタ支援",
     "set.autoindent": "自動インデント（Enter）", "set.autopair": "括弧・引用符の自動補完",
     "set.curline": "現在行をハイライト",
+    "set.transpile": "変換（最適化）", "set.optimize": "定数畳み込み（リテラル同士の演算を事前計算）",
     "find.find": "検索", "find.replace": "置換後", "find.one": "置換", "find.all": "全置換",
     "find.case": "大文字小文字を区別", "find.regex": "正規表現", "find.prev": "前へ", "find.next": "次へ", "find.close": "閉じる (Esc)",
     "find.replaced": (n) => `${n} 件置換しました`,
@@ -118,6 +119,7 @@ const I18N = {
     "set.editor": "Editor assist",
     "set.autoindent": "Auto-indent (Enter)", "set.autopair": "Auto-close brackets / quotes",
     "set.curline": "Highlight current line",
+    "set.transpile": "Transpile (optimization)", "set.optimize": "Constant folding (precompute literal arithmetic)",
     "find.find": "Find", "find.replace": "Replace with", "find.one": "Replace", "find.all": "All",
     "find.case": "Match case", "find.regex": "Regular expression", "find.prev": "Previous", "find.next": "Next", "find.close": "Close (Esc)",
     "find.replaced": (n) => `Replaced ${n} occurrence(s)`,
@@ -184,6 +186,7 @@ const DEFAULT_SETTINGS = {
   autoIndent: true, // Enter で構造に応じて自動字下げ/字上げ
   autoPair: true, // ( と " の自動補完（選択を囲む / 対応閉じはタイプオーバー）
   curLine: true, // 現在行ハイライト
+  optimize: false, // 定数畳み込み最適化（オプトイン・既定OFF）
   findCase: false, // 検索の大文字小文字を区別
   findRegex: false, // 検索を正規表現として扱う（単純/全体で共有）
 };
@@ -290,6 +293,7 @@ function openSettings() {
   $("setAutoIndent").checked = settings.autoIndent;
   $("setAutoPair").checked = settings.autoPair;
   $("setCurLine").checked = settings.curLine;
+  $("setOptimize").checked = settings.optimize;
   $("setMachine").value = settings.webmsxMachine;
   $("setPresets").value = settings.webmsxPresets;
   $("setUrl").value = settings.webmsxUrl;
@@ -304,11 +308,13 @@ function applySettingsFromForm() {
   settings.autoIndent = $("setAutoIndent").checked;
   settings.autoPair = $("setAutoPair").checked;
   settings.curLine = $("setCurLine").checked;
+  settings.optimize = $("setOptimize").checked;
   settings.webmsxMachine = $("setMachine").value;
   settings.webmsxPresets = $("setPresets").value.trim();
   settings.webmsxUrl = $("setUrl").value.trim() || DEFAULT_SETTINGS.webmsxUrl;
   saveSettings();
   applyEditorPrefs();
+  render(); // 最適化トグル等の変更を変換プレビューへ即反映
   closeSettings();
 }
 // 想定外の失敗もコンソールに必ず残す
@@ -458,7 +464,7 @@ function compile(src) {
   const { program, diagnostics: pd } = parse(tokens);
   let t;
   try {
-    t = transform(program);
+    t = transform(program, { optimize: settings.optimize });
   } catch (e) {
     return {
       diags: [...incDiags, ...ld, ...pd, { code: "E_INTERNAL", key: "E_INTERNAL", params: { detail: String(e.message ?? e) }, message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],

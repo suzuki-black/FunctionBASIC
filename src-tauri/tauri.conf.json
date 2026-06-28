@@ -12,7 +12,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "構造化BASIC → MSX-BASIC エディタ",
+        "title": "FunctionBASIC — Structured BASIC → MSX-BASIC",
         "width": 1100,
         "height": 800,
         "minWidth": 700,
@@ -26,6 +26,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Structured BASIC → MSX-BASIC transpiler & editor",
+    "longDescription": "Write modern, block-structured BASIC (functions, blocks, locals), transpile it to authentic MSX-BASIC, and run it in an embedded webMSX. Includes a decompiler for plain MSX-BASIC.",
+    "macOS": {
+      "minimumSystemVersion": "10.13"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

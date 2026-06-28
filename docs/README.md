@@ -42,11 +42,11 @@ END FUNCTION
 
 DIM A(10)
 A(3) = 0
-RESULT = FIND_ZERO(POS)
-PRINT "FOUND="; RESULT; " AT "; POS
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
-- `REF IDX`：参照渡し。呼び出し側 `FIND_ZERO(POS)` では REF を省略でき、参照渡しかどうかは関数シグネチャで判定する（[01](01-language-spec.md#133-引数渡し仕様1-3)）。
+- `REF IDX`：参照渡し。呼び出し側 `FIND_ZERO(WHERE)` では REF を省略でき、参照渡しかどうかは関数シグネチャで判定する（[01](01-language-spec.md#133-引数渡し仕様1-3)）。
 - `GLOBAL A`：トップレベルの配列 `A` を関数内で使う宣言。**関数内は既定ローカル、共有は `GLOBAL` で明示**（QuickBASIC/PHP流、[01 §1.10](01-language-spec.md#110-変数スコープ)）。`I` は宣言不要＝ローカル。
 - `IF` が `FOR` の中にある＝**ネスト**（許可。§2）。`RETURN 1` は関数の途中＝**どこでもRETURN**。
 - 代入の `LET` は省略可、`DIM`・配列添字も使用できる（[01](01-language-spec.md#19-代入let省略配列dim)）。
@@ -76,7 +76,7 @@ PRINT "FOUND="; RESULT; " AT "; POS
 
 §1の `FIND_ZERO` を変換するとこうなる。行番号昇順・重複なし・CRLF、文の区切りは **`:`（コロン）**。
 
-§1の `FIND_ZERO` を変換した出力。**MSX変数名は先頭2文字のみ有効**なので、グローバル `RESULT`→`RE`・`POS`→`PO`、
+§1の `FIND_ZERO` を変換した出力。**MSX変数名は先頭2文字のみ有効**なので、グローバル `RESULT`→`RE`・`WHERE`→`WH`、
 ローカルは `I`→`FI`・戻り値→`FR` のように **2文字名アロケータ**が割り当てる（[§5](#5-変換テーブルの役割可逆変換の心臓部)・[05 §5.11](05-transformer.md#511-2文字msx名アロケータ全変数全型)）。
 
 ```basic
@@ -84,7 +84,7 @@ PRINT "FOUND="; RESULT; " AT "; POS
 110 DIM A(10)
 120 A(3)=0
 130 GOSUB 1000: RE=FR
-140 PRINT "FOUND=";RE;" AT ";PO
+140 PRINT "FOUND=";RE;" AT ";WH
 150 END
 1000 ' === FUNCTION FIND_ZERO (IDX->PO) ===
 1010 FOR FI=1 TO 10
@@ -96,15 +96,15 @@ PRINT "FOUND="; RESULT; " AT "; POS
 
 このわずかな出力に、変換器の要点が表れている。**そのまま WebMSX に貼り付けて実行でき**、`FOUND=1 AT 3` を出力する。
 
-- **2文字MSX名** — `RESULT`→`RE`、`POS`→`PO`、ローカル `I`→`FI`、戻り値→`FR`。配列 `A` は1文字でそのまま。
+- **2文字MSX名** — `RESULT`→`RE`、`WHERE`→`WH`、ローカル `I`→`FI`、戻り値→`FR`。配列 `A` は1文字でそのまま。
 - **行番号セグメント** — MAIN は `100,110,…`、関数は `1000,1010,…` の別セグメント（§10.1）。
 - **文の区切りは `:`（コロン）** — `PO=FI: FR=1: RETURN`。`;` は `PRINT` の連結専用、`,` はタブ区切りで、文の連結には使えない。
-- **REF引数は名前置換（ゼロコピー）** — `FIND_ZERO(POS)` の `REF IDX` を**呼び出し側の実変数 `POS`（=`PO`）へ直接置換**。
+- **REF引数は名前置換（ゼロコピー）** — `FIND_ZERO(WHERE)` の `REF IDX` を**呼び出し側の実変数 `WHERE`（=`WH`）へ直接置換**。
   1020行で `PO` を直接書き換える（コピーは一切無い）。スカラ・配列とも同一規則（[05 §5.4](05-transformer.md#54-ref引数--名前置換方式仕様3-3)）。
 - **どこでもRETURN → `戻り値変数=値 : RETURN`** — `FR=1: RETURN` / `FR=0: RETURN`。
 - **ネストしたIFが1行IFに落ちる** — 1020行：本体が早期RETURNで終わるため `IF…THEN …:…:RETURN` に畳み込む（§10.2／[05](05-transformer.md#551-ifブロック)）。
 
-> 変換テーブル（`.map.json`）には `IDX↔POS`(REF置換)・`RESULT↔RE`/`POS↔PO`/戻り値`↔FR`(2文字名対応)・行番号↔ラベルが
+> 変換テーブル（`.map.json`）には `IDX↔WHERE`(REF置換)・`RESULT↔RE`/`WHERE↔WH`/戻り値`↔FR`(2文字名対応)・行番号↔ラベルが
 > 記録され、これらを逆変換で復元できる（§5）。
 
 ### ただし FUNCTION のネストだけは禁止する

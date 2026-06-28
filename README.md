@@ -16,9 +16,9 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 > ⚠️ **This is an experimental, work-in-progress tool.** The language, the transpiler, and the editor are all evolving. Expect rough edges, breaking changes, and missing features. Feedback and contributions are very welcome.
 
-![Convert screen: structured BASIC source on the left, generated MSX-BASIC on the right](docs/images/convert.png)
+![Convert screen: structured BASIC source on the left, generated MSX-BASIC on the right](docs/images/convert-en.png)
 
-![The converted program running inside webMSX, embedded in the editor](docs/images/run-webmsx.png)
+![The converted program running inside webMSX, embedded in the editor](docs/images/run-en.png)
 
 ---
 
@@ -119,7 +119,7 @@ The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on de
 ## Transpiler Rules
 
 - **Line numbering** — `MAIN` (your top-level code) starts at 100; each function gets its own 1000-step segment (1000, 2000, …). Comments mark each segment.
-- **Variable names (length extension)** — MSX-BASIC treats only the first two characters of a name as significant (`COUNT` and `COUNTER` collide) and rejects `_`, which normally forces 1–2 letter names. FunctionBASIC lets you use long, descriptive identifiers and a name allocator maps each variable to a unique, first-two-characters-distinct MSX name. Pools are per type — `%` integer, `!` single, `#` double, `$` string, roughly 960 names each, with reserved words (`IF`, `TO`, `ON`, `OR`, `FN`, …) excluded — and locals whose lifetimes do not overlap reuse names across functions. `_` never appears in output names; if a type's pool is exhausted, conversion reports `E_VAR_NAMES_EXHAUSTED`.
+- **Variable names (length extension)** — MSX-BASIC keeps only a name's first two characters (`COUNT` and `COUNTER` collide) and rejects `_`. FunctionBASIC lifts that: write long descriptive names and an allocator maps each to a unique 2-char MSX name. Pools are per type (`%`/`!`/`#`/`$`, ~960 names each, reserved words excluded) and non-overlapping locals reuse names; a full pool reports `E_VAR_NAMES_EXHAUSTED`.
 - **Function expansion** — every `FUNCTION` becomes a `GOSUB` block; calls become `GOSUB <line>` and the call site reads the result variable afterward.
 - **Return values** — a function's return value is assigned to a dedicated internal variable, which the caller copies immediately after the `GOSUB`.
 - **Internal variable naming** — locals, loop counters, and return variables are allocated from a fixed two-letter pool so they never collide; recursion is handled by saving/restoring frames on a software stack.
@@ -206,8 +206,8 @@ END FUNCTION
 
 DIM A(10)
 A(3) = 0
-RESULT = FIND_ZERO(POS)
-PRINT "FOUND="; RESULT; " AT "; POS
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
 Generated MSX-BASIC:
@@ -264,7 +264,7 @@ WEND
 PRINT "GAME OVER"
 ```
 
-**4. MSX2 graphics + BGM/SE** — a `SCREEN 5` demo that sets a custom palette with `COLOR=(n,r,g,b)`, draws with `LINE …,BF` / `CIRCLE` / `PAINT` / `POINT`, double-buffers with `SET PAGE`, block-transfers VRAM with `COPY … TO …`, plays background music with `PLAY`, and fires a sound effect with `SOUND`. All of these MSX2-specific forms (the `=` palette syntax, the `TO` clause, the `B`/`BF` line options, and `POINT` / `PLAY` used as functions) are preserved verbatim through transpilation while your variables are still renamed. Full, convert-tested source: [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb).
+**More** — a full MSX2 `SCREEN 5` graphics + BGM/SE demo (custom palette, `LINE …,BF` / `CIRCLE` / `PAINT`, `SET PAGE` double-buffering, `COPY … TO …`, `PLAY`, `SOUND` — all MSX2 forms preserved verbatim) lives in [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb), and a recursion showcase (factorial / Fibonacci / mutual) in [`examples/recursion.msxb`](examples/recursion.msxb). Browse [`examples/`](examples/) and the per-feature [`examples/cookbook/`](examples/cookbook/).
 
 ---
 
@@ -325,6 +325,10 @@ You may use, copy, modify, and distribute this software freely, including for co
 モダンなブロック構造の構造化BASICを書き、本物のMSX-BASICへ変換し、そのまま webMSX で即実行 — すべて1つのエディタの中で。
 
 > ⚠️ **これは実験的かつ発展途上のツールです。** 言語・変換器・エディタはいずれも進化の途中で、粗削りな部分・破壊的変更・未実装機能があります。フィードバックと貢献を歓迎します。
+
+![変換画面：左に構造化BASIC、右に生成されたMSX-BASIC](docs/images/convert-ja.png)
+
+![変換したプログラムをエディタ内蔵の webMSX で実行](docs/images/run-ja.png)
 
 ---
 
@@ -425,7 +429,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 ## 変換ルール
 
 - **行番号の付与** — `MAIN`（トップレベルのコード）は 100 から。各関数は 1000 刻みの専用セグメント（1000, 2000, …）。各セグメントはコメントで明示。
-- **変数名の変換（長さ拡張）** — MSXは名前の**先頭2文字しか区別せず**（`COUNT` と `COUNTER` は衝突）、`_` も使えないため、本来は1〜2文字の名前を強いられます。FunctionBASICでは長い説明的な名前を書け、名前アロケータが各変数へ**先頭2文字で一意なMSX名**を割り当てます。プールは型別（`%`整数 `!`単精度 `#`倍精度 `$`文字列で各約960個、`IF`/`TO`/`ON`/`OR`/`FN` 等の予約語は除外）で、生存区間が重ならないローカルは関数をまたいで名前を再利用します。出力名に `_` は出ません。型のプールを使い切った場合は `E_VAR_NAMES_EXHAUSTED` を報告します。
+- **変数名の変換（長さ拡張）** — MSXは名前の**先頭2文字しか区別せず**（`COUNT` と `COUNTER` は衝突）、`_` も不可。FunctionBASICはこれを撤廃し、長い説明的な名前を書くと各変数へ**一意な2文字MSX名**を自動割り当て。プールは型別（`%`/`!`/`#`/`$` 各約960個・予約語除外）で、生存区間が重ならないローカルは名前を再利用。使い切ると `E_VAR_NAMES_EXHAUSTED`。
 - **関数の展開（GOSUB化）** — すべての `FUNCTION` は `GOSUB` ブロックに。呼び出しは `GOSUB <行>` になり、直後に結果変数を読み取ります。
 - **戻り値の扱い** — 戻り値は専用の内部変数へ代入し、呼び出し側が `GOSUB` 直後にコピーします。
 - **内部変数の命名規則** — ローカル・ループ変数・戻り値変数は固定の2文字プールから割り当て、衝突しません。再帰はソフトウェアスタックでフレームを退避して対応します。
@@ -512,8 +516,8 @@ END FUNCTION
 
 DIM A(10)
 A(3) = 0
-RESULT = FIND_ZERO(POS)
-PRINT "FOUND="; RESULT; " AT "; POS
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
 変換後 MSX-BASIC:
@@ -570,7 +574,7 @@ WEND
 PRINT "GAME OVER"
 ```
 
-**4. MSX2グラフィック＋BGM/SE** — `SCREEN 5` のデモ。`COLOR=(n,r,g,b)` で独自パレットを設定し、`LINE …,BF` / `CIRCLE` / `PAINT` / `POINT` で描画、`SET PAGE` でダブルバッファ、`COPY … TO …` でVRAMブロック転送、`PLAY` でBGM、`SOUND` でSEを鳴らします。これらMSX2固有の書式（パレットの `=` 構文、`TO` 節、`B`/`BF` のラインオプション、関数として使う `POINT` / `PLAY`）は変換後もそのまま保たれ、ユーザ変数だけが2文字名へ割り当てられます。変換確認済みの全ソース：[`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)。
+**その他** — MSX2 `SCREEN 5` のグラフィック＋BGM/SEデモ（独自パレット、`LINE …,BF` / `CIRCLE` / `PAINT`、`SET PAGE` ダブルバッファ、`COPY … TO …`、`PLAY`、`SOUND` などMSX2固有書式をそのまま保持）は [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)、再帰のショーケース（階乗／フィボナッチ／相互再帰）は [`examples/recursion.msxb`](examples/recursion.msxb)。[`examples/`](examples/) と機能別の [`examples/cookbook/`](examples/cookbook/) もどうぞ。
 
 ---
 

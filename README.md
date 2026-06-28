@@ -40,25 +40,27 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 ## Features
 
-- **Structured BASIC language** — `FUNCTION`, freely nestable `IF/FOR/WHILE` blocks, local-by-default variables, `GLOBAL`, `REF` parameters, `BREAK`/`CONTINUE`, `RETURN`, and arrays (including arrays by reference).
-- **Named constants (`CONST`)** — `CONST MAX = 100` / `CONST TITLE$ = "HI"`. Initializers are folded at compile time and **inlined as literals** (no runtime variable is emitted, so they cost nothing). Re-assigning a constant anywhere but its declaration is a transpile error (`E_CONST_ASSIGN`), catching accidental writes early.
-- **Automatic transpilation** to MSX-BASIC — line numbering, two-letter variable allocation, function-to-`GOSUB` expansion, return-value handling, and 255-byte line auto-splitting.
-- **Constant folding (opt-in)** — when enabled (Settings → *Transpile*), literal-only subexpressions are precomputed at transpile time (`A=2*3+4*5` → `A=26`, `FOR I=1 TO 8*4` → `… TO 32`). Partial folding keeps variable terms (`X*2+3*4` → `X*2+12`), and commutative reassociation gathers separated constants in `+`/`*` chains (`1+X+2` → `X+3`, `2*X*3` → `X*6`, with `X+0`/`X*1` simplified away). Off by default; guarded so it never changes runtime results (integer bit-ops only fold within MSX's 16-bit range, divide-by-zero and error-prone floats are left alone, and string concatenation — being non-commutative — is never reordered).
-- **Power strength reduction (opt-in)** — separate toggle; rewrites small integer powers of a scalar into repeated multiplication (`X^2` → `X*X`, `X^4` → `X*X*X*X`), since MSX's `^` is a slow `EXP`/`LOG` call. Only exponents 2–4 and side-effect-free scalar bases are expanded (function/array bases are left as `^` to avoid double evaluation).
-- **Comment stripping (opt-in)** — separate toggle for a size/speed build: removes comment lines and trailing inline comments from the MSX output. Jump-aware and therefore safe — any comment line that is actually a `GOTO`/`GOSUB`/`THEN`/`ELSE` target (e.g. a function entry such as `' === FUNCTION F ===`) is minimized to a bare `'` rather than deleted, so line-number jumps never break (no renumbering needed; MSX allows line-number gaps).
-- **Long, readable variable names (name-length extension)** — MSX-BASIC only distinguishes the first two characters of a name, so it normally forces cryptic identifiers. FunctionBASIC removes that limit: write descriptive names like `PLAYER_SCORE` or `ENEMY_X`, and the transpiler assigns each one a unique MSX-legal name automatically.
-- **Instant execution** — one click runs the converted program inside an embedded webMSX, loading and `RUN`-ning automatically.
-- **Modern editor** — syntax highlighting, live conversion preview, error markers, formatting, a **project file tree** (multi-file create / rename / delete / switch, persisted in the browser), **find / replace and project-wide "Find in Files"** (JetBrains keymap: `Ctrl/Cmd+F` / `+R` / `+Shift+F`, regex, `F3`), **undo/redo**, editing aids (auto-indent, bracket/quote auto-close, current-line highlight, line duplicate/move — each toggleable in Settings), JetBrains-style navigation, **closable** & draggable split tabs, an in-app menu bar, a native OS menu, and Japanese / English UI.
-- **Machine-code disassembly (annotation)** — detects machine code embedded in `DATA` (the `READ`→`POKE`→`USR` loader idiom) and annotates it on the Structured-BASIC side with Z80 mnemonics — BIOS calls resolved to names (e.g. `CALL CHPUT`), with control-flow-aware code/data separation. These mnemonic comments use the `'@` marker and are **removed when transpiling to MSX-BASIC** (editor-side only).
-- **Multi-file projects (`INCLUDE`)** — a preprocessor expands `INCLUDE`d files into a single program, with duplicate-include de-duplication and circular-include detection.
-- **255-byte line auto-splitting** — generated lines that exceed MSX's 255-byte limit are automatically repacked across `:`/`;` boundaries (unsplittable lines, e.g. some `IF…THEN`, are flagged instead of silently truncated).
-- **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX, real hardware, or distribution.
-- **Reverse transpilation** — turn FunctionBASIC's own output back into Structured BASIC using the generated map (and restore the original file split where possible).
-- **Import plain MSX-BASIC (decompiler, no map needed)** — bring *any* line-numbered MSX-BASIC listing into Structured form: removes line numbers, rebuilds `FOR`/`WHILE`/`IF` blocks, turns `GOSUB` routines into `FUNCTION`s, lifts `DEF FN` into functions, recovers `GOTO` loops (`WHILE`/`WHILE NOT`/`BREAK`), maps event traps (`ON SPRITE/KEY/… GOSUB`) to handler functions, and **infers descriptive variable names** from usage (loop indices → `I/J/K`, coordinates → `X/Y`, counters → `COUNT`/`SUM`). Best-effort: irreducible `GOTO`/computed dispatch is flagged with a warning rather than mis-converted. Measured against a real-world corpus via a round-trip harness (`scripts/eval-reverse.ts`): the decompiled output **re-transpiles back to MSX-BASIC without errors for ~95% of real `.bas` listings (essentially all once non-MSX dialects and corrupted/binary listings are set aside)**. Available in the engine/CLI **and from the editor** — *File → Import plain MSX-BASIC…* reads a listing (Shift-JIS), decompiles it, and opens the result as a new file, with any unconvertible lines kept as `' [未対応]` comments and a review count in the status bar.
-- **Target machines** — built-ins are aware of MSX1 / MSX2 / MSX2+ / turboR (turboR by default), and the built-in table is editable.
-- **Correct MSX text encoding** — files are saved as Shift-JIS (the encoding real MSX machines use); characters that cannot be represented are reported rather than silently corrupted.
-- **Safe diagnostics** — the transpiler never silently mis-converts. Unsupported constructs and errors are reported with error codes and line/column positions, and shown as inline markers in the editor gutter.
-- **Recursion support** — recursive and mutually-recursive `FUNCTION`s work: the transpiler detects call cycles and saves/restores each frame (value parameters, locals, and call-result temporaries) on a generated software stack around recursive `GOSUB`s. Stack depth is configurable (Settings, default 100). `REF` parameters in a recursive function are reported (`E_RECURSION_REF_UNSUPPORTED`) rather than mis-compiled.
+**Language**
+- **Structured BASIC** — `FUNCTION`, freely nestable `IF/FOR/WHILE`, local-by-default variables, `GLOBAL`, `REF` parameters, `BREAK`/`CONTINUE`, `RETURN`, arrays (incl. by reference), and `CONST` named constants (folded & inlined at compile time).
+- **Recursion** — self- and mutually-recursive functions work, via automatic frame save/restore on a software stack (depth configurable; `REF` params in a recursive function are reported, not mis-compiled).
+- **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX only distinguishes the first two characters).
+
+**Transpile to MSX-BASIC**
+- **Automatic conversion** — line numbering, 2-char variable allocation, `FUNCTION`→`GOSUB`, return-value handling, multi-file `INCLUDE` expansion, and 255-byte line auto-splitting.
+- **Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), and jump-safe comment stripping. Off by default and guarded so runtime results never change.
+- **Safe diagnostics** — never silently mis-converts; errors carry codes and line/column and show as gutter markers. Output is Shift-JIS (unrepresentable characters are reported, not corrupted).
+- **Target machines** — MSX1 / MSX2 / MSX2+ / turbo R (default turbo R); the built-in command table is editable.
+
+**Run & export**
+- **Instant run** — one click loads and `RUN`s the program in an embedded webMSX.
+- **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX or real hardware.
+
+**Reverse tools**
+- **Decompiler** — import *any* line-numbered MSX-BASIC and get Structured BASIC back: rebuilt blocks, `GOSUB`→`FUNCTION`, recovered `GOTO` loops, event traps, and inferred variable names. ~95% of a real-world `.bas` corpus re-transpiles cleanly. *File → Import plain MSX-BASIC…*
+- **Reverse transpilation** — turn FunctionBASIC's own output back into Structured BASIC via the generated map (restoring the original file split where possible).
+- **Machine-code annotation** — disassembles Z80 machine code embedded in `DATA` (the `READ`→`POKE`→`USR` idiom) into mnemonic comments with BIOS calls named; stripped on transpile.
+
+**Editor** — syntax highlighting, live preview, error markers, a project file tree (multi-file, browser-persisted), find / replace / project-wide "Find in Files" (JetBrains keymap, regex), undo/redo, editing aids (auto-indent, bracket/quote close, current-line highlight, line move/duplicate — each toggleable), closable split tabs, a native OS menu, and Japanese / English UI.
 
 ---
 
@@ -344,25 +346,27 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 ## 特徴
 
-- **構造化BASIC言語** — `FUNCTION`、自由に入れ子可能な `IF/FOR/WHILE`、既定ローカル変数、`GLOBAL`、`REF` 参照引数、`BREAK`/`CONTINUE`、`RETURN`、配列（配列の参照渡しを含む）。
-- **名前付き定数（`CONST`）** — `CONST MAX = 100` / `CONST TITLE$ = "HI"`。初期化式はコンパイル時に畳み込まれ、参照は**リテラルとしてインライン展開**される（実行時変数を生成しない＝コストゼロ）。宣言以外での再代入はトランスパイルエラー（`E_CONST_ASSIGN`）になり、うっかり書き換えを早期に検出。
-- **自動変換** — 行番号付与、2文字変数の割り当て、関数の `GOSUB` 展開、戻り値の処理、255バイト行の自動分割。
-- **定数畳み込み（オプトイン）** — 有効化すると（設定→*変換*）、リテラルだけの部分式を変換時に事前計算（`A=2*3+4*5`→`A=26`、`FOR I=1 TO 8*4`→`… TO 32`）。部分畳み込みなので変数項は保持（`X*2+3*4`→`X*2+12`）。さらに `+`/`*` 連鎖の離れた定数を可換再結合でまとめる（`1+X+2`→`X+3`、`2*X*3`→`X*6`、`X+0`/`X*1` は簡約）。既定OFF。実行結果を変えないようガード（整数ビット演算はMSXの16bit域のみ・0除算や誤差の出る浮動小数は畳まない・非可換な文字列連結は並べ替えない）。
-- **べき乗の強度低減（オプトイン）** — 別トグル。スカラの小整数べき乗を反復乗算へ（`X^2`→`X*X`、`X^4`→`X*X*X*X`）。MSXの `^` は遅い `EXP`/`LOG` 呼び出しのため高速化。指数2〜4・副作用のないスカラの底のみ展開（関数/配列の底は二重評価回避のため `^` のまま）。
-- **コメント除去（オプトイン）** — 別トグル。サイズ/速度優先ビルド用に、MSX出力のコメント行・行末インラインコメントを除去。**飛び先を解析する安全方式**で、`GOTO`/`GOSUB`/`THEN`/`ELSE` の飛び先になっているコメント行（例：関数入口 `' === FUNCTION F ===`）は削除せず `'` に最小化して残すため、行番号ジャンプが壊れない（再採番不要・MSXは行番号の歯抜けを許容）。
-- **長く読みやすい変数名（名前長の拡張）** — MSX-BASICは名前の先頭2文字しか区別しないため、本来は暗号的な名前を強いられます。FunctionBASICはこの制限を撤廃：`PLAYER_SCORE` や `ENEMY_X` のような説明的な名前を書け、変換器が各変数へ一意なMSX有効名を自動割り当てします。
-- **即時実行** — 埋め込み webMSX に変換結果を流し込み、自動でロード＆`RUN`。ワンクリック。
-- **モダンなエディタ** — シンタックスハイライト、ライブ変換プレビュー、エラー表示、整形、**プロジェクトツリー**（複数ファイルの作成/改名/削除/切替、ブラウザに永続）、**検索・置換と全体検索（Find in Files）**（JetBrains風キーマップ `Ctrl/Cmd+F`／`+R`／`+Shift+F`、正規表現、`F3`）、**元に戻す/やり直し**、編集支援（自動インデント・括弧/引用符の自動補完・現在行ハイライト・行複製/移動。各々設定でON/OFF）、JetBrains風ナビゲーション、**閉じられる**＆ドラッグ可能な分割タブ、アプリ内メニューバー、OSネイティブメニュー、日本語/英語UI。
-- **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語（`READ`→`POKE`→`USR` ローダ idiom）を検出し、構造化BASIC側に Z80 ニーモニックで注釈。BIOS呼び出しは名前解決（例 `CALL CHPUT`）、制御フロー追跡でコード/データを分離。注釈は **`'@` マーカー**の専用コメントで、**MSX-BASIC 変換時に削除**されます（構造化側だけの表示）。
-- **複数ファイル（`INCLUDE`）** — プリプロセッサが `INCLUDE` を展開して1つのプログラムへ統合。二重 include の重複排除、循環 include の検出付き。
-- **255バイト行の自動分割** — MSXの255バイト制限を超える生成行を `:`/`;` 境界で自動的に再パック（分割できない行＝一部の `IF…THEN` 等は黙って切り捨てず警告）。
-- **実ディスク書き出し** — openMSX・実機・配布用に 720&nbsp;KB FAT12 の `.dsk` を生成。
-- **逆変換** — FunctionBASIC 自身の出力を、生成したマップを使って構造化BASICへ戻す（可能な範囲で元のファイル分割も復元）。
-- **素のMSX-BASIC取込（マップ不要のデコンパイラ）** — *任意の*行番号付きMSX-BASICを構造化形へ：行番号除去、`FOR`/`WHILE`/`IF` ブロック再構築、`GOSUB` ルーチンを `FUNCTION` 化、`DEF FN` を関数へ巻き上げ、`GOTO` ループ復元（`WHILE`/`WHILE NOT`/`BREAK`）、イベントトラップ（`ON SPRITE/KEY/… GOSUB`）をハンドラ関数へ、さらに**使われ方から変数名を推測**（ループ変数→`I/J/K`、座標→`X/Y`、カウンタ→`COUNT`/`SUM`）。best-effort：還元不能な `GOTO`／計算分岐は誤変換せず警告で明示。ラウンドトリップ評価（`scripts/eval-reverse.ts`）で実コーパスに対し計測：逆変換した出力は **実 `.bas` の約95%（非MSX方言・破損/バイナリ listing を除けばほぼ全て）でエラーなくMSX-BASICへ再トランスパイル**できる。エンジン/CLIに加え**エディタからも利用可能**——*ファイル → 素のMSX-BASICを取込…* でリスト(Shift-JIS)を読み込み、逆変換して新規ファイルとして開く。変換できない行は `' [未対応]` コメントとして残し、要確認件数をステータスバーに表示。
-- **対象機種** — 組み込み関数は MSX1 / MSX2 / MSX2+ / turboR を考慮（既定 turboR）。組み込み表は編集可能。
-- **正しいMSX文字コード** — ファイルは実機MSXが使う **Shift-JIS** で保存。表現できない文字は黙って壊さず報告します。
-- **安全な診断** — 変換器は黙って誤変換しません。未対応構文やエラーは**エラーコード＋行・列位置**付きで報告し、エディタのガターに印として表示します。
-- **再帰サポート** — 再帰・相互再帰の `FUNCTION` が動きます。呼び出し循環を検出し、再帰 `GOSUB` の前後で各フレーム（値引数・ローカル・呼び出し結果の一時変数）を生成したソフトウェアスタックへ退避／復元します。スタック深さは設定で可変（既定100）。再帰関数内の `REF` 引数は誤変換せずエラー報告（`E_RECURSION_REF_UNSUPPORTED`）。
+**言語**
+- **構造化BASIC** — `FUNCTION`、自由に入れ子可能な `IF/FOR/WHILE`、既定ローカル変数、`GLOBAL`、`REF` 参照引数、`BREAK`/`CONTINUE`、`RETURN`、配列（参照渡し含む）、`CONST` 名前付き定数（コンパイル時に畳み込み＆インライン）。
+- **再帰** — 自己・相互再帰の関数が動く。再帰 `GOSUB` の前後でフレームをソフトウェアスタックへ自動退避／復元（深さ可変。再帰関数内の `REF` 引数は誤変換せずエラー報告）。
+- **長く読みやすい変数名** — `PLAYER_SCORE` / `ENEMY_X` のような説明的な名前を書け、変換器が一意な2文字MSX名へ自動割り当て（MSXは先頭2文字しか区別しない）。
+
+**MSX-BASICへの変換**
+- **自動変換** — 行番号付与、2文字変数の割り当て、`FUNCTION`→`GOSUB` 展開、戻り値処理、複数ファイル `INCLUDE` 展開、255バイト行の自動分割。
+- **オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去。いずれも既定OFFで、実行結果を変えないようガード。
+- **安全な診断** — 黙って誤変換しない。エラーはコード＋行・列付きでガターに表示。出力は Shift-JIS（表現不能文字は壊さず報告）。
+- **対象機種** — MSX1 / MSX2 / MSX2+ / turboR（既定 turboR）。組み込み命令表は編集可能。
+
+**実行・書き出し**
+- **即時実行** — 埋め込み webMSX に流し込み、自動でロード＆`RUN`。ワンクリック。
+- **実ディスク書き出し** — openMSX・実機用に 720&nbsp;KB FAT12 の `.dsk` を生成。
+
+**逆方向ツール**
+- **デコンパイラ** — *任意の*行番号付きMSX-BASICを構造化BASICへ逆変換：ブロック再構築、`GOSUB`→`FUNCTION`、`GOTO`ループ復元、イベントトラップ、変数名推測。実コーパスの約95%がエラーなく再変換可能。*ファイル → 素のMSX-BASICを取込…*
+- **逆変換** — FunctionBASIC 自身の出力を、生成マップで構造化BASICへ戻す（元のファイル分割も可能な範囲で復元）。
+- **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語（`READ`→`POKE`→`USR`）を Z80 ニーモニックの注釈に（BIOS呼び出しは名前解決）。変換時に削除。
+
+**エディタ** — シンタックスハイライト、ライブプレビュー、エラー表示、プロジェクトツリー（複数ファイル・ブラウザ永続）、検索・置換・全体検索（JetBrains風キーマップ・正規表現）、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製。各々ON/OFF）、閉じられる分割タブ、OSネイティブメニュー、日本語/英語UI。
 
 ---
 

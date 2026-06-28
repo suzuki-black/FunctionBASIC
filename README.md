@@ -60,7 +60,7 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 - **Reverse transpilation** — turn FunctionBASIC's own output back into Structured BASIC via the generated map (restoring the original file split where possible).
 - **Machine-code annotation** — disassembles Z80 machine code embedded in `DATA` (the `READ`→`POKE`→`USR` idiom) into mnemonic comments with BIOS calls named; stripped on transpile.
 
-**Editor** — syntax highlighting, live preview, error markers, a project file tree (multi-file, browser-persisted), find / replace / project-wide "Find in Files" (JetBrains keymap, regex), undo/redo, editing aids (auto-indent, bracket/quote close, current-line highlight, line move/duplicate — each toggleable), closable split tabs, a native OS menu, and Japanese / English UI.
+**Editor** — syntax highlighting, live preview, error markers, a project file tree (multi-file, browser-persisted), find / replace / project-wide "Find in Files" (JetBrains keymap, regex), **safe identifier rename** (token-aware — skips strings/comments/keywords; `Shift+F6`), go-to-definition / find-usages, undo/redo, editing aids (auto-indent, bracket/quote close, current-line highlight, line move/duplicate — each toggleable), closable split tabs, a native OS menu, and Japanese / English UI.
 
 ---
 
@@ -370,7 +370,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **逆変換** — FunctionBASIC 自身の出力を、生成マップで構造化BASICへ戻す（元のファイル分割も可能な範囲で復元）。
 - **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語（`READ`→`POKE`→`USR`）を Z80 ニーモニックの注釈に（BIOS呼び出しは名前解決）。変換時に削除。
 
-**エディタ** — シンタックスハイライト、ライブプレビュー、エラー表示、プロジェクトツリー（複数ファイル・ブラウザ永続）、検索・置換・全体検索（JetBrains風キーマップ・正規表現）、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製。各々ON/OFF）、閉じられる分割タブ、OSネイティブメニュー、日本語/英語UI。
+**エディタ** — シンタックスハイライト、ライブプレビュー、エラー表示、プロジェクトツリー（複数ファイル・ブラウザ永続）、検索・置換・全体検索（JetBrains風キーマップ・正規表現）、**識別子の安全な一括リネーム**（字句解析ベース＝文字列/コメント/キーワードは触らない・`Shift+F6`）、定義へ移動/使用箇所、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製。各々ON/OFF）、閉じられる分割タブ、OSネイティブメニュー、日本語/英語UI。
 
 ---
 

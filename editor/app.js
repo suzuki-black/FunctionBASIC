@@ -39,6 +39,12 @@ const I18N = {
     "asm.cleared": "ニーモニック注釈を消しました",
     "undo.none": "これ以上戻せません", "redo.none": "これ以上やり直せません",
     "format": "整形（大文字化）", "def": "定義へ移動", "usages": "使用箇所（順送り）", "goline": "行へ移動…",
+    "rn.menu": "識別子をリネーム…",
+    "rn.title": "リネーム", "rn.msg": (n) => `「${n}」を一括リネーム。新しい名前:`,
+    "rn.done": (n, name) => `${n}箇所を「${name}」にリネームしました`,
+    "rn.notident": "識別子の上にカーソルを置いて実行してください",
+    "rn.builtin": (n) => `「${n}」は組み込み名のためリネームできません`,
+    "rn.readonly": "読み取り専用です",
     "back": "戻る", "fwd": "進む", "bm": "ブックマーク切替", "bmnext": "次のブックマーク",
     "splitright": "アクティブタブを右へ分割", "merge": "分割を統合", "reset": "タブ配置をリセット",
     "fontup": "文字を大きく", "fontdown": "文字を小さく",
@@ -102,7 +108,7 @@ const I18N = {
     "confirm.title": "確認", "confirm.reverse": "逆変換（MSX→構造化）の結果でエディタを置き換えますか？（往復確認）",
     "prompt.goline.title": "行へ移動", "prompt.goline": "移動先のエディタ行番号:",
     "sc.title": "キーボードショートカット",
-    "sc.body": `  保存:                Ctrl/Cmd + S\n  WebMSXで実行:        Ctrl/Cmd + Enter\n  元に戻す / やり直し:   Ctrl/Cmd + Z / Shift + Z\n  検索（トグル）:       Ctrl/Cmd + F\n  置換:                Ctrl/Cmd + R\n  全体検索:             Ctrl/Cmd + Shift + F\n  次/前の一致:          F3 / Shift + F3\n  行を複製:             Ctrl/Cmd + D\n  行を上下に移動:       Alt + ↑ / ↓\n  整形(大文字化):       Ctrl/Cmd + Alt + L\n  定義へ移動:           Ctrl/Cmd + B\n  使用箇所(順送り):     Alt + F7\n  戻る / 進む:          Ctrl/Cmd + Alt + ← / →\n  行へ移動:             Ctrl/Cmd + G\n  ブックマーク 切替/次:  F11 / Shift + F11\n  スニペット:           行頭で fn/for/if/while + Tab\n  インデント:           Tab`,
+    "sc.body": `  保存:                Ctrl/Cmd + S\n  WebMSXで実行:        Ctrl/Cmd + Enter\n  元に戻す / やり直し:   Ctrl/Cmd + Z / Shift + Z\n  検索（トグル）:       Ctrl/Cmd + F\n  置換:                Ctrl/Cmd + R\n  全体検索:             Ctrl/Cmd + Shift + F\n  次/前の一致:          F3 / Shift + F3\n  行を複製:             Ctrl/Cmd + D\n  行を上下に移動:       Alt + ↑ / ↓\n  整形(大文字化):       Ctrl/Cmd + Alt + L\n  定義へ移動:           Ctrl/Cmd + B\n  識別子をリネーム:     Shift + F6\n  使用箇所(順送り):     Alt + F7\n  戻る / 進む:          Ctrl/Cmd + Alt + ← / →\n  行へ移動:             Ctrl/Cmd + G\n  ブックマーク 切替/次:  F11 / Shift + F11\n  スニペット:           行頭で fn/for/if/while + Tab\n  インデント:           Tab`,
   },
   en: {
     "title": "Structured BASIC Editor — MSX-BASIC",
@@ -114,6 +120,12 @@ const I18N = {
     "asm.cleared": "Cleared mnemonic annotations",
     "undo.none": "Nothing to undo", "redo.none": "Nothing to redo",
     "format": "Format (Uppercase)", "def": "Go to Definition", "usages": "Find Usages (cycle)", "goline": "Go to Line…",
+    "rn.menu": "Rename Symbol…",
+    "rn.title": "Rename", "rn.msg": (n) => `Rename all "${n}". New name:`,
+    "rn.done": (n, name) => `Renamed ${n} occurrence(s) to "${name}"`,
+    "rn.notident": "Place the caret on an identifier first",
+    "rn.builtin": (n) => `"${n}" is a built-in name and cannot be renamed`,
+    "rn.readonly": "Read-only",
     "back": "Back", "fwd": "Forward", "bm": "Toggle Bookmark", "bmnext": "Next Bookmark",
     "splitright": "Split Active Tab Right", "merge": "Unsplit (Merge)", "reset": "Reset Tab Layout",
     "fontup": "Increase Font", "fontdown": "Decrease Font",
@@ -177,7 +189,7 @@ const I18N = {
     "confirm.title": "Confirm", "confirm.reverse": "Replace the editor with the reverse-converted result (MSX → Structured)?",
     "prompt.goline.title": "Go to Line", "prompt.goline": "Editor line number:",
     "sc.title": "Keyboard Shortcuts",
-    "sc.body": `  Save:                 Ctrl/Cmd + S\n  Run in WebMSX:        Ctrl/Cmd + Enter\n  Undo / Redo:          Ctrl/Cmd + Z / Shift + Z\n  Find (toggle):        Ctrl/Cmd + F\n  Replace:              Ctrl/Cmd + R\n  Find everywhere:      Ctrl/Cmd + Shift + F\n  Next / Prev match:    F3 / Shift + F3\n  Duplicate line:       Ctrl/Cmd + D\n  Move line up/down:    Alt + ↑ / ↓\n  Format (uppercase):   Ctrl/Cmd + Alt + L\n  Go to definition:     Ctrl/Cmd + B\n  Find usages (cycle):  Alt + F7\n  Back / Forward:       Ctrl/Cmd + Alt + ← / →\n  Go to line:           Ctrl/Cmd + G\n  Bookmark toggle/next: F11 / Shift + F11\n  Snippets:             fn/for/if/while + Tab at line start\n  Indent:               Tab`,
+    "sc.body": `  Save:                 Ctrl/Cmd + S\n  Run in WebMSX:        Ctrl/Cmd + Enter\n  Undo / Redo:          Ctrl/Cmd + Z / Shift + Z\n  Find (toggle):        Ctrl/Cmd + F\n  Replace:              Ctrl/Cmd + R\n  Find everywhere:      Ctrl/Cmd + Shift + F\n  Next / Prev match:    F3 / Shift + F3\n  Duplicate line:       Ctrl/Cmd + D\n  Move line up/down:    Alt + ↑ / ↓\n  Format (uppercase):   Ctrl/Cmd + Alt + L\n  Go to definition:     Ctrl/Cmd + B\n  Rename symbol:        Shift + F6\n  Find usages (cycle):  Alt + F7\n  Back / Forward:       Ctrl/Cmd + Alt + ← / →\n  Go to line:           Ctrl/Cmd + G\n  Bookmark toggle/next: F11 / Shift + F11\n  Snippets:             fn/for/if/while + Tab at line start\n  Indent:               Tab`,
   },
 };
 let lang = localStorage.getItem("fbe-lang") === "en" ? "en" : "ja";
@@ -933,6 +945,42 @@ function importBasicText(text, srcName) {
   openFile(name); // 新規ファイルを構造化タブで開く
   const warns = [...read.diagnostics, ...dec.diagnostics].filter((d) => d.severity === "warning").length;
   setStatus(warns ? "warn" : "ok", t("import.done", name, warns));
+}
+
+// ---- 識別子の安全な一括リネーム（リファクタ）----
+// 字句解析でIDENTトークンだけを対象にするので、文字列・コメント・キーワードは触らない。
+// 型サフィックス込みで一致（A と A$ は別物）、大小無視（MSXの変数は先頭2文字・大小同一）。
+// 逆変換で自動命名された I/J/COUNT 等を意味のある名前へ直すのに有用。
+async function renameSymbol() {
+  if (viewingLib) { flash(t("rn.readonly")); return; }
+  const src = srcEl.value;
+  const caret = srcEl.selectionStart;
+  let toks;
+  try { toks = tokenize(src).tokens; } catch (e) { logErr("rename tokenize", e); return; }
+  const ls = lineStartsOf(src);
+  const offOf = (tk) => (ls[tk.pos.line - 1] ?? 0) + (tk.pos.column - 1);
+  // カーソル位置の IDENT を特定
+  let target = null;
+  for (const tk of toks) {
+    if (tk.kind !== "IDENT") continue;
+    const o = offOf(tk);
+    if (caret >= o && caret <= o + tk.raw.length) { target = tk; break; }
+  }
+  if (!target) { flash(t("rn.notident")); return; }
+  if (isBuiltin(target.value)) { flash(t("rn.builtin", target.raw)); return; }
+  const oldUp = target.value; // 大文字化済み（サフィックス込み）
+  const input = await showPrompt(t("rn.title"), t("rn.msg", target.raw), target.raw);
+  if (input == null) return;
+  const next = input.trim();
+  if (!next || next.toUpperCase() === oldUp) return;
+  // 同名 IDENT の全出現を右から置換（オフセットがずれないように）
+  const spans = [];
+  for (const tk of toks) if (tk.kind === "IDENT" && tk.value === oldUp) spans.push([offOf(tk), offOf(tk) + tk.raw.length]);
+  let out = src;
+  for (let i = spans.length - 1; i >= 0; i--) out = out.slice(0, spans[i][0]) + next + out.slice(spans[i][1]);
+  setSource(out);
+  commitHistory(true);
+  setStatus("ok", t("rn.done", spans.length, next));
 }
 
 // ---- タブ（JetBrains方式: 2グループ。ドラッグで並べ替え＆グループ間移動=分割/統合。状態は永続化）----
@@ -1840,6 +1888,7 @@ srcEl.addEventListener("keydown", (e) => {
   if (mod && e.key === "Enter") { e.preventDefault(); onPlayWebMSX(); return; }
   if (mod && e.altKey && e.key.toLowerCase() === "l") { e.preventDefault(); onFormat(); return; } // 整形（JetBrains: Reformat Code）
   if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); goToDefinition(); return; }
+  if (e.shiftKey && e.key === "F6") { e.preventDefault(); renameSymbol(); return; } // JetBrains: リネーム
   if (e.altKey && e.key === "F7") { e.preventDefault(); findUsages(); return; }
   if (mod && e.altKey && e.key === "ArrowLeft") { e.preventDefault(); goBack(); return; }
   if (mod && e.altKey && e.key === "ArrowRight") { e.preventDefault(); goForward(); return; }
@@ -1864,6 +1913,7 @@ function runAction(act) {
     case "replace": return openFind(true);
     case "gfind": return openGlobal();
     case "format": return onFormat();
+    case "rename": return renameSymbol();
     case "asm-annotate": return annotateMachineCode();
     case "asm-clear": return clearAnnotations();
     case "def": return goToDefinition();

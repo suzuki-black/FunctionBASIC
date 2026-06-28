@@ -23,6 +23,7 @@ import { NamePool } from "./names.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
 import { foldProgram } from "./fold-expr.ts";
+import { reduceStrengthProgram } from "./strength-reduce.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
@@ -256,6 +257,7 @@ export interface TransformOptions {
   sources?: string[]; // 取り込んだ全ファイル（先頭=エントリ）
   source?: string; // エントリファイル名
   optimize?: boolean; // 定数畳み込み最適化（オプトイン・既定OFF）
+  strengthReduce?: boolean; // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
 }
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
@@ -268,6 +270,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
 
   // 定数畳み込み最適化（オプトイン）。CONST 展開後に走らせ、生じた定数式も畳む。
   if (opts.optimize) foldProgram(program);
+  // べき乗の強度低減（オプトイン）。畳み込みの後（定数べき乗は先に畳まれる）。
+  if (opts.strengthReduce) reduceStrengthProgram(program);
 
   // 関数表
   const funcNames = new Set<string>();

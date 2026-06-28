@@ -22,6 +22,14 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 ---
 
+## Download
+
+Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — `.dmg` (drag to Applications) or `.zip` (unzip the `.app`).
+
+> ⚠️ **macOS, Apple Silicon (arm64) only.** No Windows/Intel build yet; on those, [build from source](#building-from-source). The app is **not code-signed/notarized**, so the first launch is blocked by Gatekeeper — **right-click the app → Open → Open** (once), or run `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`. You can also just run the browser editor (`npm run serve`).
+
+---
+
 ## Overview
 
 **FunctionBASIC** is a small editor and transpiler that lets you write **Structured BASIC** — a modern dialect with real functions, block structures, local variables, and reference parameters — and converts it into **classic MSX-BASIC** (line numbers, `GOSUB`/`GOTO`, two-letter variables). You can then run the result instantly in **webMSX** without leaving the editor.
@@ -331,6 +339,14 @@ You may use, copy, modify, and distribute this software freely, including for co
 ![変換画面：左に構造化BASIC、右に生成されたMSX-BASIC](docs/images/convert-ja.png)
 
 ![変換したプログラムをエディタ内蔵の webMSX で実行](docs/images/run-ja.png)
+
+---
+
+## ダウンロード
+
+ビルド済みデスクトップ版：**[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — `.dmg`（Applicationsへドラッグ）または `.zip`（`.app` を展開）。
+
+> ⚠️ **macOS・Apple Silicon（arm64）のみ。** Windows/Intel版はまだありません（その場合は[ソースからビルド](#ソースからのビルド)）。**コード署名/公証していない**ため、初回は Gatekeeper に止められます — **アプリを右クリック → 開く → 開く**（初回のみ）、または `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`。ブラウザ版（`npm run serve`）だけでも使えます。
 
 ---
 

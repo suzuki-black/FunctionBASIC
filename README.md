@@ -24,9 +24,9 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 ## Download
 
-Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — `.dmg` (drag to Applications) or `.zip` (unzip the `.app`).
+Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — **macOS** (Apple Silicon): `.dmg` (drag to Applications) or `.zip` (unzip the `.app`); **Windows** (x64): `.msi` or `.exe` installer.
 
-> ⚠️ **macOS, Apple Silicon (arm64) only.** No Windows/Intel build yet; on those, [build from source](#building-from-source). The app is **not code-signed/notarized**, so the first launch is blocked by Gatekeeper — **right-click the app → Open → Open** (once), or run `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`. You can also just run the browser editor (`npm run serve`).
+> ⚠️ **Prebuilt for macOS (Apple Silicon / arm64) and Windows (x64).** Other targets (macOS Intel, Linux) → [build from source](#building-from-source). The apps are **not code-signed/notarized**, so the first launch is blocked: on **macOS**, right-click the app → Open → Open (once), or run `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`; on **Windows**, SmartScreen may warn — click **More info → Run anyway**. You can also just run the browser editor (`npm run serve`).
 
 ---
 
@@ -346,9 +346,9 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 ## ダウンロード
 
-ビルド済みデスクトップ版：**[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — `.dmg`（Applicationsへドラッグ）または `.zip`（`.app` を展開）。
+ビルド済みデスクトップ版：**[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — **macOS**（Apple Silicon）：`.dmg`（Applicationsへドラッグ）/ `.zip`（`.app` を展開）、**Windows**（x64）：`.msi` または `.exe` インストーラ。
 
-> ⚠️ **macOS・Apple Silicon（arm64）のみ。** Windows/Intel版はまだありません（その場合は[ソースからビルド](#ソースからのビルド)）。**コード署名/公証していない**ため、初回は Gatekeeper に止められます — **アプリを右クリック → 開く → 開く**（初回のみ）、または `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`。ブラウザ版（`npm run serve`）だけでも使えます。
+> ⚠️ **配布物は macOS（Apple Silicon / arm64）と Windows（x64）。** それ以外（macOS Intel・Linux 等）は[ソースからビルド](#ソースからのビルド)。**コード署名/公証していない**ため初回起動は止められます — **macOS** はアプリを右クリック → 開く → 開く（初回のみ）、または `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`。**Windows** は SmartScreen が警告したら **詳細情報 → 実行** をクリック。ブラウザ版（`npm run serve`）だけでも使えます。
 
 ---
 

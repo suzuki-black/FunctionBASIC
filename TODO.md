@@ -20,7 +20,11 @@ in our *embedded* player only.
 - [ ] **MSX-AUDIO (Y8950 / OPL1)** is not emulated by WebMSX at all → verify on
   **openMSX** or real hardware. (`CALL AUDIO` etc. transpile correctly.)
 - [ ] **turbo R `_TURBO`**: the run machine is MSX2+, so `examples/turbo-r.msxb`
-  needs the WebMSX machine switched to turbo R (gear menu) to run.
+  needs the WebMSX machine switched to turbo R (gear menu) to run. **Note:**
+  `_TURBO` / `CALL TURBO` is a directive of **MSXべーしっ君 (Basic-kun, ASCII's
+  BASIC compiler)** — legit as a keyword, so the transpiler passes it through — but
+  it is **not** an interpreted MSX-BASIC statement, so a plain `RUN` in the WebMSX
+  interpreter reports `Syntax error`. See the turbo R samples section below.
 
 ## Future: same-origin WebMSX (MSXPen-style runner)
 
@@ -29,6 +33,35 @@ in our *embedded* player only.
   the machine **once**, then type/RUN the source without rebooting (like MSXPen).
   Deferred for now (kept the cross-origin iframe) — it needs linking/hosting
   WebMSX's JS, which touches the "link only, do not bundle" licensing stance.
+
+## Transpiler robustness: MAIN line-number collision
+
+- [ ] **A long MAIN silently collides with the function segments.** The renderer
+  numbers MAIN from 100 (step 10) and each FUNCTION from its own 1000-step
+  segment (1000, 2000, …). If MAIN renders to **more than ~90 lines** it reaches
+  line 1000 and **overlaps the first function**, producing **duplicate line
+  numbers with no diagnostic** — the output is broken MSX-BASIC (`GOSUB 1000`
+  becomes ambiguous). Found while writing `examples/invaders-turbor.msxb` (a big
+  MAIN); worked around by moving the body into functions so MAIN stays short.
+  Fix direction: either **emit an error** (e.g. `E_LINE_OVERFLOW`) or **choose the
+  first function base dynamically** above MAIN's last line. A regression test for
+  a >90-line MAIN should accompany the fix.
+
+## turbo R samples: approach TBD (deferred)
+
+- [ ] **Decide how "turbo R only" samples gate/run.** Two clean options, not yet
+  chosen (see the `_TURBO` note above):
+  - **Machine-detect** — `IF PEEK(&H2D) < 3 THEN ... : END` (0=MSX1, 1=MSX2,
+    2=MSX2+, 3=turbo R). Runs in the WebMSX **interpreter**, gates to turbo R,
+    no compiler dependency. (turbo R already boots BASIC on R800, so no CPU
+    switch is needed for speed.)
+  - **`CALL TURBO ON`** — natural if the sample is meant to be **compiled with
+    MSXべーしっ君 (Basic-kun)**, but errors under a plain interpreter `RUN`.
+  Committed as `examples/space-shooter-turbor.msxb` using the machine-detect
+  approach (with redefined 8×8 tiles: cannon / invader / bolt / bomb). The
+  machine-detect vs `CALL TURBO` choice above is still open for that sample.
+  Also revisit `examples/turbo-r.msxb`, which uses `_TURBO ON/OFF` (Basic-kun
+  form) and whose test only asserts the transpiled text, not a real run.
 
 ## Roadmap (see README for the full list)
 

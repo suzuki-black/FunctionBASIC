@@ -194,6 +194,11 @@ const CATALOG: Record<string, Entry> = {
     en: (p) =>
       `ON … target ${p.name} cannot take parameters (handlers / branch targets must be a no-arg FUNCTION)`,
   },
+  E_LINE_NUMBER_OVERFLOW: {
+    code: "E_LINE_NUMBER_OVERFLOW",
+    ja: (p) => `行番号が破綻しました（重複/降順、または MSX 上限 65529 超）: ${p.lineNo}。プログラムを分割してください`,
+    en: (p) => `Generated line numbers are invalid (duplicate/descending, or above MSX's 65529 limit) at ${p.lineNo} — split the program`,
+  },
   E_RECURSION_UNSUPPORTED: {
     code: "E_RECURSION_UNSUPPORTED",
     ja: (p) => `再帰は未対応です（${p.name} を含む循環）`,

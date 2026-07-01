@@ -1236,8 +1236,11 @@ function finishTransform(ctx: any): TransformResult {
     });
   const out: MsxLine[] = [...numberBlock(mainItems, 100)];
 
-  // 関数 variant ブロック
-  let seg = 1000;
+  // 関数 variant ブロック。最初の関数の開始セグメントは MAIN の実末尾の先（切りの良い千番台）
+  // にする。MAIN が 90 行を超えて 1000 台へ食い込んでも、関数と行番号が衝突しない。
+  // （関数同士は下の seg 再計算で常に前ブロックの実末尾の先へ進むので元から衝突しない。）
+  const mainLast = out.length ? out[out.length - 1].lineNo : 100;
+  let seg = Math.max(1000, (Math.floor(mainLast / 1000) + 1) * 1000);
   for (const fn of program.functions) {
     const keys = variantKeys.get(fn.name) ?? [];
     for (const key of keys) {
@@ -1274,6 +1277,16 @@ function finishTransform(ctx: any): TransformResult {
     l.text = l.text
       .replace(/@@ENTRY:([^@]+)@@/g, (_, key) => String(entryLineOf.get(key) ?? 0))
       .replace(/@@L:(\d+)@@/g, (_, id) => String(labelLine.get(Number(id)) ?? 0));
+  }
+
+  // 行番号の健全性検査（安全ネット）: 厳密昇順・重複なし・MSX最大行番号(65529)以内。
+  // セグメント割当や超巨大プログラムで万一崩れても「黙って壊れたコード」を出さない。
+  const MSX_MAX_LINE = 65529;
+  let prevNo = -1;
+  for (const l of out) {
+    if (l.lineNo <= prevNo) { fail("E_LINE_NUMBER_OVERFLOW", { lineNo: l.lineNo }); break; }
+    if (l.lineNo > MSX_MAX_LINE) { fail("E_LINE_NUMBER_OVERFLOW", { lineNo: l.lineNo }); break; }
+    prevNo = l.lineNo;
   }
 
   // 1行255バイト制限の検査（docs/05 §5.12）。自動分割は将来、まずは検出。

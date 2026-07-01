@@ -54,7 +54,8 @@ Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC
 - **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX only distinguishes the first two characters).
 
 **Transpile to MSX-BASIC**
-- **Automatic conversion** — line numbering, 2-char variable allocation, `FUNCTION`→`GOSUB`, return-value handling, multi-file `INCLUDE` expansion, and 255-byte line auto-splitting.
+- **Automatic conversion** — line numbering, 2-char variable allocation, `FUNCTION`→`GOSUB`, return-value handling, and 255-byte line auto-splitting.
+- **Multi-file projects** — split code with `INCLUDE`; the build/run uses a single **entry (main) file**, auto-detected (the file with top-level code that nothing else `INCLUDE`s) or pinned explicitly in the project tree. Library files (functions only) are never run standalone. MSX-BASIC has no linker, so everything merges into one program — matching the classic `$INCLUDE`/main-module model.
 - **Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), and jump-safe comment stripping. Off by default and guarded so runtime results never change.
 - **Safe diagnostics** — never silently mis-converts; errors carry codes and line/column and show as gutter markers. Output is Shift-JIS (unrepresentable characters are reported, not corrupted).
 - **Target machines** — MSX1 / MSX2 / MSX2+ / turbo R (default turbo R); the built-in command table is editable.
@@ -376,7 +377,8 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **長く読みやすい変数名** — `PLAYER_SCORE` / `ENEMY_X` のような説明的な名前を書け、変換器が一意な2文字MSX名へ自動割り当て（MSXは先頭2文字しか区別しない）。
 
 **MSX-BASICへの変換**
-- **自動変換** — 行番号付与、2文字変数の割り当て、`FUNCTION`→`GOSUB` 展開、戻り値処理、複数ファイル `INCLUDE` 展開、255バイト行の自動分割。
+- **自動変換** — 行番号付与、2文字変数の割り当て、`FUNCTION`→`GOSUB` 展開、戻り値処理、255バイト行の自動分割。
+- **複数ファイル対応** — `INCLUDE` でコードを分割。ビルド/実行は単一の**エントリ（main）ファイル**を起点にする。自動判定（トップレベルに実行コードがあり、他からINCLUDEされていないファイル）か、プロジェクトツリーで明示指定。関数だけのライブラリファイルは単体実行されない。MSX-BASICにリンカは無いので全て1本のプログラムへ統合される（古典の `$INCLUDE`/メインモジュール方式と同じ）。
 - **オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去。いずれも既定OFFで、実行結果を変えないようガード。
 - **安全な診断** — 黙って誤変換しない。エラーはコード＋行・列付きでガターに表示。出力は Shift-JIS（表現不能文字は壊さず報告）。
 - **対象機種** — MSX1 / MSX2 / MSX2+ / turboR（既定 turboR）。組み込み命令表は編集可能。

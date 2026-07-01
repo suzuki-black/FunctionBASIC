@@ -113,6 +113,8 @@ button:hover { background: #1177bb; }
 .ft-row:hover { background: #2a2d2e; }
 .ft-row.active { background: #37373d; }
 .ft-ico { opacity: .85; }
+.ft-main { color: #6a9955; font-size: 11px; opacity: .6; }      /* 自動判定エントリ（薄め） */
+.ft-main.pinned { color: #4ec9b0; opacity: 1; }                  /* 明示mainは濃く */
 .ft-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .ft-act { visibility: hidden; color: #aaa; padding: 0 3px; border: 0; background: none; cursor: pointer; font-size: 12px; }
 .ft-row:hover .ft-act { visibility: visible; }

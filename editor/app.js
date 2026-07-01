@@ -68,6 +68,9 @@ const I18N = {
     "proj.rename": "名前を変更", "proj.renamemsg": "新しいファイル名:",
     "proj.delete": "削除", "proj.deletemsg": (n) => `「${n}」を削除しますか？`,
     "proj.exists": (n) => `「${n}」は既に存在します`, "proj.last": "最後の1ファイルは削除できません",
+    "proj.setmain": "mainに指定（変換/実行の起点）", "proj.clearmain": "main指定を解除（自動判定に戻す）",
+    "proj.mainexplicit": "main（明示指定・変換/実行の起点）", "proj.mainauto": "main（自動判定・変換/実行の起点）",
+    "proj.mainset": (n) => `「${n}」を main（起点）に指定しました`, "proj.maincleared": "main指定を解除（自動判定）しました",
     "set.webmsx": "WebMSX 実行",
     "set.machine": "機種", "set.machinedefault": "既定（WebMSX）",
     "set.machinehint": "turbo R の例や FM 検証時に切替。既定のままで多くの例は動作",
@@ -149,6 +152,9 @@ const I18N = {
     "proj.rename": "Rename", "proj.renamemsg": "New file name:",
     "proj.delete": "Delete", "proj.deletemsg": (n) => `Delete "${n}"?`,
     "proj.exists": (n) => `"${n}" already exists`, "proj.last": "Cannot delete the last file",
+    "proj.setmain": "Set as main (build/run entry)", "proj.clearmain": "Clear main (back to auto-detect)",
+    "proj.mainexplicit": "main (explicit — build/run entry)", "proj.mainauto": "main (auto-detected — build/run entry)",
+    "proj.mainset": (n) => `Set "${n}" as main (entry)`, "proj.maincleared": "Cleared main (auto-detect)",
     "set.webmsx": "WebMSX run",
     "set.machine": "Machine", "set.machinedefault": "Default (WebMSX)",
     "set.machinehint": "Switch for turbo R examples or FM tests; most examples run on the default",
@@ -479,28 +485,98 @@ function includeRead(path, src) {
   return LIBS[path] ?? LIBS[base] ?? null;
 }
 
-function compile(src) {
-  let source = src;
-  let incDiags = [];
-  if (/\bINCLUDE\b/i.test(src)) {
-    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, src));
-    source = inc.source;
-    incDiags = inc.diagnostics;
-  }
+// 統合済みソースを実際にコンパイル（tokenize→parse→transform）。prov=由来情報（複数ファイル）。
+function compileSource(source, incDiags, prov) {
   const { tokens, diagnostics: ld } = tokenize(source);
   const { program, diagnostics: pd } = parse(tokens);
   let t;
   try {
-    t = transform(program, { optimize: settings.optimize, strengthReduce: settings.strengthReduce, stripComments: settings.stripComments, recursionDepth: settings.recursionDepth });
+    t = transform(program, {
+      optimize: settings.optimize, strengthReduce: settings.strengthReduce,
+      stripComments: settings.stripComments, recursionDepth: settings.recursionDepth,
+      lineMap: prov?.lineMap, sources: prov?.sources, source: prov?.source,
+    });
   } catch (e) {
     return {
       diags: [...incDiags, ...ld, ...pd, { code: "E_INTERNAL", key: "E_INTERNAL", params: { detail: String(e.message ?? e) }, message: String(e.message ?? e), line: 1, column: 1, severity: "error" }],
-      msx: "",
-      map: null,
-      code: [],
+      msx: "", map: null, code: [],
     };
   }
   return { diags: [...incDiags, ...ld, ...pd, ...t.diagnostics], msx: renderMsx(t.code), map: t.map, code: t.code };
+}
+
+// 単一ソース（＝そのテキストをエントリ扱い）のコンパイル。逆変換プレビュー等で使用。
+function compile(src) {
+  if (/\bINCLUDE\b/i.test(src)) {
+    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, src));
+    return compileSource(inc.source, inc.diagnostics, { sources: inc.sources, lineMap: inc.lineMap });
+  }
+  return compileSource(src, []);
+}
+
+// 編集中ファイルは未保存の srcEl.value を使う（active→ライブ）。それ以外は project / LIBS。
+function activePath() { return viewingLib ? null : project.active; }
+function fileContent(path) {
+  const ap = activePath();
+  if (ap && path === ap) return srcEl.value;
+  return project.files[path];
+}
+function readForBuild(path) {
+  const ap = activePath();
+  if (ap && (path === ap || path === ap.split("/").pop())) return srcEl.value;
+  if (project.files[path] != null) return project.files[path];
+  const base = path.split("/").pop();
+  if (project.files[base] != null) return project.files[base];
+  return LIBS[path] ?? LIBS[base] ?? null;
+}
+
+// ファイル本文の INCLUDE 先（パス）一覧。
+function includesOf(text) {
+  const out = [];
+  const re = /^\s*INCLUDE\s+"([^"]+)"/gim;
+  let m;
+  while ((m = re.exec(text || "")) !== null) out.push(m[1]);
+  return out;
+}
+// トップレベル（FUNCTION外）に実行コードがあるか（コメント/INCLUDE/空行は除く）。
+function hasTopLevelCode(text) {
+  let depth = 0;
+  for (const raw of (text || "").split(/\r?\n/)) {
+    const line = raw.replace(/'.*$/, "").trim();
+    if (!line) continue;
+    const up = line.toUpperCase();
+    if (/^FUNCTION\b/.test(up)) { depth++; continue; }
+    if (/^END\s+FUNCTION\b/.test(up)) { depth = Math.max(0, depth - 1); continue; }
+    if (depth > 0) continue;
+    if (/^(INCLUDE|REM)\b/.test(up)) continue;
+    return true;
+  }
+  return false;
+}
+// エントリ（main）ファイルを解決：明示指定があればそれ、無ければ自動判定。
+function currentEntry() {
+  if (project.mainFile && project.files[project.mainFile] != null) return project.mainFile;
+  return autoEntry();
+}
+function autoEntry() {
+  const files = Object.keys(project.files);
+  if (files.length <= 1) return files[0] ?? project.active;
+  // 他からINCLUDEされているファイルの集合
+  const included = new Set();
+  for (const f of files) for (const inc of includesOf(fileContent(f))) {
+    if (project.files[inc] != null) included.add(inc);
+    else { const b = inc.split("/").pop(); if (project.files[b] != null) included.add(b); }
+  }
+  const cands = files.filter((f) => !included.has(f) && hasTopLevelCode(fileContent(f)));
+  if (cands.length === 1) return cands[0];
+  if (cands.length === 0) return project.active; // 全部ライブラリ風 → 編集中をフォールバック
+  return cands.includes(project.active) ? project.active : cands.sort()[0]; // 曖昧時はactive優先
+}
+// プロジェクトのエントリから統合ビルド（編集中の未保存内容も反映）。
+function compileProject() {
+  const entry = currentEntry();
+  const inc = resolveIncludes(entry, readForBuild);
+  return compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap });
 }
 
 // ---- ガター（行番号＋×＋ブックマーク）----
@@ -541,7 +617,7 @@ function renderHeavy() {
   const src = srcEl.value;
   syncActiveFile(); // 現在の編集をプロジェクトへ反映し永続化
   saveProject();
-  const r = compile(src);
+  const r = compileProject(); // エントリ(main)から統合ビルド（開いているタブに依存しない）
   last = r;
   const errsByLine = new Map();
   let errorCount = 0;
@@ -655,7 +731,7 @@ function baseName() {
   return ($("filename").value || "game.msxb").replace(/\.msxb$/i, "");
 }
 async function onSave() {
-  const r = compile(srcEl.value);
+  const r = compileProject();
   const hasError = r.diags.some((d) => d.severity === "error");
   const base = baseName();
 
@@ -800,7 +876,7 @@ async function webmsxAutorunUrl(name, asciiProgram) {
 
 async function onPlayWebMSX() {
   log("WebMSX 実行: 開始");
-  const r = compile(srcEl.value);
+  const r = compileProject();
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("run.noerr"));
     return;
@@ -828,7 +904,7 @@ async function onPlayWebMSX() {
 // FAT12 の .dsk を生成 → WebMSX にドラッグ → RUN"NAME.BAS"。日本語コメントも化けない。
 async function onMakeDsk() {
   log("ディスク作成: 開始");
-  const r = compile(srcEl.value);
+  const r = compileProject();
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("dsk.noerr"));
     return;
@@ -864,7 +940,7 @@ async function onMakeDsk() {
 // .sav は MSXPLAYer のワークドライブに置いてデータを渡す用途のため、WebMSX は開かない。
 async function onMakeSav() {
   log(".sav作成: 開始");
-  const r = compile(srcEl.value);
+  const r = compileProject();
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("sav.noerr"));
     return;
@@ -1237,10 +1313,21 @@ async function sanitizeName(raw) {
 }
 function renderTree() {
   let html = "";
+  const entry = currentEntry();
+  const explicit = !!(project.mainFile && project.files[project.mainFile] != null);
   for (const f of userFiles()) {
     const a = !viewingLib && f === project.active ? " active" : "";
+    const isEntry = f === entry;
+    // エントリ表示（▶）。明示指定なら濃く、自動判定なら薄く。
+    const badge = isEntry
+      ? `<span class="ft-main${explicit ? " pinned" : ""}" title="${esc(explicit ? t("proj.mainexplicit") : t("proj.mainauto"))}">▶</span>`
+      : "";
+    const pin = isEntry && explicit
+      ? `<button class="ft-act" data-main="" title="${esc(t("proj.clearmain"))}">📌</button>`
+      : `<button class="ft-act" data-main="${esc(f)}" title="${esc(t("proj.setmain"))}">📍</button>`;
     html += `<div class="ft-row${a}" data-file="${esc(f)}">` +
-      `<span class="ft-ico">📄</span><span class="ft-name">${esc(f)}</span>` +
+      `<span class="ft-ico">📄</span>${badge}<span class="ft-name">${esc(f)}</span>` +
+      pin +
       `<button class="ft-act" data-ren="${esc(f)}" title="${esc(t("proj.rename"))}">✎</button>` +
       `<button class="ft-act" data-del="${esc(f)}" title="${esc(t("proj.delete"))}">🗑</button></div>`;
   }
@@ -1259,6 +1346,8 @@ function renderTree() {
 }
 // クリック委譲
 fileTreeEl.addEventListener("click", (e) => {
+  const mainBtn = e.target.closest("[data-main]");
+  if (mainBtn) { e.stopPropagation(); setMain(mainBtn.dataset.main || null); return; }
   const ren = e.target.closest("[data-ren]");
   if (ren) { e.stopPropagation(); renameFile(ren.dataset.ren); return; }
   const del = e.target.closest("[data-del]");
@@ -1271,6 +1360,16 @@ fileTreeEl.addEventListener("click", (e) => {
   else if (row.dataset.node === "webmsx") openTab("webmsx");
 });
 $("newFileBtn").addEventListener("click", newFile);
+
+// エントリ(main)の明示指定／自動に戻す。変換・実行はここから統合ビルドされる。
+function setMain(file) {
+  if (file) project.mainFile = file;
+  else delete project.mainFile;
+  saveProject();
+  renderTree();
+  render(); // エントリが変わったのでプレビューを更新
+  setStatus("ok", file ? t("proj.mainset", file) : t("proj.maincleared"));
+}
 
 // ============ +α 機能（JetBrains風ナビ・整形・ブックマーク・スニペット）============
 

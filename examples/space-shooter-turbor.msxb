@@ -1,0 +1,438 @@
+' ============================================================
+'  SPACE SHOOTER (turbo R) — FunctionBASIC sample
+'
+'  A tiny fixed shooter (blast the descending aliens) in Structured
+'  BASIC, transpiled to authentic MSX-BASIC. Original code and 8x8
+'  artwork — an homage to the 1978 fixed-shooter arcade genre, with
+'  no trademarked names or graphics.
+'
+'  Uses redefined 8x8 characters (VPOKE into the SCREEN 1 pattern
+'  generator) so the player is a cannon, the enemies are invaders,
+'  the shot is a bolt and the bomb a zig-zag — instead of plain
+'  letters. We reuse code points 128/136/144/152 (each in its own
+'  colour group) so the status text is left untouched.
+'
+'  turbo R ONLY: an MSX turbo R already boots BASIC on the fast R800
+'  CPU, so the game loop runs smoothly with no CPU switch needed. The
+'  program reads the machine-version byte (PEEK(&H2D) = 3 on a turbo R)
+'  and refuses to run on an older MSX, where it would be too slow.
+'  (There is no "_TURBO"/"CALL TURBO" BASIC command — that's a myth;
+'  switching to Z80 needs the CHGCPU BIOS call &H0180 in machine code.)
+'
+'  Controls:  LEFT / RIGHT cursor keys = move,   SPACE = fire.
+'  In the embedded WebMSX, set the machine to turbo R (app Settings →
+'  Machine, or the WebMSX gear menu) before running.
+' ============================================================
+
+CONST COLS = 10            ' aliens per row
+CONST ROWS = 3             ' rows of aliens
+CONST PLAYROW = 22         ' player's screen row (0..23)
+CONST TOPROW = 2           ' where the alien block starts
+CONST MARCHDELAY = 6       ' frames between alien steps (lower = faster)
+CONST FRAMESPEED = 60      ' busy-wait per frame (tuned for R800)
+
+CONST CSHIP = 128          ' character codes for our redefined tiles
+CONST CINV = 136
+CONST CBULLET = 144
+CONST CBOMB = 152
+
+GLOBAL PX                  ' player column
+GLOBAL SC                  ' score
+GLOBAL LV                  ' lives
+GLOBAL DONE                ' 0 = running, 1 = win, 2 = lose
+GLOBAL BX                  ' player bullet: column / row / active
+GLOBAL BY
+GLOBAL BON
+GLOBAL FX                  ' enemy bomb: column / row / active
+GLOBAL FY
+GLOBAL FON
+GLOBAL AGX                 ' alien block: left column / top row / direction
+GLOBAL AGY
+GLOBAL ADIR
+GLOBAL NA                  ' aliens still alive
+GLOBAL AL                  ' AL(col,row) = 1 alive / 0 dead
+GLOBAL SHIP$               ' the redefined tiles, as 1-char strings
+GLOBAL INV$
+GLOBAL BULLET$
+GLOBAL BOMB$
+
+
+' Read 8 bytes of DATA and install them as the 8x8 pattern for a
+' character code (SCREEN 1 pattern generator table is at &H0000).
+FUNCTION MAKE_CHAR(CODE)
+    P = CODE * 8
+    FOR I = 0 TO 7
+        READ B
+        VPOKE P + I, B
+    NEXT I
+END FUNCTION
+
+
+' Redefine our four tiles and give each colour group its own colour.
+FUNCTION SETUP_CHARS()
+    RESTORE
+    MAKE_CHAR(CSHIP)
+    MAKE_CHAR(CINV)
+    MAKE_CHAR(CBULLET)
+    MAKE_CHAR(CBOMB)
+    ' colour table at &H2000: one byte per 8-char group = fg*16 + bg.
+    ' group = code \ 8, so 128->16, 136->17, 144->18, 152->19.
+    VPOKE &H2010, 3 * 16 + 1     ' cannon  : light green on black
+    VPOKE &H2011, 15 * 16 + 1    ' invader : white on black
+    VPOKE &H2012, 11 * 16 + 1    ' bolt    : light yellow on black
+    VPOKE &H2013, 9 * 16 + 1     ' bomb    : light red on black
+END FUNCTION
+
+
+' Draw one character cell (COL,ROW are 0-based screen coords).
+FUNCTION DRAWCH(COL, ROW, CH$)
+    LOCATE COL, ROW
+    PRINT CH$;
+END FUNCTION
+
+
+' Draw (or, with " ", erase) every living alien at its current cell.
+FUNCTION DRAWALIENS(CH$)
+    GLOBAL AGX
+    GLOBAL AGY
+    GLOBAL AL
+    FOR R = 0 TO ROWS - 1
+        FOR C = 0 TO COLS - 1
+            IF AL(C, R) = 1 THEN
+                LOCATE AGX + C * 2, AGY + R
+                PRINT CH$;
+            END IF
+        NEXT C
+    NEXT R
+END FUNCTION
+
+
+' Fill the alien grid and place the block near the top.
+FUNCTION SETUP_ALIENS()
+    GLOBAL AGX
+    GLOBAL AGY
+    GLOBAL ADIR
+    GLOBAL NA
+    GLOBAL AL
+    FOR R = 0 TO ROWS - 1
+        FOR C = 0 TO COLS - 1
+            AL(C, R) = 1
+        NEXT C
+    NEXT R
+    NA = COLS * ROWS
+    AGX = 2
+    AGY = TOPROW
+    ADIR = 1
+END FUNCTION
+
+
+' Step the whole alien block: erase, move (drop & reverse at an edge),
+' redraw, and flag a loss if they reach the player's row.
+FUNCTION MARCH()
+    GLOBAL AGX
+    GLOBAL AGY
+    GLOBAL ADIR
+    GLOBAL DONE
+    GLOBAL INV$
+    DRAWALIENS(" ")
+    MOVED = 0
+    RIGHTC = AGX + (COLS - 1) * 2
+    IF ADIR = 1 THEN
+        IF RIGHTC >= 30 THEN
+            AGY = AGY + 1
+            ADIR = -1
+            MOVED = 1
+        END IF
+    END IF
+    IF ADIR = -1 THEN
+        IF AGX <= 1 THEN
+            AGY = AGY + 1
+            ADIR = 1
+            MOVED = 1
+        END IF
+    END IF
+    IF MOVED = 0 THEN
+        AGX = AGX + ADIR
+    END IF
+    DRAWALIENS(INV$)
+    IF AGY + (ROWS - 1) >= PLAYROW - 1 THEN
+        DONE = 2
+    END IF
+END FUNCTION
+
+
+' Test the player bullet against the aliens; kill on a hit.
+FUNCTION CHECK_HIT()
+    GLOBAL AGX
+    GLOBAL AGY
+    GLOBAL AL
+    GLOBAL NA
+    GLOBAL SC
+    GLOBAL BX
+    GLOBAL BY
+    GLOBAL BON
+    FOR R = 0 TO ROWS - 1
+        FOR C = 0 TO COLS - 1
+            IF AL(C, R) = 1 THEN
+                IF BX = AGX + C * 2 THEN
+                    IF BY = AGY + R THEN
+                        AL(C, R) = 0
+                        NA = NA - 1
+                        SC = SC + 10
+                        BON = 0
+                        LOCATE AGX + C * 2, AGY + R
+                        PRINT " ";
+                        SOUND 8, 15
+                        SOUND 6, 20
+                    END IF
+                END IF
+            END IF
+        NEXT C
+    NEXT R
+END FUNCTION
+
+
+' Drop a bomb from the lowest living alien of a random column.
+FUNCTION DROP_BOMB()
+    GLOBAL AGX
+    GLOBAL AGY
+    GLOBAL AL
+    GLOBAL FX
+    GLOBAL FY
+    GLOBAL FON
+    C = INT(RND(1) * COLS)
+    FOR R = ROWS - 1 TO 0 STEP -1
+        IF AL(C, R) = 1 THEN
+            IF FON = 0 THEN
+                FX = AGX + C * 2
+                FY = AGY + R + 1
+                FON = 1
+            END IF
+        END IF
+    NEXT R
+END FUNCTION
+
+
+' Read the joystick/keys and slide the player one cell.
+FUNCTION MOVE_PLAYER()
+    GLOBAL PX
+    GLOBAL SHIP$
+    OLDPX = PX
+    S = STICK(0)
+    IF S = 6 OR S = 7 OR S = 8 THEN
+        IF PX > 1 THEN
+            PX = PX - 1
+        END IF
+    END IF
+    IF S = 2 OR S = 3 OR S = 4 THEN
+        IF PX < 30 THEN
+            PX = PX + 1
+        END IF
+    END IF
+    IF PX <> OLDPX THEN
+        DRAWCH(OLDPX, PLAYROW, " ")
+        DRAWCH(PX, PLAYROW, SHIP$)
+    END IF
+END FUNCTION
+
+
+' Fire a bullet if none is in flight.
+FUNCTION FIRE()
+    GLOBAL BON
+    GLOBAL BX
+    GLOBAL BY
+    GLOBAL PX
+    IF STRIG(0) THEN
+        IF BON = 0 THEN
+            BON = 1
+            BX = PX
+            BY = PLAYROW - 1
+            SOUND 8, 16
+            SOUND 6, 10
+        END IF
+    END IF
+END FUNCTION
+
+
+' Advance the player bullet one row and test for a hit.
+FUNCTION STEP_BULLET()
+    GLOBAL BON
+    GLOBAL BX
+    GLOBAL BY
+    GLOBAL BULLET$
+    IF BON = 1 THEN
+        DRAWCH(BX, BY, " ")
+        BY = BY - 1
+        IF BY < TOPROW - 1 THEN
+            BON = 0
+        END IF
+        IF BON = 1 THEN
+            CHECK_HIT()
+        END IF
+        IF BON = 1 THEN
+            DRAWCH(BX, BY, BULLET$)
+        END IF
+    END IF
+END FUNCTION
+
+
+' The player was struck by a bomb: lose a life (and maybe the game).
+FUNCTION HIT_PLAYER()
+    GLOBAL LV
+    GLOBAL PX
+    GLOBAL DONE
+    GLOBAL SHIP$
+    GLOBAL BOMB$
+    LV = LV - 1
+    SOUND 8, 16
+    SOUND 6, 40
+    DRAWCH(PX, PLAYROW, BOMB$)
+    FOR T = 1 TO 400
+    NEXT T
+    DRAWCH(PX, PLAYROW, SHIP$)
+    IF LV <= 0 THEN
+        DONE = 2
+    END IF
+END FUNCTION
+
+
+' Spawn (sometimes) and advance the enemy bomb.
+FUNCTION STEP_BOMB()
+    GLOBAL FON
+    GLOBAL FX
+    GLOBAL FY
+    GLOBAL PX
+    GLOBAL BOMB$
+    IF FON = 0 THEN
+        IF RND(1) < 0.12 THEN
+            DROP_BOMB()
+        END IF
+    END IF
+    IF FON = 1 THEN
+        DRAWCH(FX, FY, " ")
+        FY = FY + 1
+        IF FY >= PLAYROW THEN
+            FON = 0
+            IF FX = PX THEN
+                HIT_PLAYER()
+            END IF
+        END IF
+        IF FON = 1 THEN
+            DRAWCH(FX, FY, BOMB$)
+        END IF
+    END IF
+END FUNCTION
+
+
+' Top status line.
+FUNCTION SHOW_STATUS()
+    GLOBAL SC
+    GLOBAL LV
+    GLOBAL NA
+    LOCATE 0, 0
+    PRINT "SCORE"; SC; "  LIVES"; LV; "  LEFT"; NA; "  ";
+END FUNCTION
+
+
+' The main game loop (kept in its own function so MAIN stays short).
+FUNCTION RUNGAME()
+    GLOBAL DONE
+    GLOBAL NA
+    MT = MARCHDELAY
+    WHILE DONE = 0
+        SHOW_STATUS()
+        MOVE_PLAYER()
+        FIRE()
+        STEP_BULLET()
+        STEP_BOMB()
+        MT = MT - 1
+        IF MT <= 0 THEN
+            MARCH()
+            MT = MARCHDELAY
+        END IF
+        IF NA = 0 THEN
+            DONE = 1
+        END IF
+        FOR T = 1 TO FRAMESPEED
+        NEXT T
+    WEND
+END FUNCTION
+
+
+' ---------------- MAIN ----------------
+GLOBAL PX
+GLOBAL SC
+GLOBAL LV
+GLOBAL DONE
+GLOBAL BON
+GLOBAL FON
+GLOBAL NA
+GLOBAL AL
+GLOBAL SHIP$
+GLOBAL INV$
+GLOBAL BULLET$
+GLOBAL BOMB$
+
+' turbo R required. The MSX version byte at &H002D is 3 on a turbo R
+' (0 = MSX1, 1 = MSX2, 2 = MSX2+, 3 = turbo R). Bail out otherwise.
+IF PEEK(&H2D) < 3 THEN
+    SCREEN 0
+    WIDTH 40
+    PRINT "THIS GAME REQUIRES AN MSX turbo R."
+    END
+END IF
+
+SCREEN 1
+WIDTH 32
+COLOR 15, 1, 4
+KEY OFF
+CLS
+
+SETUP_CHARS()
+SHIP$ = CHR$(CSHIP)
+INV$ = CHR$(CINV)
+BULLET$ = CHR$(CBULLET)
+BOMB$ = CHR$(CBOMB)
+
+DIM AL(COLS, ROWS)
+SETUP_ALIENS()
+DRAWALIENS(INV$)
+
+PX = 15
+SC = 0
+LV = 3
+DONE = 0
+BON = 0
+FON = 0
+DRAWCH(PX, PLAYROW, SHIP$)
+
+RUNGAME()
+
+CLS
+IF DONE = 1 THEN
+    LOCATE 12, 10
+    PRINT "YOU WIN!"
+END IF
+IF DONE = 2 THEN
+    LOCATE 11, 10
+    PRINT "GAME OVER"
+END IF
+LOCATE 10, 12
+PRINT "SCORE "; SC
+LOCATE 6, 22
+PRINT "PRESS SPACE TO EXIT"
+
+WHILE STRIG(0) = 0
+WEND
+
+END
+
+' --- 8x8 tile patterns, 8 bytes each (read in SETUP_CHARS order) ---
+' cannon: barrel over a solid base
+DATA 24, 24, 60, 126, 255, 255, 255, 255
+' invader: round body with two eyes and spread legs
+DATA 24, 60, 126, 219, 255, 36, 66, 129
+' bolt: short vertical bar
+DATA 24, 24, 24, 24, 0, 0, 0, 0
+' bomb: thin zig-zag
+DATA 16, 8, 16, 8, 16, 8, 16, 8

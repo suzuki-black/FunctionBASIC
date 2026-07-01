@@ -108,6 +108,13 @@ test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () =>
   assert.match(msx, /^\d+ _TURBO OFF$/m);
 });
 
+test("例: space-shooter-turbor.msxb はエラーなしで変換される（機種判定＋キャラ再定義）", () => {
+  const { msx, diagnostics } = compileExample("space-shooter-turbor.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /PEEK\(&H2D\)/); // turbo R 判定
+  assert.match(msx, /VPOKE/); // 8x8 キャラ再定義
+});
+
 test("例: msx-music-fm.msxb は CALL MUSIC / FM PLAY を保持して変換される", () => {
   const { msx, diagnostics } = compileExample("msx-music-fm.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

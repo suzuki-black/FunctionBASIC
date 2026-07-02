@@ -1655,6 +1655,41 @@ function findDefinition(name, src) {
   const first = toks.find((t) => t.kind === "IDENT" && t.value === name);
   return first ? first.pos : null;
 }
+// 厳密な定義のみ（FUNCTION 定義 / FOR・REF・GLOBAL・DIM・代入先）。無ければ null（＝呼出だけ）。
+function findDefinitionStrict(name, src) {
+  const toks = tokensAbs(src).map((x) => x.t);
+  for (let i = 0; i < toks.length - 1; i++)
+    if (toks[i].kind === "KEYWORD" && toks[i].value === "FUNCTION" && toks[i + 1].value === name)
+      return toks[i + 1].pos;
+  const defKw = new Set(["FOR", "REF", "GLOBAL", "DIM"]);
+  let prev = null;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.kind === "NEWLINE") { prev = null; continue; }
+    if (t.kind === "IDENT" && t.value === name) {
+      const next = toks[i + 1];
+      if ((prev && prev.kind === "KEYWORD" && defKw.has(prev.value)) ||
+          (next && next.kind === "OP" && next.value === "="))
+        return t.pos;
+    }
+    prev = t;
+  }
+  return null;
+}
+// 他ファイル（プロジェクト＋埋め込みライブラリ）から厳密定義を探す。{file,pos,isLib}|null。
+function findDefAcrossFiles(name) {
+  const active = activePath();
+  for (const f of Object.keys(project.files).sort()) {
+    if (f === active) continue;
+    const p = findDefinitionStrict(name, project.files[f]);
+    if (p) return { file: f, pos: p, isLib: false };
+  }
+  for (const f of Object.keys(LIBS).sort()) {
+    const p = findDefinitionStrict(name, LIBS[f]);
+    if (p) return { file: f, pos: p, isLib: true };
+  }
+  return null;
+}
 
 // ---- ジャンプ履歴（戻る/進む）----
 const jumpBack = [];
@@ -1703,6 +1738,23 @@ function goToDefinition() {
   }
   const t = identAtCaret();
   if (!t) { flash("識別子の上で実行してください"); return; }
+  // 1) アクティブファイル内の厳密な定義
+  const localStrict = findDefinitionStrict(t.value, srcEl.value);
+  if (localStrict) {
+    recordJump();
+    scrollToLine(localStrict.line, localStrict.column - 1);
+    flash(`定義へ移動: ${t.value} (行 ${localStrict.line})`);
+    return;
+  }
+  // 2) 他ファイル/ライブラリの定義（呼出だけの関数がINCLUDE先で定義されている等）
+  const x = findDefAcrossFiles(t.value);
+  if (x) {
+    if (x.isLib) openLib(x.file, x.pos.line - 1);
+    else { openFile(x.file); recordJump(); scrollToLine(x.pos.line, x.pos.column - 1); }
+    flash(`定義へ移動: ${t.value} → ${x.file} (行 ${x.pos.line})`);
+    return;
+  }
+  // 3) フォールバック: アクティブファイル内の最初の出現
   const def = findDefinition(t.value, srcEl.value);
   if (!def) { flash(`定義が見つかりません: ${t.value}`); return; }
   recordJump();
@@ -2182,11 +2234,70 @@ const activateTab = (tab) => openTab(tab);
 
 // ---- イベント ----
 let timer = null;
+// ---- INCLUDE パス補完（INCLUDE "… を打つと候補を出す）----
+const acEl = $("acbox");
+let ac = { open: false, items: [], sel: 0, prefixLen: 0 };
+// 行頭〜キャレットが INCLUDE "partial（閉じ引用符なし）なら prefix を返す。
+function acContext() {
+  const c = srcEl.selectionStart;
+  if (c !== srcEl.selectionEnd) return null;
+  const lineStart = srcEl.value.lastIndexOf("\n", c - 1) + 1;
+  const head = srcEl.value.slice(lineStart, c);
+  const m = head.match(/^\s*INCLUDE\s+"([^"]*)$/i);
+  return m ? { prefix: m[1] } : null;
+}
+function acCandidates(prefix) {
+  const active = activePath();
+  const proj = Object.keys(project.files).filter((f) => f !== active);
+  const libs = Object.keys(LIBS).filter((k) => k.includes("/"));
+  const p = prefix.toLowerCase();
+  return [...proj, ...libs].filter((f) => f.toLowerCase().includes(p)).sort().slice(0, 12);
+}
+function acHide() { ac.open = false; acEl.hidden = true; }
+function acShow() {
+  const ctx = acContext();
+  if (!ctx) return acHide();
+  const items = acCandidates(ctx.prefix);
+  if (!items.length) return acHide();
+  ac = { open: true, items, sel: 0, prefixLen: ctx.prefix.length };
+  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  const line = srcEl.value.slice(0, srcEl.selectionStart).split("\n").length;
+  acEl.style.top = (line * lh - srcEl.scrollTop + 2) + "px";
+  acEl.style.left = "48px";
+  acEl.innerHTML = items.map((f, i) => `<div class="aci${i === 0 ? " sel" : ""}" data-i="${i}">${esc(f)}</div>`).join("");
+  acEl.hidden = false;
+}
+function acMove(d) {
+  if (!ac.open) return;
+  ac.sel = (ac.sel + d + ac.items.length) % ac.items.length;
+  [...acEl.children].forEach((el, i) => el.classList.toggle("sel", i === ac.sel));
+  acEl.children[ac.sel]?.scrollIntoView({ block: "nearest" });
+}
+function acAccept() {
+  if (!ac.open) return false;
+  const chosen = ac.items[ac.sel];
+  const c = srcEl.selectionStart;
+  const needClose = !/^"/.test(srcEl.value.slice(c));
+  srcEl.setRangeText(chosen + (needClose ? '"' : ""), c - ac.prefixLen, c, "end");
+  acHide();
+  render();
+  return true;
+}
+acEl.addEventListener("mousedown", (e) => {
+  const row = e.target.closest(".aci");
+  if (!row) return;
+  e.preventDefault(); // フォーカスを textarea に残す
+  ac.sel = parseInt(row.dataset.i);
+  acAccept();
+});
+srcEl.addEventListener("blur", () => setTimeout(acHide, 120));
+
 srcEl.addEventListener("input", () => {
   if (settings.autoIndent) electricDedent(); // closer/ELSE 行を自動で揃える
   commitHistory(false); // タイピングは一定時間で1グループに合体して記録
   scheduleHighlight(); // 即時（次フレーム）に見た目を反映＝入力遅延をなくす
   updateCurLine();
+  acShow(); // INCLUDE "… なら候補を出す
   if (findOpen()) recomputeFind();
   clearTimeout(timer);
   timer = setTimeout(renderHeavy, 250); // 重い変換・診断は停止後に
@@ -2201,6 +2312,14 @@ srcEl.addEventListener("click", (e) => {
 });
 srcEl.addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey;
+  // INCLUDE 補完が開いている間は上下/確定/閉じるを最優先で処理
+  if (ac.open) {
+    if (e.key === "ArrowDown") { e.preventDefault(); acMove(1); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); acMove(-1); return; }
+    if (e.key === "Enter" || e.key === "Tab") { if (acAccept()) { e.preventDefault(); return; } }
+    if (e.key === "Escape") { e.preventDefault(); acHide(); return; }
+    if (["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(e.key)) acHide();
+  }
   // Undo / Redo（自前スタック。ネイティブと二重発火しないよう preventDefault）
   if (mod && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); doUndo(); return; }
   if (mod && ((e.shiftKey && e.key.toLowerCase() === "z") || (!e.shiftKey && e.key.toLowerCase() === "y"))) { e.preventDefault(); doRedo(); return; }

@@ -268,6 +268,13 @@ button:hover { background: #1177bb; }
 #status.err { color: var(--err); }
 #status.clickable { cursor: pointer; }
 
+/* INCLUDE パス補完のドロップダウン（editWrap 基準の絶対配置） */
+#acbox { position: absolute; z-index: 50; min-width: 180px; max-width: 60%; max-height: 40vh; overflow: auto;
+  background: #252526; border: 1px solid #454545; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.5); font-size: 13px; }
+#acbox .aci { padding: 3px 10px; cursor: pointer; white-space: nowrap; color: #ddd; }
+#acbox .aci.sel { background: #094771; color: #fff; }
+#acbox .aci:hover { background: #2a2d2e; }
+
 /* Problems パネル（ステータス直上・全ファイル横断の診断一覧） */
 #problems { flex: none; max-height: 34vh; overflow: auto; background: var(--bg2); border-top: 1px solid #333; font-size: 12px; }
 #problems .ph { position: sticky; top: 0; background: var(--bg2); display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; color: #bbb; font-weight: 600; border-bottom: 1px solid #333; }

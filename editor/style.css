@@ -266,6 +266,22 @@ button:hover { background: #1177bb; }
 #status.ok { color: #4ec9b0; }
 #status.warn { color: #d7a35a; }
 #status.err { color: var(--err); }
+#status.clickable { cursor: pointer; }
+
+/* Problems パネル（ステータス直上・全ファイル横断の診断一覧） */
+#problems { flex: none; max-height: 34vh; overflow: auto; background: var(--bg2); border-top: 1px solid #333; font-size: 12px; }
+#problems .ph { position: sticky; top: 0; background: var(--bg2); display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; color: #bbb; font-weight: 600; border-bottom: 1px solid #333; }
+#problems .pclose { cursor: pointer; color: #888; padding: 0 4px; }
+#problems .pclose:hover { color: #fff; }
+#problems .pr { display: flex; gap: 8px; align-items: baseline; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
+#problems .pr:hover { background: #2a2d2e; }
+#problems .pr.here .pf { font-weight: 600; }
+#problems .pf { color: #6ab0f3; }
+#problems .pl { color: #888; }
+#problems .pr.err .pc { color: var(--err); }
+#problems .pr.warn .pc { color: #d7a35a; }
+#problems .pc { font-weight: 600; }
+#problems .pm { color: #ddd; overflow: hidden; text-overflow: ellipsis; }
 
 /* 自前モーダル */
 #modal {

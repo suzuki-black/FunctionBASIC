@@ -86,6 +86,8 @@ const I18N = {
     "msx.ok": "▶ WebMSX で実行できます", "msx.err": "文法エラーのため変換できません",
     "msx.errbody": "（構造化BASICタブのエラーを修正してください）",
     "st.ok": "OK", "st.okwarn": (n) => `OK（警告 ${n} 件）`, "st.err": (n) => `⚠ エラー ${n} 件`,
+    "st.elsewhere": (m) => `（うち他ファイル ${m} 件・クリックでProblems）`,
+    "prob.title": "Problems", "prob.count": (e, w) => `エラー ${e} / 警告 ${w}`,
     "save.err": (e) => "保存に失敗しました: " + e, "save.errchk": "誤りがあります。確認してください（変換前のみ保存）",
     "save.done": "保存しました（.msxb / .map.json / .bas、Shift-JIS）",
     "save.dl": "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で",
@@ -176,6 +178,8 @@ const I18N = {
     "msx.ok": "Run it with ▶ WebMSX", "msx.err": "Cannot convert: syntax error",
     "msx.errbody": "(Fix the errors in the Structured BASIC tab.)",
     "st.ok": "OK", "st.okwarn": (n) => `OK (${n} warning(s))`, "st.err": (n) => `⚠ ${n} error(s)`,
+    "st.elsewhere": (m) => ` (${m} in other files — click for Problems)`,
+    "prob.title": "Problems", "prob.count": (e, w) => `${e} error(s) / ${w} warning(s)`,
     "save.err": (e) => "Save failed: " + e, "save.errchk": "There are errors. Saved source only.",
     "save.done": "Saved (.msxb / .map.json / .bas, Shift-JIS)",
     "save.dl": "Saved (.msxb / .map.json / .bas). Shift-JIS encoding is desktop-only.",
@@ -591,6 +595,55 @@ function compileProject() {
   return compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap });
 }
 
+// 実行可能な全エントリ（他からINCLUDEされておらず、トップレベルコードを持つファイル）。
+function allEntries() {
+  const files = Object.keys(project.files);
+  if (files.length <= 1) return files.length ? files : [];
+  const included = new Set();
+  for (const f of files) for (const inc of includesOf(fileContent(f))) {
+    if (project.files[inc] != null) included.add(inc);
+    else { const b = inc.split("/").pop(); if (project.files[b] != null) included.add(b); }
+  }
+  const cands = files.filter((f) => !included.has(f) && hasTopLevelCode(fileContent(f)));
+  return cands.length ? cands : [currentEntry()];
+}
+// include の由来ファイル名をプロジェクトのファイルキーへ正規化（パス→basename フォールバック）。
+function toProjectKey(f) {
+  if (project.files[f] != null) return f;
+  const b = f.split("/").pop();
+  if (project.files[b] != null) return b;
+  return f; // 埋め込みライブラリ等はそのまま（クリック時に openLib で解決）
+}
+// 全エントリを検証し、診断を由来(file:line)へ再マップして集約（重複除去）。
+// current=現エントリのビルド結果（変換後プレビュー用）を併せて返す。
+function projectDiagnostics() {
+  const cur = currentEntry();
+  const seen = new Set();
+  const list = [];
+  let current = null;
+  const build = (entry) => {
+    const inc = resolveIncludes(entry, readForBuild);
+    const r = compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap });
+    if (entry === cur) current = r;
+    for (const d of r.diags) {
+      const o = inc.lineMap && d.line >= 1 ? inc.lineMap[d.line - 1] : null;
+      const file = o ? toProjectKey(o.file) : entry;
+      const line = o ? o.line : d.line;
+      const key = `${file}:${line}:${d.column}:${d.code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const msg = d.key ? localize(d, lang) : d.message;
+      list.push({ file, line, column: d.column, code: d.code, msg, severity: d.severity });
+    }
+  };
+  for (const entry of allEntries()) { try { build(entry); } catch (_) {} }
+  if (!current) { try { build(cur); } catch (_) {} } // 念のため現エントリ分を確保
+  list.sort((a, b) =>
+    (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1) ||
+    a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column);
+  return { list, current };
+}
+
 // ---- ガター（行番号＋×＋ブックマーク）----
 const bookmarks = new Set();
 function renderGutter(lineCount, errsByLine) {
@@ -605,6 +658,43 @@ function renderGutter(lineCount, errsByLine) {
   }
   gutterEl.innerHTML = html;
 }
+
+// ---- Problems パネル（全ファイル横断の診断一覧。クリックで該当箇所へジャンプ）----
+const problemsEl = $("problems");
+let problemsOpen = false;
+let problemsList = [];
+function applyProblemsVisibility() {
+  problemsEl.hidden = !(problemsOpen && problemsList.length);
+  statusEl.classList.toggle("clickable", problemsList.length > 0);
+}
+function renderProblems(list, active, autoOpen) {
+  problemsList = list;
+  if (!list.length) { problemsOpen = false; problemsEl.innerHTML = ""; applyProblemsVisibility(); return; }
+  if (autoOpen) problemsOpen = true;
+  const errs = list.filter((d) => d.severity === "error").length;
+  let html = `<div class="ph"><span>${esc(t("prob.title"))}　${esc(t("prob.count", errs, list.length - errs))}</span>` +
+    `<span class="pclose" title="${esc(t("find.close"))}">✕</span></div>`;
+  for (const d of list) {
+    const cls = d.severity === "error" ? "err" : "warn";
+    const here = d.file === active ? " here" : "";
+    html += `<div class="pr ${cls}${here}" data-file="${esc(d.file)}" data-line="${d.line}">` +
+      `<span class="pf">${esc(d.file)}</span><span class="pl">:${d.line}:${d.column}</span>` +
+      `<span class="pc">${esc(d.code)}</span><span class="pm">${esc(d.msg)}</span></div>`;
+  }
+  problemsEl.innerHTML = html;
+  applyProblemsVisibility();
+}
+function toggleProblems() { if (problemsList.length) { problemsOpen = !problemsOpen; applyProblemsVisibility(); } }
+problemsEl.addEventListener("click", (e) => {
+  if (e.target.closest(".pclose")) { problemsOpen = false; applyProblemsVisibility(); return; }
+  const row = e.target.closest(".pr");
+  if (!row) return;
+  const file = row.dataset.file;
+  const line = parseInt(row.dataset.line);
+  if (project.files[file] != null) { openFile(file); recordJump(); scrollToLine(line); }
+  else if (LIBS[file] != null || LIBS[file.split("/").pop()] != null) openLib(file, line);
+});
+statusEl.addEventListener("click", toggleProblems);
 
 // ---- 軽い更新：シンタックスハイライトのみ（入力ごとに即時反映）----
 // 表示文字は透明テキストエリア背後のハイライト層なので、これを即時更新しないと
@@ -629,39 +719,50 @@ function renderHeavy() {
   const src = srcEl.value;
   syncActiveFile(); // 現在の編集をプロジェクトへ反映し永続化
   saveProject();
-  const r = compileProject(); // エントリ(main)から統合ビルド（開いているタブに依存しない）
+  // 全エントリを検証し、診断は由来(file:line)へ再マップして集約（INCLUDE 跨ぎも捕捉）。
+  const proj = projectDiagnostics();
+  const r = proj.current ?? { diags: [], msx: "", map: null, code: [] };
   last = r;
-  const errsByLine = new Map();
-  let errorCount = 0;
-  for (const d of r.diags) {
-    const arr = errsByLine.get(d.line) ?? [];
-    // メッセージは現在のUI言語で整形（コアの診断カタログを使用）
-    const msg = d.key ? localize(d, lang) : d.message;
-    arr.push(`${d.line}:${d.column} ${d.code} ${msg}`);
-    errsByLine.set(d.line, arr);
-    if (d.severity === "error") errorCount++;
-  }
-  const lineCount = src.split("\n").length;
-  renderGutter(lineCount, errsByLine);
 
-  // 変換後プレビュー（エラー無し時のみ）
-  if (errorCount === 0) {
+  // ガター: アクティブファイルに由来する診断のみ、そのファイル内の行に印を付ける。
+  const active = activePath();
+  const errsByLine = new Map();
+  for (const d of proj.list) {
+    if (d.file !== active) continue;
+    const arr = errsByLine.get(d.line) ?? [];
+    arr.push(`${d.line}:${d.column} ${d.code} ${d.msg}`);
+    errsByLine.set(d.line, arr);
+  }
+  renderGutter(src.split("\n").length, errsByLine);
+
+  const errs = proj.list.filter((d) => d.severity === "error");
+  const errorCount = errs.length;
+  const otherErrs = errs.filter((d) => d.file !== active).length;
+
+  // 変換後プレビュー（現エントリにエラーが無い時のみ）
+  const curErr = r.diags.some((d) => d.severity === "error");
+  if (!curErr) {
     msxPane.classList.remove("error");
     msxNote.textContent = t("msx.ok");
-    msxOut.textContent = r.msx.replace(/\r/g, "");
+    msxOut.textContent = (r.msx || "").replace(/\r/g, "");
   } else {
     msxPane.classList.add("error");
     msxNote.textContent = t("msx.err");
     msxOut.textContent = t("msx.errbody");
   }
 
+  // Problems パネル（他ファイルにエラーがあれば自動で開く）
+  renderProblems(proj.list, active, otherErrs > 0);
+
   // ステータス
   if (errorCount > 0) {
-    setStatus("err", t("st.err", errorCount));
+    setStatus("err", t("st.err", errorCount) + (otherErrs > 0 ? t("st.elsewhere", otherErrs) : ""));
   } else {
-    const warn = r.diags.length;
+    const warn = proj.list.length;
     setStatus("", warn ? t("st.okwarn", warn) : t("st.ok"));
   }
+  // setStatus は className を置き換えるので、クリック可否は最後に付け直す。
+  statusEl.classList.toggle("clickable", proj.list.length > 0);
 }
 
 // 全更新（整形・読込・タブ切替など、入力以外のタイミング用）

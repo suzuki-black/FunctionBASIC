@@ -11,6 +11,7 @@ import type {
 } from "../ast/nodes.ts";
 import { suffixOf } from "../ast/nodes.ts";
 import type { Diagnostic, DiagParams } from "../core/diagnostics.ts";
+import type { Position } from "../core/position.ts";
 import { error } from "../core/diagnostics.ts";
 import { hasError } from "../core/diagnostics.ts";
 import {
@@ -266,8 +267,8 @@ export interface TransformOptions {
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
   const diagnostics: Diagnostic[] = [];
-  const fail = (key: string, params: DiagParams = {}) =>
-    diagnostics.push(error(key, ORIGIN, params));
+  const fail = (key: string, params: DiagParams = {}, pos: Position = ORIGIN) =>
+    diagnostics.push(error(key, pos, params));
 
   // 変数名と組み込み（命令/関数）名の衝突検出（黙って誤変換しない）。
   diagnostics.push(...checkNameCollisions(program));
@@ -284,7 +285,7 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   const funcNames = new Set<string>();
   const funcTable = new Map<string, FunctionDef>();
   for (const fn of program.functions) {
-    if (funcTable.has(fn.name)) fail("E_DUP_FUNCTION", { name: fn.name });
+    if (funcTable.has(fn.name)) fail("E_DUP_FUNCTION", { name: fn.name }, fn.pos);
     funcTable.set(fn.name, fn);
     funcNames.add(fn.name);
   }

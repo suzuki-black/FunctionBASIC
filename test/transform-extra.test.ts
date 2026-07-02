@@ -412,6 +412,13 @@ PRINT X%`);
   assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
 });
 
+test("E_DUP_FUNCTION は重複した関数定義の位置を持つ（由来行エラー用）", () => {
+  const { diagnostics } = compile(`FUNCTION FOO()\nEND FUNCTION\nFUNCTION FOO()\nEND FUNCTION\n`);
+  const d = diagnostics.find((x) => x.code === "E_DUP_FUNCTION");
+  assert.ok(d, "E_DUP_FUNCTION が報告される");
+  assert.ok(d.line >= 3, `2つ目の定義(行3)を指すべき: line=${d.line}`);
+});
+
 test("STRICT: PUT SPRITE 等の節キーワードは未型変数と誤検知しない", () => {
   const { diagnostics } = compile(`STRICT
 X% = 10

@@ -13,7 +13,13 @@ import type {
 import { suffixOf } from "../ast/nodes.ts";
 import type { Diagnostic, DiagParams } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
-import { isBuiltin, BUILTIN_RETURN } from "../core/builtins.ts";
+import {
+  isBuiltin,
+  isBuiltinFunction,
+  isBuiltinClauseWord,
+  isBareReadBuiltin,
+  BUILTIN_RETURN,
+} from "../core/builtins.ts";
 import type { Position } from "../core/position.ts";
 
 // 値型: 具体型 %/!/#/$ ＋ リテラル（整数=どの数値にも可 / 小数=!,#のみ）＋ any（不明・抑制）
@@ -70,6 +76,10 @@ export function typeCheck(program: Program): Diagnostic[] {
       case "Str":
         return "$";
       case "Var":
+        // 組み込みの節キーワードが Var として現れる場合（例: PUT SPRITE の SPRITE）は
+        // ユーザ変数ではないので型付け不要＝抑制する。
+        if (isBuiltin(e.name) || isBuiltinClauseWord(e.name) || isBareReadBuiltin(e.name))
+          return "any";
         return nameType(e.name, pos);
       case "ArrayRef": {
         for (const ix of e.indices) {
@@ -140,7 +150,10 @@ export function typeCheck(program: Program): Diagnostic[] {
         for (const a of e.args) typeOf(a.expr, pos);
         if (e.name.endsWith("$")) return "$";
         if (e.name === "ABS") return e.args[0] ? litToConcrete(typeOf(e.args[0].expr, pos)) : "#";
-        return BUILTIN_RETURN.get(e.name) ?? "#";
+        if (isBuiltinFunction(e.name)) return BUILTIN_RETURN.get(e.name) ?? "#";
+        // ユーザ関数でも組み込みでもない name(...) は MSX-BASIC では配列参照。
+        // 要素型はサフィックスから決まる（前方参照/GLOBAL配列で DIM が後にある場合も含む）。
+        return nameType(e.name, pos);
       }
     }
   };

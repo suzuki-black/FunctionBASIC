@@ -65,6 +65,24 @@ test("型サフィックスと初期値型の不一致は E_CONST_TYPE", () => {
   assert.ok(compile('CONST S$ = 1\n').errs.includes("E_CONST_TYPE"));
 });
 
+test("整数CONST %% に小数値を与えると宣言時に E_CONST_TYPE（使用有無に関わらず）", () => {
+  assert.ok(compile("CONST X% = 1.5\n").errs.includes("E_CONST_TYPE"));
+  // 整数値ならOK・整数リテラルとしてインライン
+  const { msx, errs } = compile("CONST STEPX% = 3\nA% = STEPX% * 2\n");
+  assert.deepEqual(errs, []);
+  assert.match(msx, /=3\*2|=6/); // STEPX% が 3 にインライン
+});
+
+test("STRICT では CONST も型サフィックス必須（E_STRICT_UNTYPED）", () => {
+  assert.ok(compile("STRICT\nCONST X = 40\nA% = X\n").errs.includes("E_STRICT_UNTYPED"));
+  // サフィックス付きなら通り、参照もサフィックス付きで解決
+  assert.deepEqual(compile("STRICT\nCONST MAX% = 40\nA% = MAX%\n").errs, []);
+});
+
+test("非STRICT では CONST 無サフィックスは従来どおり許容（後方互換）", () => {
+  assert.deepEqual(compile("CONST MAX = 40\nA = MAX\n").errs, []);
+});
+
 test("同名CONSTの重複は E_DUP_CONST", () => {
   const { errs } = compile("CONST A=1\nCONST A=2\n");
   assert.ok(errs.includes("E_DUP_CONST"));

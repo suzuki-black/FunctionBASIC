@@ -7,8 +7,11 @@
 '      (no implicit conversion — convert with CINT/CSNG/CDBL/STR$ …)
 '  Integer (%) math is the fast path on the Z80, so STRICT also
 '  nudges you toward % where you do not need fractions.
+'  Constants need a type suffix too under STRICT (CONST N% = 10).
 ' ============================================================
 STRICT
+
+CONST N% = 10                   ' typed constant; inlined as a literal (no runtime var)
 
 FUNCTION ADD%(A%, B%)            ' typed function: takes two %, returns %
     RETURN A% + B%
@@ -19,12 +22,12 @@ WIDTH 40
 CLS
 
 TOTAL% = 0
-FOR I% = 1 TO 10
+FOR I% = 1 TO N%
     TOTAL% = ADD%(TOTAL%, I%)    ' all % — fast, no conversions
 NEXT I%
-PRINT "sum 1..10 = "; TOTAL%
+PRINT "sum 1.."; N%; "= "; TOTAL%
 
-AVG! = CSNG(TOTAL%) / 10         ' need a fraction -> single; convert explicitly
+AVG! = CSNG(TOTAL%) / N%         ' need a fraction -> single; convert explicitly
 PRINT "average   = "; AVG!
 
 MSG$ = "total is " + STR$(TOTAL%) ' number -> string via STR$

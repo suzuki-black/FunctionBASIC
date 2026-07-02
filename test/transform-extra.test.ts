@@ -398,6 +398,27 @@ PRINT X%`);
   assert.match(msx, /GOSUB 1000/); // 配列参照でなく関数呼び出し
 });
 
+test("STRICT: 前方参照/GLOBAL配列の読み出しは配列扱いで型不一致にしない", () => {
+  // DIM が関数より後（前方参照）でも、name%(...) は配列参照＝要素型はサフィックス由来。
+  const { diagnostics } = compile(`STRICT
+FUNCTION F%()
+  GLOBAL IL%
+  RETURN IL%(0)
+END FUNCTION
+DIM IL%(15)
+IL%(0) = 7
+X% = F()
+PRINT X%`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+});
+
+test("STRICT: PUT SPRITE 等の節キーワードは未型変数と誤検知しない", () => {
+  const { diagnostics } = compile(`STRICT
+X% = 10
+PUT SPRITE 0, (X%, 20), 3, 0`);
+  assert.equal(diagnostics.filter((d) => d.code === "E_STRICT_UNTYPED").length, 0);
+});
+
 test("DEFINT/DEFSNG/DEFDBL/DEFSTR は未対応エラー（型はサフィックスで）", () => {
   for (const d of ["DEFINT A-Z", "DEFSNG A", "DEFDBL X-Z", "DEFSTR S"])
     assert.ok(

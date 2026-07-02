@@ -73,7 +73,8 @@ function fold(e: Expr, env: Map<string, ConstVal>): Expr | null {
 const typeOk = (suffix: string, lit: Expr): boolean =>
   suffix === "$" ? lit.type === "Str"
     : suffix === "" ? true
-      : lit.type === "Num"; // % / ! / # は数値
+      // % / ! / # は数値。% は整数値のみ（CONST N% = 1.5 は宣言時に弾く）。
+      : lit.type === "Num" && (suffix !== "%" || Number.isInteger(lit.value));
 
 // scope 内（ネスト含む）の CONST 宣言を収集。
 function collectConsts(stmts: Stmt[]): Decl[] {
@@ -90,7 +91,7 @@ function collectConsts(stmts: Stmt[]): Decl[] {
 }
 
 // 宣言群を畳み込んで env を作る（依存は反復解決）。
-function buildEnv(decls: Decl[], base: Map<string, ConstVal>, diags: Diagnostic[]): Map<string, ConstVal> {
+function buildEnv(decls: Decl[], base: Map<string, ConstVal>, diags: Diagnostic[], strict: boolean): Map<string, ConstVal> {
   const env = new Map(base);
   // 重複検出
   const seen = new Set<string>();
@@ -107,6 +108,8 @@ function buildEnv(decls: Decl[], base: Map<string, ConstVal>, diags: Diagnostic[
       const lit = fold(d.expr, env);
       if (lit) {
         const sfx = suffixOf(d.name);
+        // STRICT では CONST も型サフィックス必須（変数と一貫）。
+        if (strict && sfx === "") diags.push(error("E_STRICT_UNTYPED", d.pos, { name: d.name }));
         if (!typeOk(sfx, lit)) diags.push(error("E_CONST_TYPE", d.pos, { name: d.name }));
         env.set(d.name, { lit, suffix: sfx });
         pending.splice(i, 1);
@@ -202,12 +205,13 @@ function rewriteStmts(stmts: Stmt[], env: Map<string, ConstVal>, diags: Diagnost
 export function inlineConsts(program: Program): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const empty = new Map<string, ConstVal>();
+  const strict = program.strict === true;
   // 1) トップレベル＝グローバル定数
-  const globalEnv = buildEnv(collectConsts(program.toplevel), empty, diags);
+  const globalEnv = buildEnv(collectConsts(program.toplevel), empty, diags, strict);
   program.toplevel = rewriteStmts(program.toplevel, globalEnv, diags);
   // 2) 各関数＝グローバル＋関数ローカル定数（ローカルが優先）
   for (const fn of program.functions) {
-    const env = buildEnv(collectConsts(fn.body), globalEnv, diags);
+    const env = buildEnv(collectConsts(fn.body), globalEnv, diags, strict);
     fn.body = rewriteStmts(fn.body, env, diags);
   }
   return diags;

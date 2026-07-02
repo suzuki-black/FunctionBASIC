@@ -122,7 +122,7 @@ The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on de
 | `FOR / NEXT` | `FOR I = a TO b [STEP s] … NEXT I` | Standard counted loop. |
 | `WHILE` | `WHILE cond … WEND` | Condition loop; `BREAK` / `CONTINUE` supported. |
 | `GLOBAL` | `GLOBAL X` | Opt in to a shared (global) variable; otherwise variables are local. |
-| `CONST` | `CONST NAME = const-expr` | Compile-time constant; folded and inlined as a literal. Re-assignment is an error. |
+| `CONST` | `CONST NAME[%!#$] = const-expr` | Compile-time constant; folded and inlined as a literal. Re-assignment is an error. An optional type suffix is validated (`CONST N% = 3`; `%` requires an integer value) and is **required under `STRICT`**. |
 | `RETURN` | `RETURN [value]` | Returns from a function, optionally with a value. |
 | Arrays | `DIM A(n)` ; pass with `REF A` | Arrays may be passed by reference, including string arrays. |
 
@@ -161,7 +161,7 @@ Put `STRICT` at the top of a program to turn on **opt-in static type checking** 
 
 Under `STRICT`:
 
-- **Every variable, array, parameter and `FOR` variable must carry a type suffix** — `%` integer, `!` single, `#` double, `$` string. Untyped names are an error (`E_STRICT_UNTYPED`).
+- **Every variable, array, parameter, `FOR` variable and `CONST` must carry a type suffix** — `%` integer, `!` single, `#` double, `$` string. Untyped names are an error (`E_STRICT_UNTYPED`).
 - **Assignments, function arguments and return values must match the type exactly.** No implicit conversion: `A% = B#`, `A% = 1.5`, and any string/number mix are errors (`E_TYPE_MISMATCH`). Convert explicitly with `CINT` / `CSNG` / `CDBL` / `INT` / `FIX` / `ASC` / `STR$` / `VAL` …
 - Numeric literals are flexible (`5` fits `%`/`!`/`#`; `1.5` fits `!`/`#`); operators follow MSX promotion, and the exact-match check fires at the assignment/argument/return boundary.
 - Because integer (`%`) math is the fast path on the Z80, STRICT also nudges game logic toward `%`. For trig/graphics, keep coordinates and math in one float type (`!`/`#`) — MSX graphics statements accept floats — or convert at the boundary.
@@ -445,7 +445,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 | `FOR / NEXT` | `FOR I = a TO b [STEP s] … NEXT I` | 標準の数え上げループ。 |
 | `WHILE` | `WHILE 条件 … WEND` | 条件ループ。`BREAK` / `CONTINUE` 対応。 |
 | `GLOBAL` | `GLOBAL X` | 共有（グローバル）変数を使う宣言。なければローカル。 |
-| `CONST` | `CONST 名前 = 定数式` | コンパイル時定数。畳み込んでリテラルとしてインライン。再代入はエラー。 |
+| `CONST` | `CONST 名前[%!#$] = 定数式` | コンパイル時定数。畳み込んでリテラルとしてインライン。再代入はエラー。型サフィックスは任意で、付けると検証（`CONST N% = 3`、`%`は整数値のみ）。**`STRICT` では必須**。 |
 | `RETURN` | `RETURN [値]` | 関数から戻る。値を返せる。 |
 | 配列 | `DIM A(n)` ／ `REF A` で渡す | 配列は参照渡し可。文字列配列も可。 |
 
@@ -484,7 +484,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 `STRICT` では：
 
-- **全ての変数・配列・引数・`FOR`変数に型サフィックス必須** — `%`整数 `!`単精度 `#`倍精度 `$`文字列。無いとエラー（`E_STRICT_UNTYPED`）。
+- **全ての変数・配列・引数・`FOR`変数・`CONST`に型サフィックス必須** — `%`整数 `!`単精度 `#`倍精度 `$`文字列。無いとエラー（`E_STRICT_UNTYPED`）。
 - **代入・引数・戻り値は型が完全一致**。暗黙変換なし：`A% = B#`・`A% = 1.5`・文字列/数値の混在はエラー（`E_TYPE_MISMATCH`）。変換は `CINT` / `CSNG` / `CDBL` / `INT` / `FIX` / `ASC` / `STR$` / `VAL` … で明示。
 - 数値リテラルは柔軟（`5`は%/!/#可、`1.5`は!/#）。演算子はMSXの昇格に従い、完全一致判定は代入/引数/戻り値の境界で行われます。
 - Z80では整数(`%`)演算が速いので、STRICTはゲームロジックを`%`へ寄せます。三角関数/グラフィックスは座標も計算も浮動小数(`!`/`#`)で統一（MSXの描画命令は浮動小数を受けます）するか、境界で明示変換を。

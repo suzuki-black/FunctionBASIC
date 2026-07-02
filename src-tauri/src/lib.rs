@@ -126,6 +126,12 @@ async fn open_folder(app: tauri::AppHandle) -> Result<Option<OpenResult>, String
     }))
 }
 
+// バインド済みフォルダを再読込（ダイアログ無し）。外部でファイルが変わった時用。
+#[tauri::command]
+fn read_folder(dir: String) -> Result<Vec<FileEntry>, String> {
+    read_msxb_dir(std::path::Path::new(&dir))
+}
+
 // 1 ソースファイルを dir/name へ Shift-JIS 保存（ダイアログ無し）。name は .msxb 込み。
 #[tauri::command]
 fn save_source(dir: String, name: String, source: String) -> Result<(), String> {
@@ -523,6 +529,7 @@ fn build_native_menu<R: tauri::Runtime>(
         true,
         &[
             &mi("openfolder", "フォルダを開く…", "Open Folder…")?,
+            &mi("reloadfolder", "ディスクから再読込", "Reload from Disk")?,
             &PredefinedMenuItem::separator(handle)?,
             &mi("savesrc", "保存（ソース）", "Save (source)")?,
             &mi("save", "変換して保存", "Convert & Save")?,
@@ -612,6 +619,7 @@ pub fn run() {
             save_project,
             pick_folder,
             open_folder,
+            read_folder,
             save_source,
             save_build,
             set_clipboard,

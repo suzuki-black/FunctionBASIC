@@ -93,9 +93,12 @@ const I18N = {
     "save.dl": "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で",
     "save.src": "保存しました（.msxb）",
     "save.srcdl": "保存しました（.msxb をダウンロード）",
-    "savesrc": "保存（ソース）", "openfolder": "フォルダを開く…",
+    "savesrc": "保存（ソース）", "openfolder": "フォルダを開く…", "reloadfolder": "ディスクから再読込",
     "folder.opened": (n) => `フォルダを開きました（${n} ファイル）`,
+    "folder.reloaded": (n) => `ディスクから再読込しました（${n} ファイル）`,
     "folder.bound": "フォルダを紐付けて保存しました",
+    "folder.nobind": "フォルダが未バインドです（先に「フォルダを開く」）",
+    "folder.empty": "フォルダに .msxb がありません",
     "folder.desktoponly": "「フォルダを開く」はデスクトップ版のみです",
     "run.noerr": "エラーがあるため実行できません",
     "run.ok": (name, note) => `アプリ内WebMSXで実行（RUN"${name}"）${note}`,
@@ -185,9 +188,12 @@ const I18N = {
     "save.dl": "Saved (.msxb / .map.json / .bas). Shift-JIS encoding is desktop-only.",
     "save.src": "Saved (.msxb)",
     "save.srcdl": "Saved (.msxb download)",
-    "savesrc": "Save (source)", "openfolder": "Open Folder…",
+    "savesrc": "Save (source)", "openfolder": "Open Folder…", "reloadfolder": "Reload from Disk",
     "folder.opened": (n) => `Opened folder (${n} files)`,
+    "folder.reloaded": (n) => `Reloaded from disk (${n} files)`,
     "folder.bound": "Bound folder and saved",
+    "folder.nobind": "No folder bound (use Open Folder first)",
+    "folder.empty": "No .msxb files in the folder",
     "folder.desktoponly": "Open Folder is desktop-only",
     "run.noerr": "Cannot run: there are errors.",
     "run.ok": (name, note) => `Running in the embedded WebMSX (RUN"${name}")${note}`,
@@ -961,6 +967,26 @@ async function onOpenFolder() {
   saveProject();
 }
 
+// バインド済みフォルダをディスクから再読込（外部でファイルが変わった時）。
+async function onReloadFolder() {
+  if (!isDesktop() || !project.dir) { setStatus("err", t("folder.nobind")); return; }
+  let files;
+  try { files = await tauri().core.invoke("read_folder", { dir: project.dir }); }
+  catch (e) { logErr("read_folder", e); setStatus("err", t("save.err", e?.message ?? e)); return; }
+  if (!files.length) { setStatus("err", t("folder.empty")); return; }
+  const map = {};
+  for (const f of files) map[f.name] = f.content;
+  project.files = map;
+  if (map[project.active] == null) project.active = map["main.msxb"] != null ? "main.msxb" : Object.keys(map).sort()[0];
+  setReadOnly(false);
+  $("filename").value = project.active;
+  setSource(project.files[project.active]);
+  activateTab("structured");
+  renderTree();
+  saveProject();
+  setStatus("ok", t("folder.reloaded", files.length));
+}
+
 // ---- 再生（WebMSX、1クリック自動実行。docs/10 §10.4）----
 // WebMSX の URL パラメータ（DISKA_FILES_URL + BASIC_RUN）を使い、プログラムを
 // data: URL の ZIP で直接渡して「自動ロード→自動RUN」させる。同梱せずリンクのみ
@@ -1652,7 +1678,29 @@ function goForward() {
 }
 
 // ---- 定義へ移動 / 使用箇所 ----
+// キャレット行が INCLUDE "パス" なら、そのパスを返す（ジャンプ用）。
+function includePathAtLine() {
+  const line = srcEl.value.split("\n")[caretLine() - 1] || "";
+  const m = line.match(/^\s*INCLUDE\s+"([^"]+)"/i);
+  return m ? m[1] : null;
+}
+// INCLUDE 先を開く（プロジェクトファイル→basename→埋め込みライブラリの順）。
+function openInclude(path) {
+  if (project.files[path] != null) { openFile(path); return true; }
+  const b = path.split("/").pop();
+  if (project.files[b] != null) { openFile(b); return true; }
+  if (LIBS[path] != null) { openLib(path, 0); return true; }
+  if (LIBS[b] != null) { openLib(b, 0); return true; }
+  return false;
+}
 function goToDefinition() {
+  // INCLUDE 行なら取り込み先ファイルへジャンプ（JetBrains の Go to file）。
+  const incPath = includePathAtLine();
+  if (incPath) {
+    if (openInclude(incPath)) flash((lang === "en" ? "Open include: " : "INCLUDE を開く: ") + incPath);
+    else flash((lang === "en" ? "File not found: " : "ファイルが見つかりません: ") + incPath);
+    return;
+  }
   const t = identAtCaret();
   if (!t) { flash("識別子の上で実行してください"); return; }
   const def = findDefinition(t.value, srcEl.value);
@@ -2147,6 +2195,10 @@ srcEl.addEventListener("scroll", () => { syncScroll(); updateCurLine(); });
 // キャレット移動（クリック/矢印/選択）で現在行を追従
 srcEl.addEventListener("keyup", updateCurLine);
 srcEl.addEventListener("click", updateCurLine);
+// Cmd/Ctrl+クリックで定義/INCLUDE先へジャンプ（JetBrains 流）。クリックでキャレットが移った後に判定。
+srcEl.addEventListener("click", (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) goToDefinition();
+});
 srcEl.addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey;
   // Undo / Redo（自前スタック。ネイティブと二重発火しないよう preventDefault）
@@ -2206,6 +2258,7 @@ function runAction(act) {
     case "save": return onConvertSave();
     case "savesrc": return onSave();
     case "openfolder": return onOpenFolder();
+    case "reloadfolder": return onReloadFolder();
     case "dsk": return onMakeDsk();
     case "sav": return onMakeSav();
     case "undo": return doUndo();

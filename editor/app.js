@@ -89,6 +89,12 @@ const I18N = {
     "save.err": (e) => "保存に失敗しました: " + e, "save.errchk": "誤りがあります。確認してください（変換前のみ保存）",
     "save.done": "保存しました（.msxb / .map.json / .bas、Shift-JIS）",
     "save.dl": "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で",
+    "save.src": "保存しました（.msxb）",
+    "save.srcdl": "保存しました（.msxb をダウンロード）",
+    "savesrc": "保存（ソース）", "openfolder": "フォルダを開く…",
+    "folder.opened": (n) => `フォルダを開きました（${n} ファイル）`,
+    "folder.bound": "フォルダを紐付けて保存しました",
+    "folder.desktoponly": "「フォルダを開く」はデスクトップ版のみです",
     "run.noerr": "エラーがあるため実行できません",
     "run.ok": (name, note) => `アプリ内WebMSXで実行（RUN"${name}"）${note}`,
     "run.note": (n) => `（日本語等${n}字は実行用に除去）`, "run.open.err": "WebMSXを開けませんでした",
@@ -173,6 +179,12 @@ const I18N = {
     "save.err": (e) => "Save failed: " + e, "save.errchk": "There are errors. Saved source only.",
     "save.done": "Saved (.msxb / .map.json / .bas, Shift-JIS)",
     "save.dl": "Saved (.msxb / .map.json / .bas). Shift-JIS encoding is desktop-only.",
+    "save.src": "Saved (.msxb)",
+    "save.srcdl": "Saved (.msxb download)",
+    "savesrc": "Save (source)", "openfolder": "Open Folder…",
+    "folder.opened": (n) => `Opened folder (${n} files)`,
+    "folder.bound": "Bound folder and saved",
+    "folder.desktoponly": "Open Folder is desktop-only",
     "run.noerr": "Cannot run: there are errors.",
     "run.ok": (name, note) => `Running in the embedded WebMSX (RUN"${name}")${note}`,
     "run.note": (n) => ` (${n} non-ASCII char(s) stripped for run)`, "run.open.err": "Could not open WebMSX.",
@@ -730,22 +742,76 @@ function download(name, content) {
 function baseName() {
   return ($("filename").value || "game.msxb").replace(/\.msxb$/i, "");
 }
+// ---- フォルダ＝プロジェクト（デスクトップ。JetBrains 流）----
+// project.dir にバインドしたフォルダのパスを保持。Cmd+S はソースのみ無ダイアログ保存。
+async function pickFolder() {
+  try { return await tauri().core.invoke("pick_folder"); }
+  catch (e) { logErr("pick_folder", e); return null; }
+}
+async function saveSourceFile(name) {
+  await tauri().core.invoke("save_source", { dir: project.dir, name, source: project.files[name] ?? "" });
+}
+async function saveAllSources() {
+  for (const name of userFiles()) await saveSourceFile(name);
+}
+// バインド済みフォルダを返す。未バインドなら選択→全ソース書き出し→パスを返す（キャンセルは null）。
+async function ensureBound() {
+  if (project.dir) return project.dir;
+  const dir = await pickFolder();
+  if (!dir) return null;
+  project.dir = dir;
+  saveProject();
+  await saveAllSources();
+  renderTree();
+  return dir;
+}
+// 実行/変換/ディスク前の自動保存（バインド時のみ全ソースをディスクへ）。
+async function autosave() {
+  if (isDesktop() && project.dir) {
+    syncActiveFile();
+    try { await saveAllSources(); } catch (e) { logErr("autosave", e); }
+  }
+}
+// 変換成果物の基準名（エントリ＝ビルド対象のファイル名）。
+function entryBase() {
+  return String(currentEntry() || project.active || "game.msxb").replace(/\.msxb$/i, "");
+}
+
+// Cmd+S: ソース(.msxb)のみ保存（変換なし・無ダイアログ）。
 async function onSave() {
+  syncActiveFile();
+  const name = project.active;
+  if (isDesktop()) {
+    const dir = await ensureBound();
+    if (!dir) return;
+    try {
+      await saveSourceFile(name);
+      setStatus("ok", t("save.src"));
+    } catch (e) { setStatus("err", t("save.err", e?.message ?? e)); }
+    return;
+  }
+  // ブラウザ: ソース .msxb を単体ダウンロード
+  download(`${String(name).replace(/\.msxb$/i, "")}.msxb`, project.files[name] ?? srcEl.value);
+  setStatus("ok", t("save.srcdl"));
+}
+
+// 「変換して保存」: 全ソース保存 → トランスパイル → 成果物(.bas/.map.json)書き出し。
+async function onConvertSave() {
+  syncActiveFile();
   const r = compileProject();
   const hasError = r.diags.some((d) => d.severity === "error");
-  const base = baseName();
+  const base = entryBase();
 
   if (isDesktop()) {
-    // デスクトップ: Rust 側で Shift-JIS 保存（docs/08・10）
+    const dir = await ensureBound();
+    if (!dir) return;
     try {
-      const saved = await tauri().core.invoke("save_project", {
-        base,
-        source: srcEl.value,
-        mapJson: hasError ? "" : JSON.stringify(r.map, null, 1),
-        msx: hasError ? "" : r.msx,
-        hasError,
-      });
-      if (saved === false) return; // ダイアログでキャンセル
+      await saveAllSources();
+      if (!hasError) {
+        await tauri().core.invoke("save_build", {
+          dir, base, msx: r.msx, mapJson: JSON.stringify(r.map, null, 1),
+        });
+      }
       setStatus(hasError ? "err" : "ok", hasError ? t("save.errchk") : t("save.done"));
     } catch (e) {
       setStatus("err", t("save.err", e?.message ?? e));
@@ -763,6 +829,35 @@ async function onSave() {
   download(`${base}.map.json`, JSON.stringify(r.map, null, 1));
   download(`${base}.bas`, r.msx);
   setStatus("ok", t("save.dl"));
+}
+
+// フォルダを開く: 直下の *.msxb を読み込みプロジェクトにする（空フォルダなら現行を紐付け）。
+async function onOpenFolder() {
+  if (!isDesktop()) { setStatus("err", t("folder.desktoponly")); return; }
+  let res;
+  try { res = await tauri().core.invoke("open_folder"); }
+  catch (e) { logErr("open_folder", e); setStatus("err", t("save.err", e?.message ?? e)); return; }
+  if (!res) return; // キャンセル
+  syncActiveFile();
+  project.dir = res.dir;
+  if (res.files.length) {
+    const files = {};
+    for (const f of res.files) files[f.name] = f.content;
+    project.files = files;
+    project.mainFile = null;
+    project.active = files["main.msxb"] != null ? "main.msxb" : Object.keys(files).sort()[0];
+    setReadOnly(false);
+    $("filename").value = project.active;
+    setSource(project.files[project.active]);
+    activateTab("structured");
+    setStatus("ok", t("folder.opened", res.files.length));
+  } else {
+    // 空フォルダ = ここに現在のプロジェクトを紐付け（全ソースを書き出す）
+    await saveAllSources();
+    setStatus("ok", t("folder.bound"));
+  }
+  renderTree();
+  saveProject();
 }
 
 // ---- 再生（WebMSX、1クリック自動実行。docs/10 §10.4）----
@@ -876,6 +971,7 @@ async function webmsxAutorunUrl(name, asciiProgram) {
 
 async function onPlayWebMSX() {
   log("WebMSX 実行: 開始");
+  await autosave(); // 実行＝全ソース保存 → トランスパイル → 実行
   const r = compileProject();
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("run.noerr"));
@@ -904,6 +1000,7 @@ async function onPlayWebMSX() {
 // FAT12 の .dsk を生成 → WebMSX にドラッグ → RUN"NAME.BAS"。日本語コメントも化けない。
 async function onMakeDsk() {
   log("ディスク作成: 開始");
+  await autosave();
   const r = compileProject();
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("dsk.noerr"));
@@ -940,6 +1037,7 @@ async function onMakeDsk() {
 // .sav は MSXPLAYer のワークドライブに置いてデータを渡す用途のため、WebMSX は開かない。
 async function onMakeSav() {
   log(".sav作成: 開始");
+  await autosave();
   const r = compileProject();
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("sav.noerr"));
@@ -1983,7 +2081,8 @@ srcEl.addEventListener("keydown", (e) => {
     render();
     return;
   }
-  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); onSave(); return; }
+  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); if (e.shiftKey) onConvertSave(); else onSave(); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "o") { e.preventDefault(); onOpenFolder(); return; }
   if (mod && e.key === "Enter") { e.preventDefault(); onPlayWebMSX(); return; }
   if (mod && e.altKey && e.key.toLowerCase() === "l") { e.preventDefault(); onFormat(); return; } // 整形（JetBrains: Reformat Code）
   if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); goToDefinition(); return; }
@@ -2003,7 +2102,9 @@ gutterEl.addEventListener("click", (e) => {
 // ---- アクション・ディスパッチャ（メニューバー / OSネイティブメニュー 共通）----
 function runAction(act) {
   switch (act) {
-    case "save": return onSave();
+    case "save": return onConvertSave();
+    case "savesrc": return onSave();
+    case "openfolder": return onOpenFolder();
     case "dsk": return onMakeDsk();
     case "sav": return onMakeSav();
     case "undo": return doUndo();
@@ -2099,7 +2200,7 @@ $("filename").addEventListener("change", async () => {
   renderTree();
   saveProject();
 });
-$("saveBtn").addEventListener("click", onSave);
+$("saveBtn").addEventListener("click", onConvertSave);
 $("playBtn").addEventListener("click", onPlayWebMSX);
 $("copyBtn").addEventListener("click", async () => {
   const ok = await copyText(msxOut.textContent);

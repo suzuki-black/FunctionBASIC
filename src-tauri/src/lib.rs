@@ -44,6 +44,105 @@ async fn save_project(
     Ok(true)
 }
 
+// ===== フォルダ＝プロジェクト（JetBrains 流。docs/08 §8.3 拡張）=====
+// バインドしたフォルダに .msxb を実ファイルとして置き、Cmd+S はソースのみ無ダイアログ保存。
+// 変換(.bas/.map)や実行は「全ソース保存→トランスパイル→実行」で別途行う。
+
+// バイト列を UTF-8 として妥当ならそのまま、駄目なら Shift-JIS としてデコードする。
+// （本アプリは Shift-JIS で書くが、外部由来の UTF-8 .msxb も読めるように）
+fn decode_text(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => {
+            let (text, _enc, _had_errors) = encoding_rs::SHIFT_JIS.decode(bytes);
+            text.into_owned()
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct FileEntry {
+    name: String,
+    content: String,
+}
+
+#[derive(serde::Serialize)]
+struct OpenResult {
+    dir: String,
+    files: Vec<FileEntry>,
+}
+
+// dir 直下の *.msxb を名前順に読み込む（サブフォルダは辿らない）。
+fn read_msxb_dir(dir: &std::path::Path) -> Result<Vec<FileEntry>, String> {
+    let mut out: Vec<FileEntry> = Vec::new();
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let is_msxb = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("msxb"))
+            .unwrap_or(false);
+        if !is_msxb {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        out.push(FileEntry {
+            name: name.to_string(),
+            content: decode_text(&bytes),
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+// フォルダ選択ダイアログ（パスのみ返す。現在のプロジェクトをそこへ紐付ける用）。
+#[tauri::command]
+async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let Some(picked) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let dir = picked.into_path().map_err(|e| e.to_string())?;
+    Ok(Some(dir.display().to_string()))
+}
+
+// フォルダを開く: 選択 → 直下の *.msxb を全読み込みして返す。
+#[tauri::command]
+async fn open_folder(app: tauri::AppHandle) -> Result<Option<OpenResult>, String> {
+    let Some(picked) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let dir = picked.into_path().map_err(|e| e.to_string())?;
+    let files = read_msxb_dir(&dir)?;
+    Ok(Some(OpenResult {
+        dir: dir.display().to_string(),
+        files,
+    }))
+}
+
+// 1 ソースファイルを dir/name へ Shift-JIS 保存（ダイアログ無し）。name は .msxb 込み。
+#[tauri::command]
+fn save_source(dir: String, name: String, source: String) -> Result<(), String> {
+    let path = std::path::Path::new(&dir).join(&name);
+    write_sjis(path, &source)
+}
+
+// 変換成果物 base.bas(Shift-JIS)/base.map.json(UTF-8) を dir へ書き出す（ダイアログ無し）。
+#[tauri::command]
+fn save_build(dir: String, base: String, msx: String, map_json: String) -> Result<(), String> {
+    let d = std::path::Path::new(&dir);
+    write_sjis(d.join(format!("{base}.bas")), &msx)?;
+    std::fs::write(d.join(format!("{base}.map.json")), map_json.as_bytes())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // WebView の execCommand/clipboard は WKWebView で不安定なため、
 // デスクトップではクリップボード書き込みを OS 側（Tauri公式プラグイン）で行う。
 #[tauri::command]
@@ -423,6 +522,9 @@ fn build_native_menu<R: tauri::Runtime>(
         l("ファイル", "File"),
         true,
         &[
+            &mi("openfolder", "フォルダを開く…", "Open Folder…")?,
+            &PredefinedMenuItem::separator(handle)?,
+            &mi("savesrc", "保存（ソース）", "Save (source)")?,
             &mi("save", "変換して保存", "Convert & Save")?,
             &mi("dsk", "ディスク(.dsk)を保存…", "Save Disk (.dsk)…")?,
             &mi("sav", "MSXPLAYer用(.sav)を保存…", "Save for MSXPLAYer (.sav)…")?,
@@ -508,6 +610,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             save_project,
+            pick_folder,
+            open_folder,
+            save_source,
+            save_build,
             set_clipboard,
             save_dsk,
             save_sav,

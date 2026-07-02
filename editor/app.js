@@ -1762,16 +1762,40 @@ function goToDefinition() {
   flash(`定義へ移動: ${t.value} (行 ${def.line})`);
 }
 let usage = { name: null, list: [], idx: 0 };
+// 名前の使用箇所を全ファイル横断で集める（プロジェクト＋表示ライブラリ）。
+// {file,pos,isLib} の配列。ファイル順→行順。アクティブファイルはライブバッファを見る。
+function collectUsagesAllFiles(name) {
+  const out = [];
+  const active = activePath();
+  const scan = (file, text, isLib) => {
+    for (const x of tokensAbs(text))
+      if (x.t.kind === "IDENT" && x.t.value === name) out.push({ file, pos: x.t.pos, isLib });
+  };
+  for (const f of Object.keys(project.files).sort())
+    scan(f, f === active ? srcEl.value : project.files[f], false);
+  for (const f of Object.keys(LIBS).filter((k) => k.includes("/")).sort())
+    scan(f, LIBS[f], true);
+  return out;
+}
+// 使用箇所へ移動（必要ならファイルを開いてから）。
+function gotoUsage(u) {
+  if (u.isLib) {
+    if (viewingLib !== u.file) { openLib(u.file, u.pos.line - 1); return; }
+  } else if (u.file !== activePath() || viewingLib) {
+    openFile(u.file);
+  }
+  recordJump();
+  scrollToLine(u.pos.line, u.pos.column - 1);
+}
 function findUsages() {
   const t = identAtCaret();
   if (!t) { flash("識別子の上で実行してください"); return; }
-  const list = tokensAbs(srcEl.value).filter((x) => x.t.kind === "IDENT" && x.t.value === t.value);
-  if (usage.name !== t.value) usage = { name: t.value, list, idx: -1 };
-  usage.idx = (usage.idx + 1) % list.length;
-  const cur = list[usage.idx].t.pos;
-  recordJump();
-  scrollToLine(cur.line, cur.column - 1);
-  flash(`使用箇所 ${usage.idx + 1}/${list.length}: ${t.value}`);
+  if (usage.name !== t.value) usage = { name: t.value, list: collectUsagesAllFiles(t.value), idx: -1 };
+  if (!usage.list.length) { flash(`使用箇所なし: ${t.value}`); return; }
+  usage.idx = (usage.idx + 1) % usage.list.length;
+  const u = usage.list[usage.idx];
+  gotoUsage(u);
+  flash(`使用箇所 ${usage.idx + 1}/${usage.list.length}: ${t.value}（${u.file}）`);
 }
 async function goToLine() {
   const n = await showPrompt(t("prompt.goline.title"), t("prompt.goline"));

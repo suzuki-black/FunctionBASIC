@@ -88,6 +88,8 @@ const I18N = {
     "st.ok": "OK", "st.okwarn": (n) => `OK（警告 ${n} 件）`, "st.err": (n) => `⚠ エラー ${n} 件`,
     "st.elsewhere": (m) => `（うち他ファイル ${m} 件・クリックでProblems）`,
     "prob.title": "Problems", "prob.count": (e, w) => `エラー ${e} / 警告 ${w}`,
+    "prob.create": "このファイルを作成", "prob.createlbl": "作成",
+    "folder.created": (n) => `作成しました: ${n}`,
     "save.err": (e) => "保存に失敗しました: " + e, "save.errchk": "誤りがあります。確認してください（変換前のみ保存）",
     "save.done": "保存しました（.msxb / .map.json / .bas、Shift-JIS）",
     "save.dl": "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で",
@@ -183,6 +185,8 @@ const I18N = {
     "st.ok": "OK", "st.okwarn": (n) => `OK (${n} warning(s))`, "st.err": (n) => `⚠ ${n} error(s)`,
     "st.elsewhere": (m) => ` (${m} in other files — click for Problems)`,
     "prob.title": "Problems", "prob.count": (e, w) => `${e} error(s) / ${w} warning(s)`,
+    "prob.create": "Create this file", "prob.createlbl": "Create",
+    "folder.created": (n) => `Created: ${n}`,
     "save.err": (e) => "Save failed: " + e, "save.errchk": "There are errors. Saved source only.",
     "save.done": "Saved (.msxb / .map.json / .bas, Shift-JIS)",
     "save.dl": "Saved (.msxb / .map.json / .bas). Shift-JIS encoding is desktop-only.",
@@ -622,11 +626,65 @@ function toProjectKey(f) {
 }
 // 全エントリを検証し、診断を由来(file:line)へ再マップして集約（重複除去）。
 // current=現エントリのビルド結果（変換後プレビュー用）を併せて返す。
+// テキスト内で定義される FUNCTION 名の集合。
+function funcNamesIn(text) {
+  const names = new Set();
+  const toks = tokensAbs(text).map((x) => x.t);
+  for (let i = 0; i < toks.length - 1; i++)
+    if (toks[i].kind === "KEYWORD" && toks[i].value === "FUNCTION") names.add(toks[i + 1].value);
+  return names;
+}
+// テキスト内に出現する IDENT の集合。
+function identsIn(text) {
+  const s = new Set();
+  for (const x of tokensAbs(text)) if (x.t.kind === "IDENT") s.add(x.t.value);
+  return s;
+}
+// 取り込んだのに定義した関数が一切使われていない INCLUDE を警告（保守的：関数を定義する lib のみ判定）。
+function unusedIncludeWarnings(sources) {
+  const warns = [];
+  const texts = {};
+  for (const f of sources) texts[f] = readForBuild(f) ?? "";
+  for (const lib of sources.slice(1)) {
+    const defs = funcNamesIn(texts[lib]);
+    if (!defs.size) continue; // GLOBAL/CONST だけの lib は誤検知回避のため対象外
+    let used = false;
+    for (const f of sources) {
+      if (f === lib) continue;
+      const ids = identsIn(texts[f]);
+      for (const d of defs) if (ids.has(d)) { used = true; break; }
+      if (used) break;
+    }
+    if (used) continue;
+    const base = lib.split("/").pop();
+    let loc = null;
+    for (const f of sources) {
+      const lines = texts[f].split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(/^\s*INCLUDE\s+"([^"]+)"/i);
+        if (m && (m[1] === lib || m[1].split("/").pop() === base)) { loc = { file: f, line: i + 1 }; break; }
+      }
+      if (loc) break;
+    }
+    if (loc) warns.push({
+      file: toProjectKey(loc.file), line: loc.line, column: 1, code: "W_UNUSED_INCLUDE",
+      msg: lang === "en" ? `Unused INCLUDE: nothing from "${lib}" is used` : `未使用の INCLUDE: "${lib}" の定義が使われていません`,
+      severity: "warning",
+    });
+  }
+  return warns;
+}
 function projectDiagnostics() {
   const cur = currentEntry();
   const seen = new Set();
   const list = [];
   let current = null;
+  const add = (e) => {
+    const key = `${e.file}:${e.line}:${e.column}:${e.code}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push(e);
+  };
   const build = (entry) => {
     const inc = resolveIncludes(entry, readForBuild);
     const r = compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap });
@@ -635,12 +693,11 @@ function projectDiagnostics() {
       const o = inc.lineMap && d.line >= 1 ? inc.lineMap[d.line - 1] : null;
       const file = o ? toProjectKey(o.file) : entry;
       const line = o ? o.line : d.line;
-      const key = `${file}:${line}:${d.column}:${d.code}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
       const msg = d.key ? localize(d, lang) : d.message;
-      list.push({ file, line, column: d.column, code: d.code, msg, severity: d.severity });
+      add({ file, line, column: d.column, code: d.code, msg, severity: d.severity,
+        path: d.code === "E_INCLUDE_NOT_FOUND" ? d.params?.path : undefined });
     }
+    for (const w of unusedIncludeWarnings(inc.sources)) add(w);
   };
   for (const entry of allEntries()) { try { build(entry); } catch (_) {} }
   if (!current) { try { build(cur); } catch (_) {} } // 念のため現エントリ分を確保
@@ -683,9 +740,10 @@ function renderProblems(list, active, autoOpen) {
   for (const d of list) {
     const cls = d.severity === "error" ? "err" : "warn";
     const here = d.file === active ? " here" : "";
+    const create = d.path ? `<button class="pcreate" data-path="${esc(d.path)}" title="${esc(t("prob.create"))}">＋${esc(t("prob.createlbl"))}</button>` : "";
     html += `<div class="pr ${cls}${here}" data-file="${esc(d.file)}" data-line="${d.line}">` +
       `<span class="pf">${esc(d.file)}</span><span class="pl">:${d.line}:${d.column}</span>` +
-      `<span class="pc">${esc(d.code)}</span><span class="pm">${esc(d.msg)}</span></div>`;
+      `<span class="pc">${esc(d.code)}</span><span class="pm">${esc(d.msg)}</span>${create}</div>`;
   }
   problemsEl.innerHTML = html;
   applyProblemsVisibility();
@@ -693,6 +751,8 @@ function renderProblems(list, active, autoOpen) {
 function toggleProblems() { if (problemsList.length) { problemsOpen = !problemsOpen; applyProblemsVisibility(); } }
 problemsEl.addEventListener("click", (e) => {
   if (e.target.closest(".pclose")) { problemsOpen = false; applyProblemsVisibility(); return; }
+  const cb = e.target.closest(".pcreate");
+  if (cb) { e.stopPropagation(); createIncludeFile(cb.dataset.path); return; }
   const row = e.target.closest(".pr");
   if (!row) return;
   const file = row.dataset.file;
@@ -701,6 +761,20 @@ problemsEl.addEventListener("click", (e) => {
   else if (LIBS[file] != null || LIBS[file.split("/").pop()] != null) openLib(file, line);
 });
 statusEl.addEventListener("click", toggleProblems);
+
+// 未解決 INCLUDE のクイックフィックス: その名前のファイルを作って開く。
+async function createIncludeFile(path) {
+  const name = (path || "").trim();
+  if (!name) return;
+  if (project.files[name] != null) { openFile(name); flash(t("proj.exists", name)); return; }
+  syncActiveFile();
+  project.files[name] = `' ${name}\n`;
+  if (isDesktop() && project.dir && !name.includes("/")) {
+    try { await saveSourceFile(name); } catch (e) { logErr("save_source", e); }
+  }
+  openFile(name); // renderTree + saveProject を含む
+  flash(t("folder.created", name));
+}
 
 // ---- 軽い更新：シンタックスハイライトのみ（入力ごとに即時反映）----
 // 表示文字は透明テキストエリア背後のハイライト層なので、これを即時更新しないと
@@ -1536,26 +1610,47 @@ async function sanitizeName(raw) {
   if (!/\.[a-z0-9]+$/i.test(n)) n += ".msxb";
   return n;
 }
+// ファイルが直接 INCLUDE するプロジェクトファイル（パス→basename 解決）。
+function includeChildren(f) {
+  const out = [];
+  for (const p of includesOf(fileContent(f))) {
+    if (project.files[p] != null) out.push(p);
+    else { const b = p.split("/").pop(); if (project.files[b] != null) out.push(b); }
+  }
+  return out;
+}
 function renderTree() {
   let html = "";
   const entry = currentEntry();
   const explicit = !!(project.mainFile && project.files[project.mainFile] != null);
-  for (const f of userFiles()) {
+  const files = userFiles();
+  // include グラフ: 取り込まれているファイルは根から外し、取り込み元の下に入れ子表示する。
+  const included = new Set();
+  for (const f of files) for (const c of includeChildren(f)) included.add(c);
+  const roots = files.filter((f) => !included.has(f)).sort();
+  const seen = new Set();
+  const nodeHtml = (f, depth) => {
+    if (seen.has(f)) return ""; // 循環・重複ぶら下がり防止（各ファイルは1回）
+    seen.add(f);
     const a = !viewingLib && f === project.active ? " active" : "";
     const isEntry = f === entry;
-    // エントリ表示（▶）。明示指定なら濃く、自動判定なら薄く。
     const badge = isEntry
       ? `<span class="ft-main${explicit ? " pinned" : ""}" title="${esc(explicit ? t("proj.mainexplicit") : t("proj.mainauto"))}">▶</span>`
       : "";
     const pin = isEntry && explicit
       ? `<button class="ft-act" data-main="" title="${esc(t("proj.clearmain"))}">📌</button>`
       : `<button class="ft-act" data-main="${esc(f)}" title="${esc(t("proj.setmain"))}">📍</button>`;
-    html += `<div class="ft-row${a}" data-file="${esc(f)}">` +
-      `<span class="ft-ico">📄</span>${badge}<span class="ft-name">${esc(f)}</span>` +
+    const pad = 12 + depth * 14;
+    let h = `<div class="ft-row${a}" data-file="${esc(f)}" style="padding-left:${pad}px">` +
+      `<span class="ft-ico">${depth ? "↳" : "📄"}</span>${badge}<span class="ft-name">${esc(f)}</span>` +
       pin +
       `<button class="ft-act" data-ren="${esc(f)}" title="${esc(t("proj.rename"))}">✎</button>` +
       `<button class="ft-act" data-del="${esc(f)}" title="${esc(t("proj.delete"))}">🗑</button></div>`;
-  }
+    for (const c of includeChildren(f).sort()) h += nodeHtml(c, depth + 1);
+    return h;
+  };
+  for (const f of roots) html += nodeHtml(f, 0);
+  for (const f of files) if (!seen.has(f)) html += nodeHtml(f, 0); // 取りこぼし（循環等）
   const libs = libFiles();
   if (libs.length) {
     html += `<div class="ft-group">${esc(t("proj.libs"))}</div>`;

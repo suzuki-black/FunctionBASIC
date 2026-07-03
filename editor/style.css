@@ -289,6 +289,8 @@ button:hover { background: #1177bb; }
 #problems .pr.warn .pc { color: #d7a35a; }
 #problems .pc { font-weight: 600; }
 #problems .pm { color: #ddd; overflow: hidden; text-overflow: ellipsis; }
+#problems .pcreate { margin-left: auto; flex: none; background: #0e639c; color: #fff; border: 0; border-radius: 3px; padding: 1px 8px; font-size: 11px; cursor: pointer; }
+#problems .pcreate:hover { background: #1177bb; }
 
 /* 自前モーダル */
 #modal {

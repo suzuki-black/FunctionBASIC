@@ -40,10 +40,16 @@ function parseNumber(tok: string): number | null {
   return null;
 }
 
+// 条件コード（JR は近距離4種のみ、JP/CALL は8種）。
+const JRCC: Record<string, number> = { NZ: 0x20, Z: 0x28, NC: 0x30, C: 0x38 };
+const CC: Record<string, number> = { NZ: 0, Z: 1, NC: 2, C: 3, PO: 4, PE: 5, P: 6, M: 7 };
+
 export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
   const bytes: number[] = [];
   const patches: { offset: number; name: string }[] = [];
   const errors: { line: number; message: string }[] = [];
+  const labels: Record<string, number> = {}; // ラベル名 → バイトオフセット
+  const fixups: { at: number; label: string; line: number }[] = []; // 相対ジャンプの後埋め
   const has = (n: string) => vars.has(n.toUpperCase());
 
   const emit = (...bs: number[]) => { for (const b of bs) bytes.push(b & 0xff); };
@@ -80,9 +86,18 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
 
   lines.forEach((raw, idx) => {
     const ln = idx + 1;
-    // コメント除去（; または '）・空行スキップ。ラベルは PoC 非対応。
-    const line = raw.replace(/[;'].*$/, "").trim();
+    // コメント除去（; または '）・空行スキップ。
+    let line = raw.replace(/[;'].*$/, "").trim();
     if (!line) return;
+    // ラベル定義（name:）。同じ行に命令が続くこともある。
+    const lm = line.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
+    if (lm) {
+      const lname = lm[1].toUpperCase();
+      if (lname in labels) errors.push({ line: ln, message: `ラベル重複: ${lm[1]}` });
+      labels[lname] = bytes.length;
+      line = lm[2].trim();
+      if (!line) return; // ラベルのみの行
+    }
     const mne = line.match(/^([A-Za-z]+)\b\s*(.*)$/);
     if (!mne) { errors.push({ line: ln, message: `構文が解釈できません: ${raw.trim()}` }); return; }
     const op = mne[1].toUpperCase();
@@ -113,7 +128,29 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
       errors.push({ line: ln, message: `${op} の対象: ${A0}` }); return;
     }
 
+    // 相対ジャンプ（位置独立）: JR e / JR cc,e / DJNZ e。e はラベルか数値変位。
+    if (op === "JR" || op === "DJNZ") {
+      let opcode: number, tgt: string;
+      if (op === "DJNZ") { opcode = 0x10; tgt = args[0] ?? ""; }
+      else if (args.length === 2) {
+        if (!(A0 in JRCC)) { errors.push({ line: ln, message: `JR の条件: ${A0}（NZ/Z/NC/C）` }); return; }
+        opcode = JRCC[A0]; tgt = args[1];
+      } else { opcode = 0x18; tgt = args[0] ?? ""; }
+      emit(opcode);
+      const num = parseNumber(tgt);
+      if (num != null) { emit(num); return; }
+      fixups.push({ at: bytes.length, label: tgt.toUpperCase(), line: ln });
+      emit(0x00); // 変位は後で埋める
+      return;
+    }
+
     if (op === "CALL" || op === "JP") {
+      // 条件付き（絶対アドレスのみ。ラベル絶対ジャンプは非対応＝JR を使う）
+      if (args.length === 2 && A0 in CC) {
+        const v = parseNumber(args[1]);
+        if (v == null) { errors.push({ line: ln, message: `${op} ${A0},nn のアドレス: ${args[1]}` }); return; }
+        emit((op === "CALL" ? 0xc4 : 0xc2) | (CC[A0] << 3), v & 0xff, (v >> 8) & 0xff); return;
+      }
       const o = parseOperand(args[0] ?? "", ln); if (!o) return;
       emit(op === "CALL" ? 0xcd : 0xc3); emit16(o.kind === "mem" ? o : (o.kind === "imm" ? { kind: "mem", value: o.value } : o)); return;
     }
@@ -174,6 +211,15 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
 
     errors.push({ line: ln, message: `未対応の命令: ${op}` });
   });
+
+  // 相対ジャンプの変位を後埋め（rel = 目的地 - (変位バイトの次)）。
+  for (const f of fixups) {
+    const target = labels[f.label];
+    if (target == null) { errors.push({ line: f.line, message: `未定義ラベル: ${f.label}` }); continue; }
+    const rel = target - (f.at + 1);
+    if (rel < -128 || rel > 127) { errors.push({ line: f.line, message: `相対ジャンプが範囲外(${rel}): ${f.label}` }); continue; }
+    bytes[f.at] = rel & 0xff;
+  }
 
   return { bytes, patches, errors };
 }

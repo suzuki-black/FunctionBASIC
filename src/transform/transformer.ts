@@ -1135,35 +1135,53 @@ function finishTransform(ctx: any): TransformResult {
     }
   };
 
-  // ASM ブロックの一時変数（全ブロック共有・遅延確保）。
-  let asmTemps: { S: string; SA: string; PT: string; Q: string } | null = null;
-  const asmT = () =>
-    (asmTemps ??= { S: ctx.pool.next("$"), SA: ctx.pool.next("!"), PT: ctx.pool.next("!"), Q: ctx.pool.next("!") });
-  // インライン ASM をアセンブルし、文字列でML領域を確保→POKE配置→VARPTRパッチ→USR実行を生成。
-  const emitAsm = (s: { lines: string[]; pos: any }, sc: any, items: Item[]) => {
+  // --- インライン ASM ---
+  // コードは MAIN 先頭で「文字列に1回だけ」POKE 配置する（プロローグ）。呼び出し側は
+  // 実体アドレスを再取得（GC で文字列が動いてもコードは中身ごと動くので安全）＋
+  // 変数オペランドを VARPTR でパッチ＋DEFUSR/USR、だけ。毎フレーム呼んでも軽い。
+  interface AsmBlk { strVar: string; addrVar: string; bytes: number[]; patches: { offset: number; name: string }[] }
+  const asmReg = new Map<any, AsmBlk>();
+  let asmPT = "", asmQ = "";
+  const registerAsm = (s: any) => {
+    if (asmReg.has(s)) return;
     const r = assembleZ80(s.lines, ctx.asmVars);
     for (const e of r.errors) fail("E_ASM", { detail: `${e.line}: ${e.message}` }, s.pos);
-    if (r.errors.length) return;
     const bytes = r.bytes.slice();
-    if (bytes[bytes.length - 1] !== 0xc9) bytes.push(0xc9); // USR は RET で戻る
-    const T = asmT();
+    if (bytes.length === 0 || bytes[bytes.length - 1] !== 0xc9) bytes.push(0xc9); // USR は RET で戻る
+    asmReg.set(s, { strVar: ctx.pool.next("$"), addrVar: ctx.pool.next("!"), bytes, patches: r.patches });
+  };
+  const collectAsm = (stmts: any[]) => {
+    for (const s of stmts) {
+      if (s.type === "Asm") registerAsm(s);
+      else if (s.type === "If") { collectAsm(s.then); if (s.else) collectAsm(s.else); }
+      else if (s.type === "For" || s.type === "While") collectAsm(s.body);
+    }
+  };
+  const emitAsm = (s: any, sc: any, items: Item[]) => {
+    const b = asmReg.get(s);
+    if (!b) return;
     const push = (text: string) => items.push({ kind: "line", text });
-    push(`' === ASM (${bytes.length} bytes) ===`);
-    // 文字列で ML メモリを確保しその実体アドレスを得る（CLEAR 不要・安全）
-    push(`${T.S}=STRING$(${bytes.length},0)`);
-    push(`${T.SA}=PEEK(VARPTR(${T.S})+1)+PEEK(VARPTR(${T.S})+2)*256`);
-    for (let i = 0; i < bytes.length; i += 8) {
-      const seg: string[] = [];
-      for (let j = i; j < Math.min(i + 8, bytes.length); j++) seg.push(`POKE ${T.SA}+${j},${bytes[j]}`);
-      push(seg.join(":"));
-    }
-    // 変数オペランドを VARPTR でパッチ（負値は +65536 で 0..65535 に正規化）
-    for (const p of r.patches) {
+    push(`${b.addrVar}=PEEK(VARPTR(${b.strVar})+1)+PEEK(VARPTR(${b.strVar})+2)*256`); // GC 安全な再取得
+    for (const p of b.patches) {
       const v = resolveVar(p.name, sc);
-      push(`${T.PT}=VARPTR(${v}):IF ${T.PT}<0 THEN ${T.PT}=${T.PT}+65536`);
-      push(`POKE ${T.SA}+${p.offset},${T.PT}-INT(${T.PT}/256)*256:POKE ${T.SA}+${p.offset + 1},INT(${T.PT}/256)`);
+      push(`${asmPT}=VARPTR(${v}):IF ${asmPT}<0 THEN ${asmPT}=${asmPT}+65536`);
+      push(`POKE ${b.addrVar}+${p.offset},${asmPT}-INT(${asmPT}/256)*256:POKE ${b.addrVar}+${p.offset + 1},INT(${asmPT}/256)`);
     }
-    push(`DEFUSR=${T.SA}:${T.Q}=USR(0)`);
+    push(`DEFUSR=${b.addrVar}:${asmQ}=USR(0)`);
+  };
+  // MAIN 先頭に置くコード配置プロローグ（全ブロック）。
+  const asmPrologueItems = (): Item[] => {
+    const out: Item[] = [];
+    for (const [, b] of asmReg) {
+      out.push({ kind: "line", text: `${b.strVar}=STRING$(${b.bytes.length},0)` });
+      out.push({ kind: "line", text: `${b.addrVar}=PEEK(VARPTR(${b.strVar})+1)+PEEK(VARPTR(${b.strVar})+2)*256` });
+      for (let i = 0; i < b.bytes.length; i += 8) {
+        const seg: string[] = [];
+        for (let j = i; j < Math.min(i + 8, b.bytes.length); j++) seg.push(`POKE ${b.addrVar}+${j},${b.bytes[j]}`);
+        out.push({ kind: "line", text: seg.join(":") });
+      }
+    }
+    return out;
   };
 
   const emitInto = (stmts: Stmt[], sc: any, items: Item[]) => {
@@ -1334,9 +1352,16 @@ function finishTransform(ctx: any): TransformResult {
   };
 
   // MAIN
+  // ASM ブロックを事前収集（コード配置はプロローグで1回）＋共有一時変数を確保。
+  collectAsm(program.toplevel);
+  for (const f of program.functions) collectAsm(f.body);
+  if (asmReg.size) { asmPT = ctx.pool.next("!"); asmQ = ctx.pool.next("!"); }
+
   const mainItems: Item[] = [{ kind: "line", text: "' === MAIN ===" }];
   emitInto(program.toplevel, { func: undefined }, mainItems);
   mainItems.push({ kind: "line", text: "END" });
+  // ASM コード配置プロローグを MAIN ヘッダ直後へ（最初の USR より前に配置される）。
+  if (asmReg.size) mainItems.splice(1, 0, ...asmPrologueItems());
   // 再帰スタックの DIM をMAIN先頭（ヘッダ直後）に挿入。最初の再帰呼び出しより前に確保する。
   if (recStack)
     mainItems.splice(1, 0, {

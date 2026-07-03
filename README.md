@@ -52,11 +52,12 @@ Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC
 - **Structured BASIC** — `FUNCTION`, freely nestable `IF/FOR/WHILE`, local-by-default variables, `GLOBAL`, `REF` parameters, `BREAK`/`CONTINUE`, `RETURN`, arrays (incl. by reference), and `CONST` named constants (folded & inlined at compile time).
 - **Recursion** — self- and mutually-recursive functions work, via automatic frame save/restore on a software stack (depth configurable; `REF` params in a recursive function are reported, not mis-compiled).
 - **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX only distinguishes the first two characters).
+- **Inline Z80 assembly** — `ASM … END ASM` blocks are assembled to machine code and glued in automatically: a string-reserved ML buffer (no `CLEAR`), `VARPTR` operand patching so `(NAME)` reaches a `%` integer BASIC variable, and `DEFUSR`/`USR` to run it. (PoC: no labels yet; `%` integer variables only.)
 
 **Transpile to MSX-BASIC**
 - **Automatic conversion** — line numbering, 2-char variable allocation, `FUNCTION`→`GOSUB`, return-value handling, and 255-byte line auto-splitting.
 - **Multi-file projects** — split code with `INCLUDE`; the build/run uses a single **entry (main) file**, auto-detected (the file with top-level code that nothing else `INCLUDE`s) or pinned explicitly in the project tree. Library files (functions only) are never run standalone. MSX-BASIC has no linker, so everything merges into one program — matching the classic `$INCLUDE`/main-module model.
-- **Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), and jump-safe comment stripping. Off by default and guarded so runtime results never change.
+- **Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), jump-safe comment stripping, and **hot-function placement** (frequently-called functions get lower line numbers to shorten MSX's `GOSUB` line search). Off by default and guarded so runtime results never change.
 - **Safe diagnostics** — never silently mis-converts; errors carry codes and line/column and show as gutter markers. Output is Shift-JIS (unrepresentable characters are reported, not corrupted).
 - **Target machines** — MSX1 / MSX2 / MSX2+ / turbo R (default turbo R); the built-in command table is editable.
 
@@ -70,7 +71,7 @@ Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC
 - **Reverse transpilation** — turn FunctionBASIC's own output back into Structured BASIC via the generated map (restoring the original file split where possible).
 - **Machine-code annotation** — disassembles Z80 machine code embedded in `DATA` (the `READ`→`POKE`→`USR` idiom) into mnemonic comments with BIOS calls named; stripped on transpile.
 
-**Editor** — syntax highlighting, live preview, error markers, a project file tree (multi-file, browser-persisted), find / replace / project-wide "Find in Files" (JetBrains keymap, regex), **safe identifier rename** (token-aware — skips strings/comments/keywords; `Shift+F6`), go-to-definition / find-usages, undo/redo, editing aids (auto-indent, bracket/quote close, current-line highlight, line move/duplicate — each toggleable), closable split tabs, a native OS menu, and Japanese / English UI.
+**Editor** — syntax highlighting, live preview, error markers, and an **INCLUDE-aware project tree** (entries with their includes nested). On the desktop app a project is a **folder**: `Cmd+O` opens it, `Cmd+S` saves the current `.msxb` in place (no dialog), *Convert & Save* / Run write everything then transpile, and *Reload from Disk* re-reads it. A **Problems panel** validates the whole project live (every entry's `INCLUDE` graph), so cross-file errors (e.g. a duplicate function in a library) always surface with the right file:line and one-click jump — plus a quick-fix to create a missing `INCLUDE`, and an unused-`INCLUDE` warning. Cross-file **go-to-definition / find-usages / rename** (with a preview), `INCLUDE`-line jump (`Cmd+B` / `Cmd`-click) and `INCLUDE` path autocomplete. Also: find / replace / project-wide "Find in Files" (JetBrains keymap, regex), token-aware **safe rename** (`Shift+F6`), undo/redo, editing aids (auto-indent, bracket/quote close, current-line highlight, line move/duplicate — each toggleable), closable split tabs, a native OS menu, and Japanese / English UI.
 
 ---
 
@@ -124,6 +125,7 @@ The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on de
 | `GLOBAL` | `GLOBAL X` | Opt in to a shared (global) variable; otherwise variables are local. |
 | `CONST` | `CONST NAME[%!#$] = const-expr` | Compile-time constant; folded and inlined as a literal. Re-assignment is an error. An optional type suffix is validated (`CONST N% = 3`; `%` requires an integer value) and is **required under `STRICT`**. |
 | `RETURN` | `RETURN [value]` | Returns from a function, optionally with a value. |
+| `ASM` | `ASM` … `END ASM` | Inline Z80 assembly, assembled and run via `DEFUSR`/`USR`. `(NAME)` references a `%` integer BASIC variable (patched at runtime with `VARPTR`). PoC: no labels; `%` integers only. |
 | Arrays | `DIM A(n)` ; pass with `REF A` | Arrays may be passed by reference, including string arrays. |
 
 ---
@@ -375,11 +377,12 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **構造化BASIC** — `FUNCTION`、自由に入れ子可能な `IF/FOR/WHILE`、既定ローカル変数、`GLOBAL`、`REF` 参照引数、`BREAK`/`CONTINUE`、`RETURN`、配列（参照渡し含む）、`CONST` 名前付き定数（コンパイル時に畳み込み＆インライン）。
 - **再帰** — 自己・相互再帰の関数が動く。再帰 `GOSUB` の前後でフレームをソフトウェアスタックへ自動退避／復元（深さ可変。再帰関数内の `REF` 引数は誤変換せずエラー報告）。
 - **長く読みやすい変数名** — `PLAYER_SCORE` / `ENEMY_X` のような説明的な名前を書け、変換器が一意な2文字MSX名へ自動割り当て（MSXは先頭2文字しか区別しない）。
+- **インライン Z80 アセンブリ** — `ASM … END ASM` を機械語にアセンブルして自動で埋め込む：文字列でML領域を確保（`CLEAR`不要）、`(NAME)` は `VARPTR` で `%`整数BASIC変数のアドレスに実行時パッチ、`DEFUSR`/`USR` で実行。（PoC：ラベル未対応・`%`整数変数のみ）
 
 **MSX-BASICへの変換**
 - **自動変換** — 行番号付与、2文字変数の割り当て、`FUNCTION`→`GOSUB` 展開、戻り値処理、255バイト行の自動分割。
 - **複数ファイル対応** — `INCLUDE` でコードを分割。ビルド/実行は単一の**エントリ（main）ファイル**を起点にする。自動判定（トップレベルに実行コードがあり、他からINCLUDEされていないファイル）か、プロジェクトツリーで明示指定。関数だけのライブラリファイルは単体実行されない。MSX-BASICにリンカは無いので全て1本のプログラムへ統合される（古典の `$INCLUDE`/メインモジュール方式と同じ）。
-- **オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去。いずれも既定OFFで、実行結果を変えないようガード。
+- **オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去、**ホット関数の低行番号配置**（よく呼ぶ関数を低い行番号へ＝MSXの `GOSUB` 行番号探索を短縮）。いずれも既定OFFで、実行結果を変えないようガード。
 - **安全な診断** — 黙って誤変換しない。エラーはコード＋行・列付きでガターに表示。出力は Shift-JIS（表現不能文字は壊さず報告）。
 - **対象機種** — MSX1 / MSX2 / MSX2+ / turboR（既定 turboR）。組み込み命令表は編集可能。
 
@@ -393,7 +396,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **逆変換** — FunctionBASIC 自身の出力を、生成マップで構造化BASICへ戻す（元のファイル分割も可能な範囲で復元）。
 - **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語（`READ`→`POKE`→`USR`）を Z80 ニーモニックの注釈に（BIOS呼び出しは名前解決）。変換時に削除。
 
-**エディタ** — シンタックスハイライト、ライブプレビュー、エラー表示、プロジェクトツリー（複数ファイル・ブラウザ永続）、検索・置換・全体検索（JetBrains風キーマップ・正規表現）、**識別子の安全な一括リネーム**（字句解析ベース＝文字列/コメント/キーワードは触らない・`Shift+F6`）、定義へ移動/使用箇所、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製。各々ON/OFF）、閉じられる分割タブ、OSネイティブメニュー、日本語/英語UI。
+**エディタ** — シンタックスハイライト、ライブプレビュー、エラー表示、**INCLUDE構造を反映したプロジェクトツリー**（エントリの下に取り込みを入れ子表示）。デスクトップ版では**プロジェクト＝フォルダ**：`Cmd+O` で開き、`Cmd+S` で編集中の `.msxb` をその場に無ダイアログ保存、*変換して保存*/実行は全保存してから変換、*ディスクから再読込*で読み直し。**Problemsパネル**がプロジェクト全体（各エントリの `INCLUDE` グラフ）をライブ検証し、他ファイルのエラー（例：ライブラリの重複関数）も由来 file:line 付きで常時表示＋ワンクリックでジャンプ。未解決 `INCLUDE` の「＋作成」クイックフィックスと未使用 `INCLUDE` 警告も。**クロスファイルの定義ジャンプ/使用箇所/リネーム（プレビュー付き）**、`INCLUDE` 行のジャンプ（`Cmd+B`/`Cmd`+クリック）と `INCLUDE` パス補完。さらに 検索・置換・全体検索（JetBrains風キーマップ・正規表現）、字句解析ベースの**安全な一括リネーム**（`Shift+F6`）、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製。各々ON/OFF）、閉じられる分割タブ、OSネイティブメニュー、日本語/英語UI。
 
 ---
 
@@ -447,6 +450,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 | `GLOBAL` | `GLOBAL X` | 共有（グローバル）変数を使う宣言。なければローカル。 |
 | `CONST` | `CONST 名前[%!#$] = 定数式` | コンパイル時定数。畳み込んでリテラルとしてインライン。再代入はエラー。型サフィックスは任意で、付けると検証（`CONST N% = 3`、`%`は整数値のみ）。**`STRICT` では必須**。 |
 | `RETURN` | `RETURN [値]` | 関数から戻る。値を返せる。 |
+| `ASM` | `ASM` … `END ASM` | インライン Z80 アセンブリ。アセンブルして `DEFUSR`/`USR` で実行。`(NAME)` は `%`整数BASIC変数を参照（実行時 `VARPTR` でパッチ）。PoC：ラベル未対応・`%`整数のみ。 |
 | 配列 | `DIM A(n)` ／ `REF A` で渡す | 配列は参照渡し可。文字列配列も可。 |
 
 ---

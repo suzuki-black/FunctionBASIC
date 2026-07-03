@@ -56,6 +56,7 @@ const I18N = {
     "set.transpile": "変換（最適化）", "set.optimize": "定数畳み込み（リテラル同士の演算を事前計算）",
     "set.strength": "べき乗の強度低減（X^2→X*X・指数2〜4）",
     "set.stripcomments": "コメント除去（速度/サイズ優先・飛び先は保持）",
+    "set.hotplace": "よく呼ぶ関数を低い行番号へ（GOSUB探索を短縮＝高速化）",
     "set.recdepth": "再帰スタックの最大深さ",
     "find.find": "検索", "find.replace": "置換後", "find.one": "置換", "find.all": "全置換",
     "find.case": "大文字小文字を区別", "find.regex": "正規表現", "find.prev": "前へ", "find.next": "次へ", "find.close": "閉じる (Esc)",
@@ -153,6 +154,7 @@ const I18N = {
     "set.transpile": "Transpile (optimization)", "set.optimize": "Constant folding (precompute literal arithmetic)",
     "set.strength": "Power strength reduction (X^2 → X*X, exponent 2-4)",
     "set.stripcomments": "Strip comments (size/speed build; jump targets kept)",
+    "set.hotplace": "Place hot functions at low line numbers (shorter GOSUB search = faster)",
     "set.recdepth": "Max recursion stack depth",
     "find.find": "Find", "find.replace": "Replace with", "find.one": "Replace", "find.all": "All",
     "find.case": "Match case", "find.regex": "Regular expression", "find.prev": "Previous", "find.next": "Next", "find.close": "Close (Esc)",
@@ -239,6 +241,7 @@ const DEFAULT_SETTINGS = {
   optimize: false, // 定数畳み込み最適化（オプトイン・既定OFF）
   strengthReduce: false, // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
   stripComments: false, // コメント除去（オプトイン・既定OFF）
+  hotPlacement: false, // 呼出頻度順に関数を低い行番号へ（GOSUB探索短縮・オプトイン・既定OFF）
   recursionDepth: 100, // 再帰スタックの最大深さ（DIMサイズ）
   findCase: false, // 検索の大文字小文字を区別
   findRegex: false, // 検索を正規表現として扱う（単純/全体で共有）
@@ -349,6 +352,7 @@ function openSettings() {
   $("setOptimize").checked = settings.optimize;
   $("setStrengthReduce").checked = settings.strengthReduce;
   $("setStripComments").checked = settings.stripComments;
+  $("setHotPlacement").checked = settings.hotPlacement;
   $("setRecDepth").value = settings.recursionDepth;
   $("setMachine").value = settings.webmsxMachine;
   $("setPresets").value = settings.webmsxPresets;
@@ -367,6 +371,7 @@ function applySettingsFromForm() {
   settings.optimize = $("setOptimize").checked;
   settings.strengthReduce = $("setStrengthReduce").checked;
   settings.stripComments = $("setStripComments").checked;
+  settings.hotPlacement = $("setHotPlacement").checked;
   settings.recursionDepth = Math.min(1000, Math.max(1, parseInt($("setRecDepth").value, 10) || 100));
   settings.webmsxMachine = $("setMachine").value;
   settings.webmsxPresets = $("setPresets").value.trim();
@@ -519,7 +524,8 @@ function compileSource(source, incDiags, prov) {
   try {
     t = transform(program, {
       optimize: settings.optimize, strengthReduce: settings.strengthReduce,
-      stripComments: settings.stripComments, recursionDepth: settings.recursionDepth,
+      stripComments: settings.stripComments, hotPlacement: settings.hotPlacement,
+      recursionDepth: settings.recursionDepth,
       lineMap: prov?.lineMap, sources: prov?.sources, source: prov?.source,
     });
   } catch (e) {

@@ -262,7 +262,42 @@ export interface TransformOptions {
   optimize?: boolean; // 定数畳み込み最適化（オプトイン・既定OFF）
   strengthReduce?: boolean; // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
   stripComments?: boolean; // コメント除去（オプトイン・既定OFF。飛び先は安全に保持）
+  hotPlacement?: boolean; // 呼出頻度順に関数を低い行番号へ（GOSUB 行番号サーチ短縮・オプトイン）
   recursionDepth?: number; // 再帰スタックの最大深さ（DIMサイズ・既定100）
+}
+
+// 各ユーザ関数の静的な呼び出しサイト数を数える（MAIN＋全関数本体を走査）。
+// 呼び出しの多い関数ほど低い行番号へ置くと、MSX-BASIC の GOSUB 行番号探索が短くなる。
+function countCallSites(program: Program): Map<string, number> {
+  const cnt = new Map<string, number>();
+  const bump = (n: string) => cnt.set(n, (cnt.get(n) ?? 0) + 1);
+  const we = (e: Expr | undefined): void => {
+    if (!e) return;
+    switch (e.type) {
+      case "CallExpr": bump(e.name); e.args.forEach((a) => we(a.expr)); break;
+      case "Bin": we(e.left); we(e.right); break;
+      case "Un": we(e.operand); break;
+      case "Group": e.items.forEach(we); break;
+      case "ArrayRef": e.indices.forEach(we); break;
+    }
+  };
+  const ws = (ss: Stmt[]): void => {
+    for (const s of ss) {
+      switch (s.type) {
+        case "Call": bump(s.call.name); s.call.args.forEach((a) => we(a.expr)); break;
+        case "Let": we(s.expr); if (s.target.type === "ArrayRef") s.target.indices.forEach(we); break;
+        case "Return": we(s.expr); break;
+        case "If": we(s.cond); ws(s.then); if (s.else) ws(s.else); break;
+        case "For": we(s.from); we(s.to); we(s.step); ws(s.body); break;
+        case "While": we(s.cond); ws(s.body); break;
+        case "Builtin": for (const p of s.parts) if (p.kind === "expr") we(p.expr); break;
+        case "On": we(s.arg); break;
+      }
+    }
+  };
+  ws(program.toplevel);
+  for (const f of program.functions) ws(f.body);
+  return cnt;
 }
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
@@ -1242,7 +1277,13 @@ function finishTransform(ctx: any): TransformResult {
   // （関数同士は下の seg 再計算で常に前ブロックの実末尾の先へ進むので元から衝突しない。）
   const mainLast = out.length ? out[out.length - 1].lineNo : 100;
   let seg = Math.max(1000, (Math.floor(mainLast / 1000) + 1) * 1000);
-  for (const fn of program.functions) {
+  // ホット配置（オプトイン）: 呼び出しの多い関数から先に（＝低い行番号へ）並べる。
+  // GOSUB 先はプレースホルダを entryLineOf で名前解決するので、順序を変えても正しい。
+  const callCount = ctx.opts?.hotPlacement ? countCallSites(program) : null;
+  const fnOrder = callCount
+    ? [...program.functions].sort((a, b) => (callCount.get(b.name) ?? 0) - (callCount.get(a.name) ?? 0))
+    : program.functions;
+  for (const fn of fnOrder) {
     const keys = variantKeys.get(fn.name) ?? [];
     for (const key of keys) {
       const subst = variantSubst.get(key);

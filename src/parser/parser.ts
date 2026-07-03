@@ -513,6 +513,13 @@ export function parse(tokens: Token[]): ParseResult {
       endOfStmt("コメント");
       return s;
     }
+    if (t.kind === "ASM") {
+      advance();
+      const lines = t.value.split("\n");
+      const s: Stmt = { type: "Asm", lines, pos };
+      endOfStmt("ASM");
+      return s;
+    }
     if (t.kind === "KEYWORD") {
       switch (t.value) {
         case "STRICT": {

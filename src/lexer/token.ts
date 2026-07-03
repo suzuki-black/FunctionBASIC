@@ -9,6 +9,7 @@ export type TokenKind =
   | "OP"
   | "COMMENT"
   | "NEWLINE"
+  | "ASM" // ASM…END ASM ブロック。value=本文（改行区切りの生ニーモニック）
   | "EOF";
 
 export interface Token {

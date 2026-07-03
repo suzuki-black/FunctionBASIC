@@ -21,6 +21,7 @@ import {
   BUILTIN_CLAUSE_WORDS,
 } from "../core/builtins.ts";
 import { NamePool } from "./names.ts";
+import { assembleZ80 } from "../asm/z80asm.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
 import { checkNameCollisions } from "./check-names.ts";
@@ -298,6 +299,42 @@ function countCallSites(program: Program): Map<string, number> {
   ws(program.toplevel);
   for (const f of program.functions) ws(f.body);
   return cnt;
+}
+
+// プログラム中の全ユーザ変数名（大文字・サフィックス込み）を集める。
+// インライン ASM の "(NAME)" が BASIC 変数か直値アドレスかの判定に使う。
+function collectVarNames(program: Program): Set<string> {
+  const names = new Set<string>();
+  const we = (e: Expr | undefined): void => {
+    if (!e) return;
+    switch (e.type) {
+      case "Var": names.add(e.name); break;
+      case "ArrayRef": names.add(e.name); e.indices.forEach(we); break;
+      case "Bin": we(e.left); we(e.right); break;
+      case "Un": we(e.operand); break;
+      case "Group": e.items.forEach(we); break;
+      case "CallExpr": e.args.forEach((a) => we(a.expr)); break;
+    }
+  };
+  const ws = (ss: Stmt[]): void => {
+    for (const s of ss) {
+      switch (s.type) {
+        case "Let": if (s.target.type === "Var") names.add(s.target.name); else { names.add(s.target.name); s.target.indices.forEach(we); } we(s.expr); break;
+        case "Dim": for (const d of s.decls) { names.add(d.name); d.dims.forEach(we); } break;
+        case "Global": for (const n of s.names) names.add(n); break;
+        case "For": names.add(s.varName); we(s.from); we(s.to); we(s.step); ws(s.body); break;
+        case "While": we(s.cond); ws(s.body); break;
+        case "If": we(s.cond); ws(s.then); if (s.else) ws(s.else); break;
+        case "Call": s.call.args.forEach((a) => we(a.expr)); break;
+        case "Return": we(s.expr); break;
+        case "Builtin": for (const p of s.parts) if (p.kind === "expr") we(p.expr); break;
+        case "On": we(s.arg); break;
+      }
+    }
+  };
+  for (const f of program.functions) { for (const p of f.params) names.add(p.name); ws(f.body); }
+  ws(program.toplevel);
+  return names;
 }
 
 export function transform(program: Program, opts: TransformOptions = {}): TransformResult {
@@ -659,6 +696,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
     opts,
     recursiveFns,
     recStack,
+    pool,
+    asmVars: collectVarNames(program),
   });
 }
 
@@ -1096,6 +1135,37 @@ function finishTransform(ctx: any): TransformResult {
     }
   };
 
+  // ASM ブロックの一時変数（全ブロック共有・遅延確保）。
+  let asmTemps: { S: string; SA: string; PT: string; Q: string } | null = null;
+  const asmT = () =>
+    (asmTemps ??= { S: ctx.pool.next("$"), SA: ctx.pool.next("!"), PT: ctx.pool.next("!"), Q: ctx.pool.next("!") });
+  // インライン ASM をアセンブルし、文字列でML領域を確保→POKE配置→VARPTRパッチ→USR実行を生成。
+  const emitAsm = (s: { lines: string[]; pos: any }, sc: any, items: Item[]) => {
+    const r = assembleZ80(s.lines, ctx.asmVars);
+    for (const e of r.errors) fail("E_ASM", { detail: `${e.line}: ${e.message}` }, s.pos);
+    if (r.errors.length) return;
+    const bytes = r.bytes.slice();
+    if (bytes[bytes.length - 1] !== 0xc9) bytes.push(0xc9); // USR は RET で戻る
+    const T = asmT();
+    const push = (text: string) => items.push({ kind: "line", text });
+    push(`' === ASM (${bytes.length} bytes) ===`);
+    // 文字列で ML メモリを確保しその実体アドレスを得る（CLEAR 不要・安全）
+    push(`${T.S}=STRING$(${bytes.length},0)`);
+    push(`${T.SA}=PEEK(VARPTR(${T.S})+1)+PEEK(VARPTR(${T.S})+2)*256`);
+    for (let i = 0; i < bytes.length; i += 8) {
+      const seg: string[] = [];
+      for (let j = i; j < Math.min(i + 8, bytes.length); j++) seg.push(`POKE ${T.SA}+${j},${bytes[j]}`);
+      push(seg.join(":"));
+    }
+    // 変数オペランドを VARPTR でパッチ（負値は +65536 で 0..65535 に正規化）
+    for (const p of r.patches) {
+      const v = resolveVar(p.name, sc);
+      push(`${T.PT}=VARPTR(${v}):IF ${T.PT}<0 THEN ${T.PT}=${T.PT}+65536`);
+      push(`POKE ${T.SA}+${p.offset},${T.PT}-INT(${T.PT}/256)*256:POKE ${T.SA}+${p.offset + 1},INT(${T.PT}/256)`);
+    }
+    push(`DEFUSR=${T.SA}:${T.Q}=USR(0)`);
+  };
+
   const emitInto = (stmts: Stmt[], sc: any, items: Item[]) => {
     for (const s0 of stmts) {
       const s = prelower(s0, sc, items);
@@ -1123,6 +1193,9 @@ function finishTransform(ctx: any): TransformResult {
         case "Builtin":
         case "On":
           items.push({ kind: "line", text: simpleStmtText(s, sc)! });
+          break;
+        case "Asm":
+          emitAsm(s, sc, items);
           break;
         case "Break": {
           const top = loopStack[loopStack.length - 1];

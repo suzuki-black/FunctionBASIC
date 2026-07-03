@@ -152,6 +152,11 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `STRICT: ${p.name} に型サフィックス(% / ! / # / $)が必要です`,
     en: (p) => `STRICT: ${p.name} needs a type suffix (% / ! / # / $)`,
   },
+  E_ASM: {
+    code: "E_ASM",
+    ja: (p) => `ASM 行 ${p.detail}`,
+    en: (p) => `ASM line ${p.detail}`,
+  },
   E_TYPE_MISMATCH: {
     code: "E_TYPE_MISMATCH",
     ja: (p) =>

@@ -167,6 +167,29 @@ export function tokenize(source: string): LexResult {
         continue;
       }
 
+      // ASM ブロック: 単独行の "ASM" で始まり "END ASM" までを生取り込みする。
+      if (upper === "ASM") {
+        let j = i;
+        while (j < n && (source[j] === " " || source[j] === "\t")) j++;
+        const after = source[j];
+        if (after === undefined || after === "\n" || after === "\r" || after === "'") {
+          while (i < n && peek() !== "\n" && peek() !== "\r") advance(); // ASM 行の残りを捨てる
+          const bodyLines: string[] = [];
+          while (i < n) {
+            if (peek() === "\r") advance();
+            if (peek() === "\n") advance();
+            line++; col = 1;
+            let lraw = "";
+            while (i < n && peek() !== "\n" && peek() !== "\r") lraw += advance();
+            if (/^\s*END\s+ASM\s*$/i.test(lraw)) break; // END ASM で終了
+            bodyLines.push(lraw);
+          }
+          const body = bodyLines.join("\n");
+          push("ASM", body, body, start);
+          continue;
+        }
+      }
+
       if (isKeyword(upper)) push("KEYWORD", upper, raw, start);
       else push("IDENT", upper, raw, start);
       continue;

@@ -40,8 +40,15 @@ export type Stmt =
   | ForBlock
   | WhileBlock
   | OnStmt
-  | IncludeStmt;
+  | IncludeStmt
+  | AsmStmt;
 
+// インライン Z80 アセンブリ（ASM…END ASM）。lines=生ニーモニック行。
+export interface AsmStmt {
+  type: "Asm";
+  lines: string[];
+  pos: Position;
+}
 export interface LetStmt {
   type: "Let";
   target: LValue;

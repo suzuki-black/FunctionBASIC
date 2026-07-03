@@ -42,6 +42,10 @@ const I18N = {
     "rn.menu": "識別子をリネーム…",
     "rn.title": "リネーム", "rn.msg": (n) => `「${n}」を一括リネーム。新しい名前:`,
     "rn.done": (n, name) => `${n}箇所を「${name}」にリネームしました`,
+    "rn.donefiles": (n, name, f) => `${f}ファイルの${n}箇所を「${name}」にリネームしました`,
+    "rn.none": "この名前の出現がありません",
+    "rn.preview": (o, next, total, files) => `「${o}」→「${next}」を ${files} ファイル・計 ${total} 箇所で置換します：`,
+    "rn.libwarn": "※ 読み取り専用ライブラリにも同名があります。ライブラリは変更されないため、参照が壊れる可能性があります。",
     "rn.notident": "識別子の上にカーソルを置いて実行してください",
     "rn.builtin": (n) => `「${n}」は組み込み名のためリネームできません`,
     "rn.readonly": "読み取り専用です",
@@ -140,6 +144,10 @@ const I18N = {
     "rn.menu": "Rename Symbol…",
     "rn.title": "Rename", "rn.msg": (n) => `Rename all "${n}". New name:`,
     "rn.done": (n, name) => `Renamed ${n} occurrence(s) to "${name}"`,
+    "rn.donefiles": (n, name, f) => `Renamed ${n} occurrence(s) in ${f} file(s) to "${name}"`,
+    "rn.none": "No occurrences of this name",
+    "rn.preview": (o, next, total, files) => `Replace "${o}" → "${next}" in ${files} file(s), ${total} occurrence(s):`,
+    "rn.libwarn": "Note: a read-only library also uses this name. Libraries are not changed, so references may break.",
     "rn.notident": "Place the caret on an identifier first",
     "rn.builtin": (n) => `"${n}" is a built-in name and cannot be renamed`,
     "rn.readonly": "Read-only",
@@ -1350,18 +1358,47 @@ async function renameSymbol() {
   if (!target) { flash(t("rn.notident")); return; }
   if (isBuiltin(target.value)) { flash(t("rn.builtin", target.raw)); return; }
   const oldUp = target.value; // 大文字化済み（サフィックス込み）
+  // 読み取り専用ライブラリに同名があるか（あると参照が壊れうるので警告）
+  const inLib = Object.keys(LIBS).some((k) => {
+    try { return tokenize(LIBS[k]).tokens.some((tk) => tk.kind === "IDENT" && tk.value === oldUp); }
+    catch { return false; }
+  });
   const input = await showPrompt(t("rn.title"), t("rn.msg", target.raw), target.raw);
   if (input == null) return;
   const next = input.trim();
   if (!next || next.toUpperCase() === oldUp) return;
-  // 同名 IDENT の全出現を右から置換（オフセットがずれないように）
-  const spans = [];
-  for (const tk of toks) if (tk.kind === "IDENT" && tk.value === oldUp) spans.push([offOf(tk), offOf(tk) + tk.raw.length]);
-  let out = src;
-  for (let i = spans.length - 1; i >= 0; i--) out = out.slice(0, spans[i][0]) + next + out.slice(spans[i][1]);
-  setSource(out);
+  // 全プロジェクトファイルの出現を集計（アクティブはライブバッファ）
+  const active = activePath();
+  const perFile = [];
+  for (const f of Object.keys(project.files).sort()) {
+    const text = f === active ? src : project.files[f];
+    let ftoks; try { ftoks = tokenize(text).tokens; } catch { continue; }
+    const fls = lineStartsOf(text);
+    const foff = (tk) => (fls[tk.pos.line - 1] ?? 0) + (tk.pos.column - 1);
+    const spans = [];
+    for (const tk of ftoks) if (tk.kind === "IDENT" && tk.value === oldUp) spans.push([foff(tk), foff(tk) + tk.raw.length]);
+    if (spans.length) perFile.push({ file: f, spans, text });
+  }
+  const total = perFile.reduce((n, x) => n + x.spans.length, 0);
+  if (!total) { flash(t("rn.none")); return; }
+  // 複数ファイル or ライブラリ出現時はプレビュー確認（破壊的操作なので明示）
+  if (perFile.length > 1 || inLib) {
+    const body = t("rn.preview", target.raw, next, total, perFile.length) + "\n" +
+      perFile.map((x) => `  ${x.file}: ${x.spans.length}`).join("\n") +
+      (inLib ? "\n\n" + t("rn.libwarn") : "");
+    if (!(await showConfirm(t("rn.title"), body))) return;
+  }
+  // 適用（各ファイルを右から置換してオフセットずれを防ぐ）
+  for (const x of perFile) {
+    let out = x.text;
+    for (let i = x.spans.length - 1; i >= 0; i--) out = out.slice(0, x.spans[i][0]) + next + out.slice(x.spans[i][1]);
+    if (x.file === active) setSource(out);
+    else project.files[x.file] = out;
+  }
   commitHistory(true);
-  setStatus("ok", t("rn.done", spans.length, next));
+  renderTree();
+  saveProject();
+  setStatus("ok", perFile.length > 1 ? t("rn.donefiles", total, next, perFile.length) : t("rn.done", total, next));
 }
 
 // ---- タブ（JetBrains方式: 2グループ。ドラッグで並べ替え＆グループ間移動=分割/統合。状態は永続化）----

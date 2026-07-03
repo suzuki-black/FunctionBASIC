@@ -267,6 +267,7 @@ button:hover { background: #1177bb; }
 #status.warn { color: #d7a35a; }
 #status.err { color: var(--err); }
 #status.clickable { cursor: pointer; }
+#modalBody { white-space: pre-line; } /* リネームのプレビュー等で改行を活かす */
 
 /* INCLUDE パス補完のドロップダウン（editWrap 基準の絶対配置） */
 #acbox { position: absolute; z-index: 50; min-width: 180px; max-width: 60%; max-height: 40vh; overflow: auto;

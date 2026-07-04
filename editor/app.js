@@ -525,7 +525,7 @@ function includeRead(path, src) {
 }
 
 // 統合済みソースを実際にコンパイル（tokenize→parse→transform）。prov=由来情報（複数ファイル）。
-function compileSource(source, incDiags, prov) {
+function compileSource(source, incDiags, prov, extraOpts) {
   const { tokens, diagnostics: ld } = tokenize(source);
   const { program, diagnostics: pd } = parse(tokens);
   let t;
@@ -535,6 +535,7 @@ function compileSource(source, incDiags, prov) {
       stripComments: settings.stripComments, hotPlacement: settings.hotPlacement,
       recursionDepth: settings.recursionDepth,
       lineMap: prov?.lineMap, sources: prov?.sources, source: prov?.source,
+      ...extraOpts,
     });
   } catch (e) {
     return {
@@ -613,10 +614,10 @@ function autoEntry() {
   return cands.includes(project.active) ? project.active : cands.sort()[0]; // 曖昧時はactive優先
 }
 // プロジェクトのエントリから統合ビルド（編集中の未保存内容も反映）。
-function compileProject() {
+function compileProject(extraOpts) {
   const entry = currentEntry();
   const inc = resolveIncludes(entry, readForBuild);
-  return compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap });
+  return compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap }, extraOpts);
 }
 
 // 実行可能な全エントリ（他からINCLUDEされておらず、トップレベルコードを持つファイル）。
@@ -1187,7 +1188,9 @@ async function webmsxAutorunUrl(name, asciiProgram) {
 async function onPlayWebMSX() {
   log("WebMSX 実行: 開始");
   await autosave(); // 実行＝全ソース保存 → トランスパイル → 実行
-  const r = compileProject();
+  // 実行ペイロードのみコメントを除去（webMSX の URL 長制限=サーバ ~8KB 対策。
+  // ソース/保存物のコメントは一切変わらない。飛び先は保持＝実行結果は同一）。
+  const r = compileProject({ stripComments: true });
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("run.noerr"));
     return;

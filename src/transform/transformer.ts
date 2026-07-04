@@ -31,7 +31,6 @@ import { stripComments } from "./strip-comments.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
 import { BUILTIN_STATEMENTS, BUILTIN_FUNCTIONS } from "../core/builtins.ts";
 import type { MapTable } from "../core/maptable.ts";
-import { findNonSjis } from "../core/sjis.ts";
 
 export interface MsxLine {
   lineNo: number;
@@ -1433,10 +1432,7 @@ function finishTransform(ctx: any): TransformResult {
   for (const l of out) {
     if (estimateMsxBytes(l.text) > 255)
       fail("E_LINE_TOO_LONG", { lineNo: l.lineNo });
-    // Shift-JIS 表現不能文字の検査（docs/08 §8.6.4）
-    const bad = findNonSjis(l.text);
-    if (bad.length > 0)
-      fail("E_NON_SJIS", { lineNo: l.lineNo, chars: JSON.stringify(bad.join("")) });
+    // 外字(Shift-JIS表現不能)は字句解析でソース位置つきに検出する（lexer checkSjis）。
   }
 
   // ---- MapTable 構築（逆変換用）----

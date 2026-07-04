@@ -233,9 +233,8 @@ const CATALOG: Record<string, Entry> = {
   },
   E_NON_SJIS: {
     code: "E_NON_SJIS",
-    ja: (p) => `行 ${p.lineNo}: Shift-JIS で表現できない文字 ${p.chars}`,
-    en: (p) =>
-      `Line ${p.lineNo}: characters not representable in Shift-JIS: ${p.chars}`,
+    ja: (p) => `Shift-JIS で表現できない文字（外字）: ${p.chars}`,
+    en: (p) => `Characters not representable in Shift-JIS: ${p.chars}`,
   },
   // --- 内部 ---
   E_INTERNAL_LOWER: {

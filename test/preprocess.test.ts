@@ -30,6 +30,17 @@ test("変換: 日本語コメントはエラーにならない", () => {
   const { diagnostics } = compile(`' 日本語コメント\nPRINT "ｶﾅ"`);
   assert.ok(!diagnostics.some((d) => d.code === "E_NON_SJIS"));
 });
+test("外字は字句解析でソース位置つきに検出される（3行目のコメント）", () => {
+  const { diagnostics } = compile(`X=1\nY=2\n' delta ±1`);
+  const d = diagnostics.find((x) => x.code === "E_NON_SJIS");
+  assert.ok(d, "E_NON_SJIS が出る");
+  assert.equal(d.line, 3, `該当ソース行(3)を指す: ${d.line}`);
+  assert.match(String(d.params?.chars ?? ""), /±/);
+});
+test("DATA 文字列内の外字も検出される", () => {
+  const { diagnostics } = compile(`DATA "café"`);
+  assert.ok(diagnostics.some((x) => x.code === "E_NON_SJIS"));
+});
 
 // ---- INCLUDE ----
 const vfs = (files: Record<string, string>) => (p: string) => files[p] ?? null;

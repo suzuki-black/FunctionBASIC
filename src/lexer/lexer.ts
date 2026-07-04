@@ -7,6 +7,7 @@ import { isKeyword } from "./keywords.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import type { Position } from "../core/position.ts";
+import { findNonSjis } from "../core/sjis.ts";
 
 export interface LexResult {
   tokens: Token[];
@@ -47,6 +48,14 @@ export function tokenize(source: string): LexResult {
   ): void => {
     tokens.push({ kind, value, raw, pos: p });
   };
+  // 外字チェック: Shift-JIS で表せない文字がコメント/文字列に混ざると MSX 出力が
+  // 壊れる。そのまま出力へ通る箇所（COMMENT/STRING）を字句化時に検査し、該当ソース
+  // 位置でエラーにする（識別子/キーワードは ASCII 化されるので対象外）。
+  const checkSjis = (text: string, p: Position): void => {
+    const bad = findNonSjis(text);
+    if (bad.length > 0)
+      diagnostics.push(error("E_NON_SJIS", p, { chars: JSON.stringify(bad.join("")) }));
+  };
 
   while (i < n) {
     const start = here();
@@ -81,6 +90,7 @@ export function tokenize(source: string): LexResult {
       let raw = "";
       while (i < n && peek() !== "\n" && peek() !== "\r") raw += advance();
       push("COMMENT", raw, raw, start);
+      checkSjis(raw, start);
       continue;
     }
 
@@ -105,6 +115,7 @@ export function tokenize(source: string): LexResult {
         );
       }
       push("STRING", body, '"' + body + (closed ? '"' : ""), start);
+      checkSjis(body, start);
       continue;
     }
 
@@ -164,6 +175,7 @@ export function tokenize(source: string): LexResult {
         let rest = raw;
         while (i < n && peek() !== "\n" && peek() !== "\r") rest += advance();
         push("COMMENT", rest, rest, start);
+        checkSjis(rest, start);
         continue;
       }
 

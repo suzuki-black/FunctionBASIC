@@ -57,6 +57,31 @@ test("条件付き絶対ジャンプ JP cc,nn / CALL cc,nn", () => {
   assert.equal(hex(asm("CALL Z,&H00A2").bytes), "CC A2 00");
 });
 
+test("ADD HL,rr（16bit加算）", () => {
+  assert.equal(hex(asm("ADD HL,BC").bytes), "09");
+  assert.equal(hex(asm("ADD HL,DE").bytes), "19");
+  assert.equal(hex(asm("ADD HL,HL").bytes), "29");
+  assert.equal(hex(asm("ADD HL,SP").bytes), "39");
+  // 8bit の ADD A,r と衝突しないこと
+  assert.equal(hex(asm("ADD A,B").bytes), "80");
+});
+
+test("LD A,(BC)/(DE) と LD (BC)/(DE),A（レジスタ間接）", () => {
+  assert.equal(hex(asm("LD A,(BC)").bytes), "0A");
+  assert.equal(hex(asm("LD A,(DE)").bytes), "1A");
+  assert.equal(hex(asm("LD (BC),A").bytes), "02");
+  assert.equal(hex(asm("LD (DE),A").bytes), "12");
+  // (DE) を未知変数扱いしないこと
+  assert.deepEqual(asm("LD A,(DE)").errors, []);
+});
+
+test("LD A,(HL)/LD (HL),A は (nn) と誤認せずレジスタ間接になる", () => {
+  assert.equal(hex(asm("LD A,(HL)").bytes), "7E");
+  assert.equal(hex(asm("LD (HL),A").bytes), "77");
+  assert.equal(hex(asm("LD H,(HL)").bytes), "66");
+  assert.deepEqual(asm("LD A,(HL)").errors, [], "(HL) を未知変数扱いしない");
+});
+
 test("フレーム同期の定番 EI:HALT:RET（要所ASM用）", () => {
   assert.equal(hex(asm("EI\nHALT\nRET").bytes), "FB 76 C9");
 });

@@ -166,6 +166,9 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
       return void emit(0xdb, v);
     }
 
+    // ADD HL,rr（16bit加算）。ALU(8bit)判定より先に捕捉する。
+    if (op === "ADD" && A0 === "HL" && A1 in RP) return void emit(0x09 | (RP[A1] << 4));
+
     if (op in ALU) {
       // ADD/ADC/SBC は "A," を伴う場合がある。SUB/AND/OR/XOR/CP は単項。
       let target = A0;
@@ -180,12 +183,17 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
     if (op === "LD") {
       const dst = A0, srcRaw = args[1] ?? "";
       const src = A1;
-      // LD A,(nn) / LD A,(VAR)
-      if (dst === "A" && memInner(srcRaw) != null) {
+      // LD A,(BC)/(DE) と LD (BC)/(DE),A（(nn)/(VAR) 判定より先に捕捉）
+      if (dst === "A" && src === "(BC)") return void emit(0x0a);
+      if (dst === "A" && src === "(DE)") return void emit(0x1a);
+      if (dst === "(BC)" && src === "A") return void emit(0x02);
+      if (dst === "(DE)" && src === "A") return void emit(0x12);
+      // LD A,(nn) / LD A,(VAR)（(HL) はレジスタ間接なので下の LD r,r' に回す）
+      if (dst === "A" && src !== "(HL)" && memInner(srcRaw) != null) {
         const o = parseOperand(srcRaw, ln); if (!o) return; emit(0x3a); emit16(o as Operand); return;
       }
-      // LD (nn),A / LD (VAR),A
-      if (memInner(dst) != null && src === "A") {
+      // LD (nn),A / LD (VAR),A（(HL) は下の LD r,r' に回す）
+      if (dst !== "(HL)" && memInner(dst) != null && src === "A") {
         const o = parseOperand(dst, ln); if (!o) return; emit(0x32); emit16(o as Operand); return;
       }
       // LD rp,nn

@@ -1135,19 +1135,21 @@ function finishTransform(ctx: any): TransformResult {
   };
 
   // --- インライン ASM ---
-  // コードは MAIN 先頭で「文字列に1回だけ」POKE 配置する（プロローグ）。呼び出し側は
-  // 実体アドレスを再取得（GC で文字列が動いてもコードは中身ごと動くので安全）＋
-  // 変数オペランドを VARPTR でパッチ＋DEFUSR/USR、だけ。毎フレーム呼んでも軽い。
-  interface AsmBlk { strVar: string; addrVar: string; bytes: number[]; patches: { offset: number; name: string }[] }
+  // コードは MAIN 先頭で HIMEM 直下の予約領域へ 1 回だけ POKE 配置する（プロローグ）。
+  // アドレスは固定なので呼び出し側は DEFUSR/USR ＋ 変数オペランドを VARPTR でパッチする
+  // だけ（そのパッチも初回のみ）。毎フレーム呼んでも軽い。
+  interface AsmBlk { addrVar: string; guardVar: string; bytes: number[]; patches: { offset: number; name: string }[] }
   const asmReg = new Map<any, AsmBlk>();
-  let asmPT = "", asmQ = "";
+  let asmPT = "", asmQ = "", asmLo = "", asmHi = "", asmBase = "";
   const registerAsm = (s: any) => {
     if (asmReg.has(s)) return;
     const r = assembleZ80(s.lines, ctx.asmVars);
     for (const e of r.errors) fail("E_ASM", { detail: `${e.line}: ${e.message}` }, s.pos);
     const bytes = r.bytes.slice();
     if (bytes.length === 0 || bytes[bytes.length - 1] !== 0xc9) bytes.push(0xc9); // USR は RET で戻る
-    asmReg.set(s, { strVar: ctx.pool.next("$"), addrVar: ctx.pool.next("!"), bytes, patches: r.patches });
+    // 変数オペランドのパッチは「初回呼び出しで1回だけ」適用する（VARPTR は不変、コードは
+    // HIMEM 直下の固定アドレスで動かないのでパッチ済みバイトは有効）。guardVar でガード。
+    asmReg.set(s, { addrVar: ctx.pool.next("!"), guardVar: r.patches.length ? ctx.pool.next("%") : "", bytes, patches: r.patches });
   };
   const collectAsm = (stmts: any[]) => {
     for (const s of stmts) {
@@ -1160,25 +1162,55 @@ function finishTransform(ctx: any): TransformResult {
     const b = asmReg.get(s);
     if (!b) return;
     const push = (text: string) => items.push({ kind: "line", text });
-    push(`${b.addrVar}=PEEK(VARPTR(${b.strVar})+1)+PEEK(VARPTR(${b.strVar})+2)*256`); // GC 安全な再取得
-    for (const p of b.patches) {
-      const v = resolveVar(p.name, sc);
-      push(`${asmPT}=VARPTR(${v}):IF ${asmPT}<0 THEN ${asmPT}=${asmPT}+65536`);
-      push(`POKE ${b.addrVar}+${p.offset},${asmPT}-INT(${asmPT}/256)*256:POKE ${b.addrVar}+${p.offset + 1},INT(${asmPT}/256)`);
+    // addrVar は HIMEM 直下の固定アドレス（プロローグで1回設定・GCで動かない）。
+    // 毎回の再取得は不要。パッチは初回だけ適用する。2回目以降は guardVar<>0 なので 1 本の IF で全
+    // パッチ行を GOTO で飛ばす（毎回 IF を patches 回評価するとそれ自体が重い）。
+    if (b.patches.length) {
+      const skipId = newLabel();
+      push(`IF ${b.guardVar}<>0 THEN @@L:${skipId}@@`);
+      push(`${b.guardVar}=1`);
+      // 同じ変数を指すパッチはまとめる: VARPTR/正規化を1回だけ計算し lo/hi を求め、
+      // その変数の全オフセットへ POKE（複数を1行に詰める）。URL(圧縮後)を縮める。
+      const byVar = new Map<string, number[]>();
+      for (const p of b.patches) {
+        const v = resolveVar(p.name, sc);
+        (byVar.get(v) ?? byVar.set(v, []).get(v)!).push(p.offset);
+      }
+      for (const [v, offs] of byVar) {
+        push(`${asmPT}=VARPTR(${v}):${asmPT}=${asmPT}-65536*(${asmPT}<0):${asmLo}=${asmPT}-INT(${asmPT}/256)*256:${asmHi}=INT(${asmPT}/256)`);
+        let line = "";
+        const flush = () => { if (line) { push(line); line = ""; } };
+        for (const off of offs) {
+          const stmt = `POKE ${b.addrVar}+${off},${asmLo}:POKE ${b.addrVar}+${off + 1},${asmHi}`;
+          if (line && line.length + 1 + stmt.length > 220) flush(); // 行番号ぶんの余裕（ASCII 行 ≤255）
+          line = line ? line + ":" + stmt : stmt;
+        }
+        flush();
+      }
+      items.push({ kind: "label", id: skipId });
     }
     push(`DEFUSR=${b.addrVar}:${asmQ}=USR(0)`);
   };
   // MAIN 先頭に置くコード配置プロローグ（全ブロック）。
   const asmPrologueItems = (): Item[] => {
     const out: Item[] = [];
+    // 機械語は文字列(MSX-BASIC は最大255B)ではなく HIMEM 直下に予約した領域へ置く。
+    // 実行時に現在の HIMEM(システム変数 &HFC4A/4B) を読み、その分だけ下げて総量＋
+    // 余裕を確保する。アドレス即値を書かない＝機種非依存。CLEAR は変数を消すので
+    // 基点(asmBase)は CLEAR 後に HIMEM を読み直して求める。文字列領域は 1024B 確保。
+    const asmTotal = [...asmReg.values()].reduce((n, b) => n + b.bytes.length, 0);
+    const HM = `(PEEK(&HFC4A)+PEEK(&HFC4B)*256)`;
+    out.push({ kind: "line", text: `CLEAR 1024,${HM}-${asmTotal + 8}` });
+    out.push({ kind: "line", text: `${asmBase}=${HM}+1` }); // 予約領域の先頭（新 HIMEM+1）
+    let off = 0;
     for (const [, b] of asmReg) {
-      out.push({ kind: "line", text: `${b.strVar}=STRING$(${b.bytes.length},0)` });
-      out.push({ kind: "line", text: `${b.addrVar}=PEEK(VARPTR(${b.strVar})+1)+PEEK(VARPTR(${b.strVar})+2)*256` });
+      out.push({ kind: "line", text: `${b.addrVar}=${asmBase}+${off}` }); // このブロックの固定アドレス
       for (let i = 0; i < b.bytes.length; i += 8) {
         const seg: string[] = [];
         for (let j = i; j < Math.min(i + 8, b.bytes.length); j++) seg.push(`POKE ${b.addrVar}+${j},${b.bytes[j]}`);
         out.push({ kind: "line", text: seg.join(":") });
       }
+      off += b.bytes.length;
     }
     return out;
   };
@@ -1354,7 +1386,7 @@ function finishTransform(ctx: any): TransformResult {
   // ASM ブロックを事前収集（コード配置はプロローグで1回）＋共有一時変数を確保。
   collectAsm(program.toplevel);
   for (const f of program.functions) collectAsm(f.body);
-  if (asmReg.size) { asmPT = ctx.pool.next("!"); asmQ = ctx.pool.next("!"); }
+  if (asmReg.size) { asmPT = ctx.pool.next("!"); asmQ = ctx.pool.next("!"); asmLo = ctx.pool.next("%"); asmHi = ctx.pool.next("%"); asmBase = ctx.pool.next("!"); }
 
   const mainItems: Item[] = [{ kind: "line", text: "' === MAIN ===" }];
   emitInto(program.toplevel, { func: undefined }, mainItems);

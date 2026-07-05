@@ -108,11 +108,18 @@ test("例: turbo-r.msxb は _TURBO ON/OFF を保持して変換される", () =>
   assert.match(msx, /^\d+ _TURBO OFF$/m);
 });
 
-test("例: space-shooter-turbor.msxb はエラーなしで変換される（機種判定＋キャラ再定義）", () => {
+test("例: space-shooter-turbor.msxb はエラーなしで変換される（STRICT整数・機種判定・スプライト・VPOKE艦隊描画）", () => {
+  const src = readFileSync(join(examplesDir, "space-shooter-turbor.msxb"), "utf8");
+  const { tokens } = tokenize(src);
+  const { program } = parse(tokens);
+  assert.equal(program.strict, true, "STRICT が有効（整数化の速度最適化）");
   const { msx, diagnostics } = compileExample("space-shooter-turbor.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
   assert.match(msx, /PEEK\(&H2D\)/); // turbo R 判定
-  assert.match(msx, /VPOKE/); // 8x8 キャラ再定義
+  assert.match(msx, /VPOKE/); // 8x8 キャラ再定義＋艦隊のネームテーブル直書き
+  assert.match(msx, /VPOKE [A-Z]+%\+33,/); // 艦隊描画が VPOKE 直書き（LOCATE/PRINT でない）
+  assert.match(msx, /PUT SPRITE \d+,\(/); // 自機/弾/爆弾はハードウェアスプライト
+  assert.match(msx, /=&H1800\+/); // ネームテーブルアドレス計算（整数）
 });
 
 test("例: msx-music-fm.msxb は CALL MUSIC / FM PLAY を保持して変換される", () => {

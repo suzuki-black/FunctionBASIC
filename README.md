@@ -20,6 +20,10 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 ![The converted program running inside webMSX, embedded in the editor](docs/images/run-en.png)
 
+![Space Shooter — a colourful four-row alien fleet above the player ship, running in webMSX](docs/images/shooter-play.png)
+
+*A complete, playable arcade shooter — hardware sprites, per-row colours, animation, sound, and a fleet redraw hand-optimized in inline Z80 — written **entirely in Structured BASIC**. See the [Space Shooter showcase](#featured-example--space-shooter-turbo-r).*
+
 ---
 
 ## Download
@@ -52,7 +56,7 @@ Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC
 - **Structured BASIC** — `FUNCTION`, freely nestable `IF/FOR/WHILE`, local-by-default variables, `GLOBAL`, `REF` parameters, `BREAK`/`CONTINUE`, `RETURN`, arrays (incl. by reference), and `CONST` named constants (folded & inlined at compile time).
 - **Recursion** — self- and mutually-recursive functions work, via automatic frame save/restore on a software stack (depth configurable; `REF` params in a recursive function are reported, not mis-compiled).
 - **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX only distinguishes the first two characters).
-- **Inline Z80 assembly** — `ASM … END ASM` blocks are assembled to machine code and glued in automatically: a string-reserved ML buffer (no `CLEAR`), `VARPTR` operand patching so `(NAME)` reaches a `%` integer BASIC variable, and `DEFUSR`/`USR` to run it. (PoC: no labels yet; `%` integer variables only.)
+- **Inline Z80 assembly** — `ASM … END ASM` blocks are assembled to machine code and wired in automatically: the code is placed in a buffer reserved just below `HIMEM` (read at run time, so it is machine-independent and not bound by the 255-byte string limit), `VARPTR` operand patching so `(NAME)` reaches a `%` integer BASIC variable (applied once), labels with relative jumps (`JR` / `DJNZ`) for loops and branches, and `DEFUSR`/`USR` to run it. Powers the arcade-smooth fleet redraw in the [Space Shooter](#featured-example--space-shooter-turbo-r). (`%` integer variables only; no absolute `CALL`/`JP` to labels yet.)
 
 **Transpile to MSX-BASIC**
 - **Automatic conversion** — line numbering, 2-char variable allocation, `FUNCTION`→`GOSUB`, return-value handling, and 255-byte line auto-splitting.
@@ -125,7 +129,7 @@ The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on de
 | `GLOBAL` | `GLOBAL X` | Opt in to a shared (global) variable; otherwise variables are local. |
 | `CONST` | `CONST NAME[%!#$] = const-expr` | Compile-time constant; folded and inlined as a literal. Re-assignment is an error. An optional type suffix is validated (`CONST N% = 3`; `%` requires an integer value) and is **required under `STRICT`**. |
 | `RETURN` | `RETURN [value]` | Returns from a function, optionally with a value. |
-| `ASM` | `ASM` … `END ASM` | Inline Z80 assembly, assembled and run via `DEFUSR`/`USR`. `(NAME)` references a `%` integer BASIC variable (patched at runtime with `VARPTR`). PoC: no labels; `%` integers only. |
+| `ASM` | `ASM` … `END ASM` | Inline Z80 assembly, assembled into a buffer below `HIMEM` and run via `DEFUSR`/`USR`. `(NAME)` references a `%` integer BASIC variable (patched once with `VARPTR`). Labels + relative jumps (`JR`/`DJNZ`); `%` integers only. |
 | Arrays | `DIM A(n)` ; pass with `REF A` | Arrays may be passed by reference, including string arrays. |
 
 ---
@@ -200,6 +204,26 @@ DATA 62, 42, 205, 162, 0, ...
 ---
 
 ## Examples
+
+### Featured example — Space Shooter (turbo R)
+
+![Space Shooter running in webMSX: a four-row alien fleet in red / yellow / cyan / green above the player ship, with a score line on top](docs/images/shooter-play.png)
+
+A complete, playable **fixed shooter** — a colourful alien fleet that marches and speeds up as it thins, two-plane hardware sprites, per-row colours, leg animation, sound effects, lives, and a title screen — written **entirely in Structured BASIC** and transpiled to authentic MSX-BASIC that runs on a real turbo R. Full source: [`examples/space-shooter-turbor.msxb`](examples/space-shooter-turbor.msxb).
+
+**How to play** — in webMSX pick the **turbo R** machine, press **▶ WebMSX**, then **be patient**: webMSX's turbo R boot is slow, so it can take **~30–40 seconds** before the title screen appears. At the title press **SPACE** to start. **← / →** move, **SPACE** fires. (The game deliberately refuses to run on anything older than a turbo R.)
+
+**Why write it in Structured BASIC?** The same game in hand-numbered MSX-BASIC would be a wall of `GOSUB`s and cryptic two-letter variables. Here it stays readable:
+
+- **Real functions, not `GOSUB` line-jumps** — `MARCH()`, `FIRE()`, `CHECK_HIT()`, `DRAW_ALIEN()`, `HIT_PLAYER()` … each a named `FUNCTION` with its own local variables. The transpiler assigns the line numbers, the `GOSUB`/`RETURN` wiring, and the two-character MSX variable names for you.
+- **`GLOBAL` for shared state, locals by default** — persistent game state (`AGX%` fleet position, `SC%` score, `LV%` lives …) is declared `GLOBAL`; loop counters and scratch stay local automatically, so functions don't clobber each other.
+- **STRICT static typing** — every variable and constant carries a type suffix and is `%` (16-bit integer), keeping the whole game on MSX-BASIC's fast integer path.
+- **Art you can read** — the ship, bullets and alien tiles are drawn as ASCII pictures inside `DATA` (`"......####......"`), converted to bytes at load. You edit the *picture*, not hex.
+- **Inline Z80 for the hot path** — the entire fleet redraw is an `ASM … END ASM` block. The transpiler assembles it, reserves a machine-code buffer just below `HIMEM`, patches its variable references, and calls it with `USR` — no `DATA`/`READ`/`POKE` boilerplate. That single change took the alien march from a stuttery **~10 fps** to a smooth **~27 fps** on a turbo R: arcade-smooth motion, still from one readable BASIC source.
+
+It reads like modern structured code, and runs on a real 8-bit MSX.
+
+---
 
 **1. A simple function** — find the first zero in an array.
 
@@ -345,6 +369,10 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 ![変換したプログラムをエディタ内蔵の webMSX で実行](docs/images/run-ja.png)
 
+![スペースシューター — 4行のカラフルなエイリアン艦隊と自機。webMSXで実行中](docs/images/shooter-play.png)
+
+*ハードウェアスプライト・行ごとの色・アニメ・効果音、そして艦隊再描画をインラインZ80で最適化した——**すべて構造化BASICだけで書いた**、遊べるアーケードシューター。詳しくは[スペースシューターのショーケース](#目玉サンプル--スペースシューターturbo-r)。*
+
 ---
 
 ## ダウンロード
@@ -377,7 +405,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **構造化BASIC** — `FUNCTION`、自由に入れ子可能な `IF/FOR/WHILE`、既定ローカル変数、`GLOBAL`、`REF` 参照引数、`BREAK`/`CONTINUE`、`RETURN`、配列（参照渡し含む）、`CONST` 名前付き定数（コンパイル時に畳み込み＆インライン）。
 - **再帰** — 自己・相互再帰の関数が動く。再帰 `GOSUB` の前後でフレームをソフトウェアスタックへ自動退避／復元（深さ可変。再帰関数内の `REF` 引数は誤変換せずエラー報告）。
 - **長く読みやすい変数名** — `PLAYER_SCORE` / `ENEMY_X` のような説明的な名前を書け、変換器が一意な2文字MSX名へ自動割り当て（MSXは先頭2文字しか区別しない）。
-- **インライン Z80 アセンブリ** — `ASM … END ASM` を機械語にアセンブルして自動で埋め込む：文字列でML領域を確保（`CLEAR`不要）、`(NAME)` は `VARPTR` で `%`整数BASIC変数のアドレスに実行時パッチ、`DEFUSR`/`USR` で実行。（PoC：ラベル未対応・`%`整数変数のみ）
+- **インライン Z80 アセンブリ** — `ASM … END ASM` を機械語にアセンブルして自動で埋め込む：コードは `HIMEM` 直下に予約したバッファへ配置（実行時に HIMEM を読むので機種非依存・255バイトの文字列上限に縛られない）、`(NAME)` は `VARPTR` で `%`整数BASIC変数のアドレスに1回だけパッチ、ループ/分岐用のラベル＋相対ジャンプ（`JR`/`DJNZ`）、`DEFUSR`/`USR` で実行。[スペースシューター](#目玉サンプル--スペースシューターturbo-r)の滑らかな艦隊再描画に使用。（`%`整数変数のみ・ラベルへの絶対 `CALL`/`JP` は未対応）
 
 **MSX-BASICへの変換**
 - **自動変換** — 行番号付与、2文字変数の割り当て、`FUNCTION`→`GOSUB` 展開、戻り値処理、255バイト行の自動分割。
@@ -450,7 +478,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 | `GLOBAL` | `GLOBAL X` | 共有（グローバル）変数を使う宣言。なければローカル。 |
 | `CONST` | `CONST 名前[%!#$] = 定数式` | コンパイル時定数。畳み込んでリテラルとしてインライン。再代入はエラー。型サフィックスは任意で、付けると検証（`CONST N% = 3`、`%`は整数値のみ）。**`STRICT` では必須**。 |
 | `RETURN` | `RETURN [値]` | 関数から戻る。値を返せる。 |
-| `ASM` | `ASM` … `END ASM` | インライン Z80 アセンブリ。アセンブルして `DEFUSR`/`USR` で実行。`(NAME)` は `%`整数BASIC変数を参照（実行時 `VARPTR` でパッチ）。PoC：ラベル未対応・`%`整数のみ。 |
+| `ASM` | `ASM` … `END ASM` | インライン Z80 アセンブリ。`HIMEM` 直下のバッファへアセンブルし `DEFUSR`/`USR` で実行。`(NAME)` は `%`整数BASIC変数を参照（`VARPTR` で1回パッチ）。ラベル＋相対ジャンプ（`JR`/`DJNZ`）対応・`%`整数のみ。 |
 | 配列 | `DIM A(n)` ／ `REF A` で渡す | 配列は参照渡し可。文字列配列も可。 |
 
 ---
@@ -525,6 +553,26 @@ DATA 62, 42, 205, 162, 0, ...
 ---
 
 ## サンプル
+
+### 目玉サンプル — スペースシューター（turbo R）
+
+![webMSXで動作中のスペースシューター：赤・黄・シアン・緑の4行エイリアン艦隊と自機、上部にスコア表示](docs/images/shooter-play.png)
+
+遊べる**固定画面シューター**を丸ごと収録 — 減るほど加速する艦隊マーチ、2枚重ねのハードウェアスプライト、行ごとの色、脚アニメ、効果音、残機、タイトル画面まで、**すべて構造化BASICだけ**で書いて本物のMSX-BASICへ変換し、実機の turbo R で動きます。全ソース：[`examples/space-shooter-turbor.msxb`](examples/space-shooter-turbor.msxb)。
+
+**遊び方** — webMSXで **turbo R** マシンを選び、**▶ WebMSX** を押したら**しばらく待ってください**：webMSXの turbo R 起動は遅く、タイトルが出るまで **30〜40秒ほど** かかることがあります。タイトルで **SPACE** を押すと開始。**← / →** で移動、**SPACE** で発射。（turbo R 未満では動かないようにしてあります。）
+
+**なぜ構造化BASICで書くのか？** 同じゲームを手書きの行番号MSX-BASICで書くと `GOSUB` と2文字変数の壁になります。ここでは読みやすいまま：
+
+- **`GOSUB` の行ジャンプでなく本物の関数** — `MARCH()` / `FIRE()` / `CHECK_HIT()` / `DRAW_ALIEN()` / `HIT_PLAYER()` … それぞれローカル変数を持つ名前付き `FUNCTION`。行番号・`GOSUB`/`RETURN` の配線・2文字変数名は変換器が割り当てます。
+- **共有は `GLOBAL`、既定はローカル** — 永続する状態（艦隊位置 `AGX%`・スコア `SC%`・残機 `LV%` …）は明示的に `GLOBAL`、ループ変数や一時変数は自動でローカルなので関数どうしが壊し合いません。
+- **STRICT 静的型付け** — すべての変数・定数が型サフィックス付きの `%`（16bit整数）で、ゲーム全体をMSX-BASICの高速な整数パスに保ちます。
+- **読める絵** — 自機・弾・エイリアンのタイルは `DATA` の中にASCIIの絵（`"......####......"`）として描き、起動時にバイト列へ。編集するのは16進でなく**絵**です。
+- **要所はインラインZ80** — 艦隊再描画まるごとを `ASM … END ASM` ブロックで記述。変換器がアセンブルし、`HIMEM` 直下に機械語バッファを予約し、変数参照をパッチして `USR` で呼びます（`DATA`/`READ`/`POKE` の定型不要）。この一手で艦隊マーチが**カクつく約10fps**から turbo R で**滑らかな約27fps**へ：アーケード級の動きを、読みやすい1つのBASICソースのまま実現。
+
+モダンな構造化コードのように読めて、本物の8bit MSXで動きます。
+
+---
 
 **1. 簡単な関数** — 配列の中から最初の 0 を見つける。
 

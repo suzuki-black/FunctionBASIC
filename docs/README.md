@@ -128,6 +128,7 @@ PRINT "FOUND="; RESULT; " AT "; WHERE
 | No | ファイル | 内容 | 対応仕様 |
 |----|----------|------|----------|
 | 00 | [README.md](README.md) | 本書・全体概要・索引 | 全体 |
+| 00 | [00-msx-basic-diff.md](00-msx-basic-diff.md) | **MSX-BASIC → 構造化BASIC 差分ガイド**（MSX-BASIC経験者・AI両対応の差分チートシート。まずここ） | 仕様1 |
 | 01 | [01-language-spec.md](01-language-spec.md) | 言語仕様（構造化BASIC） | 仕様1 |
 | 02 | [02-architecture.md](02-architecture.md) | 全体アーキテクチャ・モジュール・データフロー | 仕様7 |
 | 03 | [03-lexer-parser.md](03-lexer-parser.md) | 字句解析・構文解析・文法チェック | 仕様2 |

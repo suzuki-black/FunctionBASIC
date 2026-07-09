@@ -82,7 +82,7 @@ END FUNCTION
 
 **呼び出し側の `REF` は省略可。** 参照渡しかどうかは関数定義（仮引数の `REF`）で決まり、
 呼び出し側の `REF` は読みやすさのための任意マーカーである。
-よって `R = SWAP(REF X, REF Y)` と `R = SWAP(X, Y)` はどちらも同じ参照渡しになる
+よって `R = EXCHANGE(REF X, REF Y)` と `R = EXCHANGE(X, Y)` はどちらも同じ参照渡しになる
 （[03](03-lexer-parser.md#333-ref引数チェック仕様2-3)）。
 
 ### REF の意味論：名前置換方式（ゼロコピー）
@@ -97,7 +97,7 @@ END FUNCTION
 - **配列の値渡し（REF無し）も可**だが全要素コピー（O(n)）で重い。大きい配列は警告（[05 §5.4.5](05-transformer.md)）。
 
 ```basic
-FUNCTION SWAP(REF A, REF B)
+FUNCTION EXCHANGE(REF A, REF B)   ' 関数名は組み込み命令と別名に（SWAP/DRAW 等は E_NAME_IS_BUILTIN）
     LET T = A
     LET A = B
     LET B = T
@@ -107,13 +107,13 @@ END FUNCTION
 FUNCTION MAIN()
     LET X = 1                  ' 構造化BASICは1行1文（複文 ":" は禁止）
     LET Y = 2
-    LET R = SWAP(REF X, REF Y) ' X,Y が入れ替わる
+    LET R = EXCHANGE(REF X, REF Y) ' X,Y が入れ替わる
     RETURN 0
 END FUNCTION
 ```
 
 > **補足（`LET` 省略）**：構造化BASICでは `LET` を省略できる（§1.9）。よって上記は
-> `X = 1` / `Y = 2` / `R = SWAP(X, Y)` のように書いても同じ意味で合法である。
+> `X = 1` / `Y = 2` / `R = EXCHANGE(X, Y)` のように書いても同じ意味で合法である。
 > 本書ではキーワードを明示するため `LET` を付けて記述しているが、どちらの書き方も等価。
 
 ---
@@ -430,3 +430,63 @@ INCLUDE "lib/math.msxb"
 - **同一ファイルの二重 include は1回に統合**（パス正規化で自動 dedup）。**循環 include は `E_INCLUDE_CYCLE`**、見つからなければ `E_INCLUDE_NOT_FOUND`。
 - **⚠ 2文字名予算（約960/型）は全 include 合算で消費**（§1.10.3）。大規模分割では `E_VAR_NAMES_EXHAUSTED` に注意。
 - 逆変換は変換テーブルの **由来（provenance）** を使い、**元の複数ファイルへ分割復元**する（[06 §6.12](06-reverse-transformer.md)）。
+
+---
+
+## <a name="114-const定数"></a>1.14 CONST（コンパイル時定数）
+
+名前付き定数を宣言する。**変数ではなく、コンパイル時にリテラルへインライン展開**される（MSX変数を生成しない＝速度・サイズに有利）。実装は [const-inline.ts]（`transform` 冒頭のプリパス）。
+
+```basic
+CONST MAX_HP% = 100          ' 型サフィックスは任意
+CONST TITLE$ = "READY"
+CONST AREA% = 8 * 24         ' 定数式は畳み込む（= 192 に確定）
+```
+
+### 規則
+
+- **トップレベルに宣言**する。使用箇所は全て畳み込んだリテラルへ置換される。
+- **`GLOBAL` 宣言は不要**。定数は変数ではないので、どの関数からでも宣言なしで参照できる（[§1.10](#110-変数スコープ) のスコープ規則の対象外）。
+- **再代入は不可**（初期化以外の `=`、`FOR` 変数、`INPUT`/`READ`/`GET`/`SWAP` 等の書込み対象にするとエラー）。
+- 型サフィックス（`% ! # $`）は任意。付けると初期値の型を検証する（`CONST N% = 1.5` は型不一致）。**`STRICT`（[§1.15](#115-strict静的型付け)）では必須**。
+- 初期化式は定数畳み込みできること。他の `CONST` を参照してもよい。
+
+### エラー
+
+| コード | 条件 |
+| --- | --- |
+| `E_CONST_ASSIGN` | 初期化以外で `CONST` に代入した |
+| `E_CONST_NOT_CONSTANT` | 初期化式が定数畳み込みできない |
+| `E_CONST_TYPE` | 宣言サフィックスと初期値の型が不一致 |
+| `E_DUP_CONST` | 同名 `CONST` の重複宣言 |
+
+> **変数（`GLOBAL`）との違い**：`GLOBAL` は実体のある可変変数で、関数内で使うには各関数で再宣言が必要・2文字MSX名を1つ消費する。`CONST` は不変・宣言不要・変数を生成しない。可変な共有状態は `GLOBAL`、不変値は `CONST`。
+
+---
+
+## <a name="115-strict静的型付け"></a>1.15 STRICT（任意の静的型付け）
+
+ソース先頭に `STRICT` と書くと、**オプトインの静的型チェック**（Rust方式＝暗黙変換なし）が有効になる。既定はオフ（非strictでは従来どおりMSXの暗黙数値変換）。
+
+```basic
+STRICT
+FUNCTION ADD%(A%, B%)
+    RETURN A% + B%
+END FUNCTION
+TOTAL% = 0
+FOR I% = 1 TO 10
+    TOTAL% = ADD%(TOTAL%, I%)
+NEXT I%
+AVG! = CSNG(TOTAL%) / 10        ' % → ! は明示変換
+```
+
+### 規則
+
+- **全ての変数・配列・引数・`FOR`変数・`CONST` に型サフィックス必須**（`% ! # $`）。無いと `E_STRICT_UNTYPED`。
+- **代入・引数・戻り値は型が完全一致**。暗黙変換なし（`A% = B#`・`A% = 1.5`・文字列/数値の混在は `E_TYPE_MISMATCH`）。変換は `CINT`/`CSNG`/`CDBL`/`INT`/`FIX`/`ASC`/`STR$`/`VAL` 等で明示する。
+- 数値リテラルは柔軟（`5` は `%`/`!`/`#` 可、`1.5` は `!`/`#`）。演算子はMSXの型昇格に従い、完全一致判定は**代入・引数・戻り値の境界**で行う。
+- Z80は整数(`%`)演算が速いので、ゲームロジックは `%` へ寄せると有利。座標・三角関数は `!`/`#` に統一するか境界で明示変換。
+
+例：[`examples/strict-demo.msxb`](../examples/strict-demo.msxb)。
+
+> ⚠ **1文1行の原則は STRICT でも同じ**：`FOR I% = 1 TO 10 : ... : NEXT`（`:`複文）は STRICT でも非strictでも `E_SYNTAX`。上例のように改行で分ける（[§1.2](#12-ソース構造)）。

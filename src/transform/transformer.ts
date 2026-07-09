@@ -262,6 +262,7 @@ export interface TransformOptions {
   optimize?: boolean; // 定数畳み込み最適化（オプトイン・既定OFF）
   strengthReduce?: boolean; // べき乗の強度低減 X^2→X*X（オプトイン・既定OFF）
   stripComments?: boolean; // コメント除去（オプトイン・既定OFF。飛び先は安全に保持）
+  packLines?: boolean; // 連続する非ジャンプ先の文を ":" で1行に結合（サイズ削減・オプトイン・既定OFF）
   hotPlacement?: boolean; // 呼出頻度順に関数を低い行番号へ（GOSUB 行番号サーチ短縮・オプトイン）
   recursionDepth?: number; // 再帰スタックの最大深さ（DIMサイズ・既定100）
 }
@@ -1347,7 +1348,44 @@ function finishTransform(ctx: any): TransformResult {
     return parts.join(":");
   };
 
-  const numberBlock = (rawItems: Item[], start: number): MsxLine[] => {
+  // 連続する「line」項目を ":" で結合してサイズ（＝行番号ぶん）を削る（opt-in）。
+  // ラベル(ジャンプ先)/frameop は障壁として絶対に跨がない＝制御フローは不変。
+  // 結合の可否は保守的に判定（THEN/GOTO/RETURN/END/DATA/FOR/WHILE 等の後ろへは足さない）。
+  const packItems = (src: Item[]): Item[] => {
+    const CAP = 240; // 255制限に余裕（この後 splitLongLine も走る）
+    const isComment = (t: string) => { const s = t.trimStart(); return s.startsWith("'") || /^REM(\s|$)/i.test(s); };
+    // prev の末尾へ「: X」を足すと危険になるパターン（この行の後には結合しない）
+    // GOTO/RETURN/END/RESUME/STOP: 後続は死コード or 制御が飛ぶので結合しない。
+    // DATA: 行末まで読む。ON: GOTO 分岐が飛ぶので保守的に不可。THEN: 1行IFの THEN 節を延ばしてしまう。
+    // （GOSUB は復帰、FOR/WHILE 本体はループ内に留まるので後続結合は安全＝除外しない）
+    const badTail = (t: string) =>
+      isComment(t) ||
+      /\bTHEN\b/i.test(t) ||
+      /(^|:)\s*(GOTO|RETURN|END|RESUME|STOP|DATA|ON)\b/i.test(t);
+    // 行頭に来られない/独立が必要なパターン（この行は前へ結合しない）
+    const badHead = (t: string) => {
+      const s = t.trimStart();
+      return isComment(s) || /^(DATA|NEXT|WEND|ELSE)\b/i.test(s);
+    };
+    const out: Item[] = [];
+    for (const it of src) {
+      if (it.kind !== "line") { out.push(it); continue; }
+      const prev = out.length ? out[out.length - 1] : undefined;
+      if (
+        prev && prev.kind === "line" &&
+        !badTail(prev.text) && !badHead(it.text) &&
+        prev.text.length + 2 + it.text.length <= CAP
+      ) {
+        prev.text = prev.text + ": " + it.text;
+      } else {
+        out.push({ kind: "line", text: it.text });
+      }
+    }
+    return out;
+  };
+
+  const numberBlock = (rawItems0: Item[], start: number): MsxLine[] => {
+    const rawItems = ctx.opts?.packLines ? packItems(rawItems0) : rawItems0;
     // 255バイト超過行を自動分割（番号付与の前なのでラベル/GOSUBは正しく解決される）
     const items: Item[] = [];
     for (const it of rawItems) {

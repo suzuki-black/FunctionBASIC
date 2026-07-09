@@ -1,0 +1,480 @@
+' ============================================================
+'  SCROLL RUNNER (turbo R) - FunctionBASIC showcase #2
+'
+'  Forced-scroll runner on the MSX2+ (V9958) HARDWARE horizontal smooth
+'  scroll (SET SCROLL, accumulated each frame = per-pixel glide). The CPU
+'  only nudges the scroll register + writes the ONE incoming tile column
+'  each 8 dots. Terrain (rolling ground, gaps, obstacles), physics and
+'  collision are all Structured BASIC - no inline assembly.
+'
+'  LEFT/RIGHT move,  SPACE jump (hold longer = higher/farther). Ride the
+'  hills, hop the rocks, clear the pits, get as far as you can. turbo R
+'  required (fast R800 = a pure-BASIC smooth scroller stays playable).
+' ============================================================
+
+STRICT
+
+CONST NAME_TABLE_BASE% = &H1800          ' SCREEN 1 name-table base
+CONST GROUND_TILE% = 219          ' ground tile
+CONST OBSTACLE_TILE% = 215          ' obstacle tile (redefined solid)
+CONST NO_GROUND_ROW% = 24            ' ground-row value meaning "no ground" (a pit)
+
+GLOBAL SCROLL_OFFSET%                  ' accumulated hardware-scroll offset (0..255)
+GLOBAL SCROLL_CARRY%                  ' 8-dot column carry
+GLOBAL WRITE_COLUMN%                  ' ring column being written (0..31)
+GLOBAL DISTANCE%               ' distance travelled = score
+GLOBAL SCROLL_SPEED%                ' scroll speed (dots/frame)
+GLOBAL PLAYER_X%                 ' player sprite X (movable)
+GLOBAL PLAYER_Y%                 ' player sprite top Y
+GLOBAL VELOCITY_Y%                 ' vertical velocity
+GLOBAL ON_GROUND%                 ' 1 = on ground
+GLOBAL PREVIOUS_TRIGGER%                 ' previous trigger state (edge detect)
+GLOBAL GAME_OVER%               ' 0 running / 1 game over
+GLOBAL BASE_GROUND_ROW%                ' terrain gen: current base ground row
+GLOBAL FLAT_COLUMNS_LEFT%               ' flat/rolling columns still to emit
+GLOBAL PLATEAU_LENGTH%              ' columns left in the current flat plateau
+GLOBAL HAZARD_KIND%             ' pending hazard 1=pit 2=obstacle
+GLOBAL HAZARD_COLUMNS_LEFT%             ' hazard columns left
+GLOBAL HAZARD_OBSTACLE_HEIGHT%                ' obstacle height
+GLOBAL NEXT_GROUND_ROW%                ' next column ground row (output of GEN_NEXT)
+GLOBAL NEXT_OBSTACLE_HEIGHT%                ' next column obstacle height (output of GEN_NEXT)
+GLOBAL GROUND_ROW%                ' ring: ground row per column
+GLOBAL OBSTACLE_HEIGHT%                ' ring: obstacle height per column
+
+
+' Decide the next column: terraced plateaus joined by multi-tile steps, broken
+' by a single pit or obstacle with a flat landing afterwards. Sets NEXT_GROUND_ROW%/NEXT_OBSTACLE_HEIGHT%.
+FUNCTION GEN_NEXT()
+    GLOBAL BASE_GROUND_ROW%
+    GLOBAL FLAT_COLUMNS_LEFT%
+    GLOBAL PLATEAU_LENGTH%
+    GLOBAL HAZARD_KIND%
+    GLOBAL HAZARD_COLUMNS_LEFT%
+    GLOBAL HAZARD_OBSTACLE_HEIGHT%
+    GLOBAL NEXT_GROUND_ROW%
+    GLOBAL NEXT_OBSTACLE_HEIGHT%
+    NEXT_OBSTACLE_HEIGHT% = 0
+    IF FLAT_COLUMNS_LEFT% > 0 THEN
+        FLAT_COLUMNS_LEFT% = FLAT_COLUMNS_LEFT% - 1
+        ' terraced terrain: flat plateaus joined by MULTI-tile ledges.
+        ' A plateau runs for PLATEAU_LENGTH% columns, then the ground steps in one shot:
+        '   up   1..3 tiles (instant climb onto the higher ledge)
+        '   down 1..4 tiles (a cliff you run off and fall from)
+        IF PLATEAU_LENGTH% > 0 THEN
+            PLATEAU_LENGTH% = PLATEAU_LENGTH% - 1
+            NEXT_GROUND_ROW% = BASE_GROUND_ROW%
+            RETURN
+        END IF
+        IF RND(1) < 0.5 THEN
+            DELTA% = 1 + INT(RND(1) * 3)
+            BASE_GROUND_ROW% = BASE_GROUND_ROW% - DELTA%
+            IF BASE_GROUND_ROW% < 15 THEN
+                BASE_GROUND_ROW% = 15
+            END IF
+        ELSE
+            DELTA% = 1 + INT(RND(1) * 4)
+            BASE_GROUND_ROW% = BASE_GROUND_ROW% + DELTA%
+            IF BASE_GROUND_ROW% > 21 THEN
+                BASE_GROUND_ROW% = 21
+            END IF
+        END IF
+        PLATEAU_LENGTH% = 2 + INT(RND(1) * 3)
+        NEXT_GROUND_ROW% = BASE_GROUND_ROW%
+        RETURN
+    END IF
+    IF HAZARD_COLUMNS_LEFT% = 0 THEN
+        IF RND(1) < 0.5 THEN
+            HAZARD_KIND% = 1
+            HAZARD_COLUMNS_LEFT% = 1 + INT(RND(1) * 2)
+        ELSE
+            HAZARD_KIND% = 2
+            HAZARD_OBSTACLE_HEIGHT% = 1 + INT(RND(1) * 2)
+            HAZARD_COLUMNS_LEFT% = 1
+        END IF
+    END IF
+    HAZARD_COLUMNS_LEFT% = HAZARD_COLUMNS_LEFT% - 1
+    IF HAZARD_COLUMNS_LEFT% = 0 THEN
+        FLAT_COLUMNS_LEFT% = 6 + INT(RND(1) * 5)
+        PLATEAU_LENGTH% = 2
+    END IF
+    IF HAZARD_KIND% = 1 THEN
+        NEXT_GROUND_ROW% = NO_GROUND_ROW%
+    ELSE
+        NEXT_GROUND_ROW% = BASE_GROUND_ROW%
+        NEXT_OBSTACLE_HEIGHT% = HAZARD_OBSTACLE_HEIGHT%
+    END IF
+END FUNCTION
+
+
+' Draw one column (rows 13..23) into ring slot SLOT%: ground fills rows
+' GNDROW%..23 (unless a pit), plus an obstacle block of height OBSTHT% above it.
+FUNCTION WRITE_COL(SLOT%, GNDROW%, OBSTHT%)
+    FOR ROW% = 13 TO 23
+        TILE% = 32
+        IF GNDROW% < NO_GROUND_ROW% THEN
+            IF ROW% >= GNDROW% THEN
+                TILE% = GROUND_TILE%
+            END IF
+        END IF
+        IF OBSTHT% > 0 THEN
+            IF ROW% < GNDROW% THEN
+                IF ROW% >= GNDROW% - OBSTHT% THEN
+                    TILE% = OBSTACLE_TILE%
+                END IF
+            END IF
+        END IF
+        VPOKE NAME_TABLE_BASE% + ROW% * 32 + SLOT%, TILE%
+    NEXT ROW%
+END FUNCTION
+
+
+' Tile colours + the player sprite.
+FUNCTION SETUP_TILES()
+    VPOKE BASE(6) + 27, 2 * 16 + 1
+    FOR I% = 0 TO 7
+        VPOKE BASE(5) + OBSTACLE_TILE% * 8 + I%, 255
+    NEXT I%
+    VPOKE BASE(6) + 26, 8 * 16 + 1
+    VPOKE BASE(6) + 4, 15 * 16 + 5
+    RESTORE
+    SPRDAT$ = ""
+    FOR I% = 0 TO 31
+        READ BYTE%
+        SPRDAT$ = SPRDAT$ + CHR$(BYTE%)
+    NEXT I%
+    SPRITE$(0) = SPRDAT$
+END FUNCTION
+
+
+' Reset state and lay a flat starting field (guaranteed safe runway).
+FUNCTION RESET_GAME()
+    GLOBAL SCROLL_OFFSET%
+    GLOBAL SCROLL_CARRY%
+    GLOBAL WRITE_COLUMN%
+    GLOBAL DISTANCE%
+    GLOBAL SCROLL_SPEED%
+    GLOBAL PLAYER_X%
+    GLOBAL PLAYER_Y%
+    GLOBAL VELOCITY_Y%
+    GLOBAL ON_GROUND%
+    GLOBAL PREVIOUS_TRIGGER%
+    GLOBAL GAME_OVER%
+    GLOBAL BASE_GROUND_ROW%
+    GLOBAL FLAT_COLUMNS_LEFT%
+    GLOBAL PLATEAU_LENGTH%
+    GLOBAL HAZARD_KIND%
+    GLOBAL HAZARD_COLUMNS_LEFT%
+    GLOBAL HAZARD_OBSTACLE_HEIGHT%
+    GLOBAL GROUND_ROW%
+    GLOBAL OBSTACLE_HEIGHT%
+    CLS
+    SCROLL_OFFSET% = 0
+    SCROLL_CARRY% = 0
+    WRITE_COLUMN% = 0
+    DISTANCE% = 0
+    SCROLL_SPEED% = 2
+    PLAYER_X% = 40
+    BASE_GROUND_ROW% = 19
+    PLAYER_Y% = BASE_GROUND_ROW% * 8 - 16
+    VELOCITY_Y% = 0
+    ON_GROUND% = 1
+    PREVIOUS_TRIGGER% = 0
+    GAME_OVER% = 0
+    FLAT_COLUMNS_LEFT% = 60
+    PLATEAU_LENGTH% = 0
+    HAZARD_KIND% = 0
+    HAZARD_COLUMNS_LEFT% = 0
+    HAZARD_OBSTACLE_HEIGHT% = 1
+    FOR C% = 0 TO 31
+        WRITE_COL(C%, 19, 0)
+        GROUND_ROW%(C%) = 19
+        OBSTACLE_HEIGHT%(C%) = 0
+    NEXT C%
+    SET SCROLL 0, 0, 1, 1
+    PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, 0
+END FUNCTION
+
+
+' Show READY on the static field for ~2 seconds.
+FUNCTION READY_PAUSE()
+    LOCATE 13, 9
+    PRINT "READY?"
+    TIME = 0
+    WHILE TIME < 120
+    WEND
+    LOCATE 13, 9
+    PRINT "      "
+END FUNCTION
+
+
+' Main loop.
+FUNCTION RUNGAME()
+    GLOBAL SCROLL_OFFSET%
+    GLOBAL SCROLL_CARRY%
+    GLOBAL WRITE_COLUMN%
+    GLOBAL DISTANCE%
+    GLOBAL SCROLL_SPEED%
+    GLOBAL PLAYER_X%
+    GLOBAL PLAYER_Y%
+    GLOBAL VELOCITY_Y%
+    GLOBAL ON_GROUND%
+    GLOBAL PREVIOUS_TRIGGER%
+    GLOBAL GAME_OVER%
+    GLOBAL GROUND_ROW%
+    GLOBAL OBSTACLE_HEIGHT%
+    GLOBAL NEXT_GROUND_ROW%
+    GLOBAL NEXT_OBSTACLE_HEIGHT%
+    WASPUSH% = 0
+    WHILE GAME_OVER% = 0
+        ' ---- scroll (accumulated absolute offset = smooth per-pixel) ----
+        SCROLL_OFFSET% = SCROLL_OFFSET% + SCROLL_SPEED%
+        IF SCROLL_OFFSET% >= 256 THEN
+            SCROLL_OFFSET% = SCROLL_OFFSET% - 256
+        END IF
+        SET SCROLL SCROLL_OFFSET%, 0, 1, 1
+        SCROLL_CARRY% = SCROLL_CARRY% + SCROLL_SPEED%
+        WHILE SCROLL_CARRY% >= 8
+            SCROLL_CARRY% = SCROLL_CARRY% - 8
+            GEN_NEXT()
+            WRITE_COLUMN% = SCROLL_OFFSET% \ 8 + 31
+            IF WRITE_COLUMN% > 31 THEN
+                WRITE_COLUMN% = WRITE_COLUMN% - 32
+            END IF
+            WRITE_COL(WRITE_COLUMN%, NEXT_GROUND_ROW%, NEXT_OBSTACLE_HEIGHT%)
+            GROUND_ROW%(WRITE_COLUMN%) = NEXT_GROUND_ROW%
+            OBSTACLE_HEIGHT%(WRITE_COLUMN%) = NEXT_OBSTACLE_HEIGHT%
+            DISTANCE% = DISTANCE% + 1
+            ' forced scroll keeps accelerating: 2 -> 6 px/frame, every 48 dist
+            IF (DISTANCE% MOD 48) = 0 THEN
+                IF SCROLL_SPEED% < 6 THEN
+                    SCROLL_SPEED% = SCROLL_SPEED% + 1
+                    ' speed-up tick
+                    SOUND 7, 190
+                    SOUND 8, 16
+                    SOUND 0, 60
+                    SOUND 1, 0
+                    SOUND 12, 6
+                    SOUND 13, 0
+                END IF
+            END IF
+        WEND
+        ' ---- horizontal move ----
+        JOY% = STICK(0)
+        IF JOY% >= 2 THEN
+            IF JOY% <= 4 THEN
+                IF PLAYER_X% < 96 THEN
+                    PLAYER_X% = PLAYER_X% + 2
+                END IF
+            END IF
+        END IF
+        IF JOY% >= 6 THEN
+            IF JOY% <= 8 THEN
+                IF PLAYER_X% > 16 THEN
+                    PLAYER_X% = PLAYER_X% - 2
+                END IF
+            END IF
+        END IF
+        ' ---- vertical state machine ----
+        '   ON_GROUND% = 1  grounded : no gravity, glued to the terrain surface
+        '   ON_GROUND% = 0  airborne : jumping, or falling after running off a pit
+        ' The state is an explicit flag, NOT re-derived from position every
+        ' frame - so running DOWN a slope stays "grounded" and jump keeps
+        ' working. Only a jump press, or a pit under our feet, leaves the ground.
+        TRIG% = 0
+        IF STRIG(0) THEN
+            TRIG% = 1
+        END IF
+        ' start a jump: grounded + rising edge of the trigger
+        IF ON_GROUND% = 1 THEN
+            IF TRIG% = 1 THEN
+                IF PREVIOUS_TRIGGER% = 0 THEN
+                    VELOCITY_Y% = -10
+                    ON_GROUND% = 0
+                    SOUND 7, 190
+                    SOUND 8, 16
+                    SOUND 0, 120
+                    SOUND 1, 0
+                    SOUND 12, 5
+                    SOUND 13, 0
+                END IF
+            END IF
+        END IF
+        PREVIOUS_TRIGGER% = TRIG%
+        ' gravity + jump arc apply ONLY while airborne
+        IF ON_GROUND% = 0 THEN
+            IF TRIG% = 0 THEN
+                IF VELOCITY_Y% < 0 THEN
+                    VELOCITY_Y% = VELOCITY_Y% \ 2
+                END IF
+            END IF
+            VELOCITY_Y% = VELOCITY_Y% + 1
+            IF VELOCITY_Y% > 8 THEN
+                VELOCITY_Y% = 8
+            END IF
+            PLAYER_Y% = PLAYER_Y% + VELOCITY_Y%
+        END IF
+        ' ---- wall push ----
+        ' A ledge 2+ tiles above our feet can't be entered; the forced scroll
+        ' carries it INTO us, so it shoves us left. Pushed past the left edge =
+        ' out. Jump so our feet clear its top and we slip onto it instead.
+        ' Ejecting fully here keeps the centre column below from ever being a
+        ' tall wall, so the vertical "stand" step can't teleport us up it.
+        PREVX% = PLAYER_X%
+        FRNTX% = SCROLL_OFFSET% + PLAYER_X% + 15
+        IF FRNTX% >= 256 THEN
+            FRNTX% = FRNTX% - 256
+        END IF
+        FRNTCOL% = FRNTX% \ 8
+        WALLROW% = GROUND_ROW%(FRNTCOL%)
+        WHILE WALLROW% < NO_GROUND_ROW% AND WALLROW% * 8 <= PLAYER_Y% AND GAME_OVER% = 0
+            PLAYER_X% = PLAYER_X% - 1
+            IF PLAYER_X% < 0 THEN
+                GAME_OVER% = 1
+            END IF
+            FRNTX% = SCROLL_OFFSET% + PLAYER_X% + 15
+            IF FRNTX% >= 256 THEN
+                FRNTX% = FRNTX% - 256
+            END IF
+            FRNTCOL% = FRNTX% \ 8
+            WALLROW% = GROUND_ROW%(FRNTCOL%)
+        WEND
+        ' danger rasp while a wall squeezes us leftward (edge-triggered once)
+        IF PLAYER_X% < PREVX% THEN
+            IF WASPUSH% = 0 THEN
+                SOUND 7, 183
+                SOUND 8, 16
+                SOUND 6, 12
+                SOUND 12, 8
+                SOUND 13, 0
+            END IF
+            WASPUSH% = 1
+        ELSE
+            WASPUSH% = 0
+        END IF
+        ' ---- terrain under the sprite centre (after any push) ----
+        CTRX% = SCROLL_OFFSET% + PLAYER_X% + 8
+        IF CTRX% >= 256 THEN
+            CTRX% = CTRX% - 256
+        END IF
+        CTRCOL% = CTRX% \ 8
+        CGND% = GROUND_ROW%(CTRCOL%)
+        COBST% = OBSTACLE_HEIGHT%(CTRCOL%)
+        ' obstacle hit?
+        IF COBST% > 0 THEN
+            IF PLAYER_Y% + 15 >= (CGND% - COBST%) * 8 THEN
+                IF PLAYER_Y% < CGND% * 8 THEN
+                    GAME_OVER% = 1
+                END IF
+            END IF
+        END IF
+        ' ---- vertical resolve: feet at/below the surface = stand on it ----
+        ' Universal landing (no height guard) makes the ground truly solid - you
+        ' can never sink through it. The wall-push above guarantees the centre
+        ' column is never a tall wall, so standing never teleports us up a cliff.
+        IF CGND% >= NO_GROUND_ROW% THEN
+            ' a pit: run off = fall; off the bottom of the screen = out
+            IF ON_GROUND% = 1 THEN
+                ON_GROUND% = 0
+                VELOCITY_Y% = 0
+            END IF
+            IF PLAYER_Y% > 168 THEN
+                GAME_OVER% = 1
+            END IF
+        ELSE
+            SURFY% = CGND% * 8 - 16
+            IF PLAYER_Y% >= SURFY% THEN
+                IF ON_GROUND% = 0 THEN
+                    IF VELOCITY_Y% >= 4 THEN
+                        ' thud on a real landing (jump / cliff), not a tiny step
+                        SOUND 7, 190
+                        SOUND 8, 16
+                        SOUND 0, 210
+                        SOUND 1, 1
+                        SOUND 12, 8
+                        SOUND 13, 0
+                    END IF
+                END IF
+                PLAYER_Y% = SURFY%
+                VELOCITY_Y% = 0
+                ON_GROUND% = 1
+            ELSE
+                IF ON_GROUND% = 1 THEN
+                    ON_GROUND% = 0
+                END IF
+            END IF
+        END IF
+        PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, 0
+    WEND
+    SOUND 7, 183
+    SOUND 8, 16
+    SOUND 6, 20
+    SOUND 12, 40
+    SOUND 13, 0
+END FUNCTION
+
+
+' Title.
+FUNCTION TITLE()
+    SET SCROLL 0, 0, 1, 1
+    CLS
+    LOCATE 9, 7
+    PRINT "SCROLL RUNNER"
+    LOCATE 3, 11
+    PRINT "LEFT/RIGHT = MOVE"
+    LOCATE 3, 13
+    PRINT "SPACE = JUMP (HOLD=HIGH)"
+    LOCATE 6, 17
+    PRINT "SPACE TO START"
+    WHILE STRIG(0) = 0
+    WEND
+END FUNCTION
+
+
+' ---------------- MAIN ----------------
+GLOBAL GAME_OVER%
+GLOBAL DISTANCE%
+GLOBAL GROUND_ROW%
+GLOBAL OBSTACLE_HEIGHT%
+GLOBAL SCROLL_OFFSET%
+
+IF PEEK(&H2D) < 3 THEN
+    SCREEN 0
+    WIDTH 40
+    PRINT "THIS GAME REQUIRES AN MSX turbo R."
+    END
+END IF
+
+SCREEN 1, 2
+WIDTH 32
+COLOR 15, 1, 1
+KEY OFF
+DIM GROUND_ROW%(31)
+DIM OBSTACLE_HEIGHT%(31)
+
+SETUP_TILES()
+
+WHILE 1 = 1
+    TITLE()
+    RESET_GAME()
+    READY_PAUSE()
+    RUNGAME()
+    SET SCROLL 0, 0, 1, 1
+    SCROLL_OFFSET% = 0
+    CLS
+    LOCATE 10, 9
+    PRINT "GAME OVER"
+    LOCATE 8, 12
+    PRINT "DISTANCE "; DISTANCE%
+    LOCATE 4, 17
+    PRINT "SPACE TO PLAY AGAIN"
+    FOR W% = 1 TO 500
+    NEXT W%
+    WHILE STRIG(0) = 0
+    WEND
+WEND
+
+' --- player sprite art (16x16): quads TL, BL, TR, BR ---
+DATA 3, 7, 7, 3, 3, 7, 15, 30
+DATA 60, 24, 60, 102, 195, 128, 0, 0
+DATA 192, 224, 224, 192, 192, 224, 240, 120
+DATA 60, 24, 60, 102, 195, 1, 0, 0

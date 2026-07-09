@@ -1172,13 +1172,20 @@ function toBase64(u8) {
   return btoa(s);
 }
 
+// クエリ値の軽量エンコード：RFC3986 の unreserved に加え、クエリで安全な "/" ":" は
+// エスケープしない（base64 の "/" が %2F に膨らむのを防ぐ）。"+" "=" 等は従来どおり %XX。
+// これで data URL(base64) を載せた実行URLが数百バイト短くなる（WebViewのURL長対策）。
+function encodeDiskParam(s) {
+  return s.replace(/[^A-Za-z0-9\-_.~/:]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
+}
+
 // 変換後プログラム → WebMSX 自動実行 URL（DEFLATEでURLを圧縮）
 async function webmsxAutorunUrl(name, asciiProgram) {
   const data = new TextEncoder().encode(asciiProgram); // ASCII のみ
   const zip = await zipForWebmsx(name, data);
   const dataUrl = "data:application/zip;base64," + toBase64(zip);
   return (
-    `${webmsxBaseUrl()}?DISKA_FILES_URL=${encodeURIComponent(dataUrl)}` +
+    `${webmsxBaseUrl()}?DISKA_FILES_URL=${encodeDiskParam(dataUrl)}` +
     (settings.webmsxMachine ? `&MACHINE=${encodeURIComponent(settings.webmsxMachine)}` : "") +
     (settings.webmsxPresets ? `&PRESETS=${encodeURIComponent(settings.webmsxPresets)}` : "") +
     `&BASIC_RUN=${name}`
@@ -1188,9 +1195,9 @@ async function webmsxAutorunUrl(name, asciiProgram) {
 async function onPlayWebMSX() {
   log("WebMSX 実行: 開始");
   await autosave(); // 実行＝全ソース保存 → トランスパイル → 実行
-  // 実行ペイロードのみコメントを除去（webMSX の URL 長制限=サーバ ~8KB 対策。
-  // ソース/保存物のコメントは一切変わらない。飛び先は保持＝実行結果は同一）。
-  const r = compileProject({ stripComments: true });
+  // 実行ペイロードのみ最適化（URL長対策）。コメント除去＋行パッキング（":"連結）で
+  // URLを短縮する。ソース/保存物・実行結果は不変（飛び先/制御フローは保持）。
+  const r = compileProject({ stripComments: true, packLines: true });
   if (r.diags.some((d) => d.severity === "error")) {
     setStatus("err", t("run.noerr"));
     return;

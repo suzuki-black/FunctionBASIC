@@ -94,6 +94,7 @@ The in-app player embeds [webMSX](https://webmsx.org) as a **cross-origin iframe
 - **Reboot per run.** Every run reboots the machine (there is a short lead time and no state is preserved between runs).
 - **Machine is webMSX's default.** turbo R–only programs (`_TURBO …`, examples/turbo-r.msxb) need the machine switched to turbo R via the webMSX gear (⚙) menu.
 - **Audio needs a click.** Browsers may keep audio suspended until you click the webMSX screen once (Web Audio autoplay policy).
+- **Very large programs can exceed the autorun URL.** Each run embeds the transpiled program as a ZIP inside the page URL. The app minimizes it automatically — it **strips comments, packs statements onto fewer lines, and uses a compact URL encoding** for the run payload only (your source, saved files and the program's behavior are all unchanged). A program much larger than the Space Shooter example can still exceed the URL length the embedded WebView accepts; if a run reports **"URI Too Long"**, use **Save Disk (.dsk)** and drag it into webMSX (`RUN"NAME.BAS"`) instead. (The comment-strip *setting* is separate — it only affects the displayed/saved `.bas`, not the run, which always optimizes internally.)
 
 For sound-accurate or stateful testing, **Save Disk (.dsk)** and run in openMSX or on real hardware. (A future same-origin player could remove the reboot-per-run and FM limitations — see `TODO.md`.)
 
@@ -178,7 +179,9 @@ FUNCTION ADD%(A%, B%)
     RETURN A% + B%
 END FUNCTION
 TOTAL% = 0
-FOR I% = 1 TO 10 : TOTAL% = ADD%(TOTAL%, I%) : NEXT I%
+FOR I% = 1 TO 10
+    TOTAL% = ADD%(TOTAL%, I%)
+NEXT I%
 AVG! = CSNG(TOTAL%) / 10        ' explicit % -> ! conversion
 ```
 
@@ -216,12 +219,31 @@ A complete, playable **fixed shooter** — a colourful alien fleet that marches 
 **Why write it in Structured BASIC?** The same game in hand-numbered MSX-BASIC would be a wall of `GOSUB`s and cryptic two-letter variables. Here it stays readable:
 
 - **Real functions, not `GOSUB` line-jumps** — `MARCH()`, `FIRE()`, `CHECK_HIT()`, `DRAW_ALIEN()`, `HIT_PLAYER()` … each a named `FUNCTION` with its own local variables. The transpiler assigns the line numbers, the `GOSUB`/`RETURN` wiring, and the two-character MSX variable names for you.
-- **`GLOBAL` for shared state, locals by default** — persistent game state (`AGX%` fleet position, `SC%` score, `LV%` lives …) is declared `GLOBAL`; loop counters and scratch stay local automatically, so functions don't clobber each other.
+- **`GLOBAL` for shared state, locals by default** — persistent game state (`FLEET_COL%` fleet position, `SCORE%`, `LIVES%` …) is declared `GLOBAL`; loop counters and scratch stay local automatically, so functions don't clobber each other. (Names are yours to make descriptive — the transpiler compresses each to a unique two-character MSX name at zero runtime cost.)
 - **STRICT static typing** — every variable and constant carries a type suffix and is `%` (16-bit integer), keeping the whole game on MSX-BASIC's fast integer path.
 - **Art you can read** — the ship, bullets and alien tiles are drawn as ASCII pictures inside `DATA` (`"......####......"`), converted to bytes at load. You edit the *picture*, not hex.
 - **Inline Z80 for the hot path** — the entire fleet redraw is an `ASM … END ASM` block. The transpiler assembles it, reserves a machine-code buffer just below `HIMEM`, patches its variable references, and calls it with `USR` — no `DATA`/`READ`/`POKE` boilerplate. That single change took the alien march from a stuttery **~10 fps** to a smooth **~27 fps** on a turbo R: arcade-smooth motion, still from one readable BASIC source.
 
 It reads like modern structured code, and runs on a real 8-bit MSX.
+
+---
+
+### Featured example #2 — Scroll Runner (turbo R)
+
+![A side-scrolling runner in webMSX: a white runner on green terraced blocks under a blue sky, with flat ground, a gap and a raised multi-tile ledge ahead](docs/images/runner-play.png)
+
+A complete **forced-scroll auto-runner** — the ground slides by on the V9958's **hardware horizontal smooth scroll**, procedurally generated terraced terrain (flat plateaus joined by multi-tile ledges, pits and obstacles) rolls in from the right, and you time jumps to ride the hills, drop off the cliffs, clear the gaps and hop the rocks. Written **entirely in Structured BASIC — no inline assembly at all** — and still playable on a real turbo R. Full source: [`examples/runner-turbor.msxb`](examples/runner-turbor.msxb).
+
+**How to play** — pick the **turbo R** machine, press **▶ WebMSX**, wait for the (slow) turbo R boot, then at the title press **SPACE**. **← / →** move, **SPACE** jumps — *hold it longer to jump higher and farther*. Ride the terraces, fall off the ledges, clear the pits. Fail to clear a tall wall and the forced scroll squeezes you off the left edge — game over. It speeds up the farther you get. (turbo R required.)
+
+**The interesting part: a smooth scroller in _pure_ BASIC.** The space shooter above drops to inline Z80 for its hot path; this one deliberately uses **none** — and still scrolls smoothly, because the heavy lifting is handed to the hardware, not the CPU:
+
+- **Hardware smooth scroll, not redrawing the screen** — each frame nudges the V9958 scroll register (`SET SCROLL`, an accumulated per-pixel offset) and writes only the **one** new tile column entering at the right edge. The CPU never moves the whole playfield, so 8-bit BASIC keeps up with per-pixel motion.
+- **Everything else is readable Structured BASIC** — terrain generation, an explicit *grounded / airborne* physics state machine (gravity, variable-height jump, run-off-a-cliff, land), pixel-accurate collision, the wall-push squeeze and sound — all named `FUNCTION`s with `GLOBAL` state and STRICT integer math.
+- **Procedural terrain with rules** — plateaus of random length joined by ledges that step up (jump onto them) or drop off (fall), plus pits and obstacles, with a guaranteed safe run-in — so every run differs but stays fair.
+- **turbo R for the speed** — pure-BASIC per-frame logic is heavy; the fast R800 is what keeps it at a playable frame rate. It refuses to run on anything slower.
+
+Two showcases, two philosophies: **the shooter** shows how to drop to inline Z80 for a hot loop when you need arcade speed; **the runner** shows how far *pure* Structured BASIC gets you when you let the MSX hardware do the heavy lifting.
 
 ---
 
@@ -443,6 +465,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **実行ごとにリブート。** 毎回マシンが再起動します（短いリードタイムがあり、実行間で状態は保持されません）。
 - **マシンは webMSX 既定。** turbo R 専用プログラム（`_TURBO …`、examples/turbo-r.msxb）は、webMSX の歯車（⚙）メニューでマシンを turbo R に切り替えてください。
 - **音はクリックで開始。** ブラウザの自動再生制限により、webMSX 画面を一度クリックするまで音が止まることがあります。
+- **非常に大きいプログラムは自動実行URLの上限を超えることがあります。** 実行のたびに変換後プログラムを ZIP 化してページURLに載せます。アプリは実行用ペイロードだけを自動で最小化します — **コメント除去・文の行パッキング（`:`連結）・コンパクトなURLエンコード**（ソース・保存ファイル・実行結果はすべて不変）。スペースシューター例よりかなり大きいプログラムだと、埋め込みWebViewが受け付けるURL長を超える場合があり、実行時に **「URI Too Long」** が出たら **ディスク(.dsk)を保存** して webMSX にドラッグ（`RUN"NAME.BAS"`）してください。（設定の「コメント除去」はこれとは別物で、**表示/保存する `.bas` にのみ効き、実行には影響しません**＝実行は常に内部で最適化されます。）
 
 音まで正確に、あるいは状態を保って試すには、**ディスク(.dsk)を保存** して openMSX か実機で実行してください。（将来の同一オリジン版プレイヤーで、リブート毎回と FM の制限は解消し得ます — `TODO.md` 参照。）
 
@@ -527,7 +550,9 @@ FUNCTION ADD%(A%, B%)
     RETURN A% + B%
 END FUNCTION
 TOTAL% = 0
-FOR I% = 1 TO 10 : TOTAL% = ADD%(TOTAL%, I%) : NEXT I%
+FOR I% = 1 TO 10
+    TOTAL% = ADD%(TOTAL%, I%)
+NEXT I%
 AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 ```
 
@@ -565,12 +590,31 @@ DATA 62, 42, 205, 162, 0, ...
 **なぜ構造化BASICで書くのか？** 同じゲームを手書きの行番号MSX-BASICで書くと `GOSUB` と2文字変数の壁になります。ここでは読みやすいまま：
 
 - **`GOSUB` の行ジャンプでなく本物の関数** — `MARCH()` / `FIRE()` / `CHECK_HIT()` / `DRAW_ALIEN()` / `HIT_PLAYER()` … それぞれローカル変数を持つ名前付き `FUNCTION`。行番号・`GOSUB`/`RETURN` の配線・2文字変数名は変換器が割り当てます。
-- **共有は `GLOBAL`、既定はローカル** — 永続する状態（艦隊位置 `AGX%`・スコア `SC%`・残機 `LV%` …）は明示的に `GLOBAL`、ループ変数や一時変数は自動でローカルなので関数どうしが壊し合いません。
+- **共有は `GLOBAL`、既定はローカル** — 永続する状態（艦隊位置 `FLEET_COL%`・スコア `SCORE%`・残機 `LIVES%` …）は明示的に `GLOBAL`、ループ変数や一時変数は自動でローカルなので関数どうしが壊し合いません。（名前は説明的に付けてOK — 変換器が各々を一意な2文字MSX名へ圧縮するので実行コストはゼロです。）
 - **STRICT 静的型付け** — すべての変数・定数が型サフィックス付きの `%`（16bit整数）で、ゲーム全体をMSX-BASICの高速な整数パスに保ちます。
 - **読める絵** — 自機・弾・エイリアンのタイルは `DATA` の中にASCIIの絵（`"......####......"`）として描き、起動時にバイト列へ。編集するのは16進でなく**絵**です。
 - **要所はインラインZ80** — 艦隊再描画まるごとを `ASM … END ASM` ブロックで記述。変換器がアセンブルし、`HIMEM` 直下に機械語バッファを予約し、変数参照をパッチして `USR` で呼びます（`DATA`/`READ`/`POKE` の定型不要）。この一手で艦隊マーチが**カクつく約10fps**から turbo R で**滑らかな約27fps**へ：アーケード級の動きを、読みやすい1つのBASICソースのまま実現。
 
 モダンな構造化コードのように読めて、本物の8bit MSXで動きます。
+
+---
+
+### 目玉サンプル第2弾 — スクロールランナー（turbo R）
+
+![webMSXで動作中の横スクロールランナー：青空の下、緑のテラス状ブロックの上を走る白い自機。前方に平地・穴・数段の段差](docs/images/runner-play.png)
+
+**強制スクロールのオートランナー**を丸ごと収録 — 地面は V9958 の**ハードウェア横スムーススクロール**で流れ、手続き生成のテラス地形（平地＋数段の段差＋穴＋障害物）が右から迫り、プレイヤーはジャンプのタイミングで丘を越え、崖を落ち、穴を跳び、岩をかわします。**すべて構造化BASICだけ — インラインアセンブリは一切なし** — で書いて、実機の turbo R で遊べます。全ソース：[`examples/runner-turbor.msxb`](examples/runner-turbor.msxb)。
+
+**遊び方** — **turbo R** マシンを選び **▶ WebMSX**、（遅い）起動を待ってタイトルで **SPACE**。**← / →** で移動、**SPACE** でジャンプ — *長押しで高く・遠く跳べます*。テラスを走り、段差を落ち、穴を跳ぶ。高い壁を越え損ねると強制スクロールに押されて左端からはみ出し＝ゲームオーバー。進むほど加速します。（turbo R 専用）
+
+**見どころ：*純粋な*BASICで滑らかスクロール。** 上のシューターは要所でインラインZ80に落としますが、こちらは**あえて一切使いません** — それでも滑らかにスクロールします。重い処理をCPUでなくハードウェアに任せているからです：
+
+- **画面を描き直さず、ハードウェアスクロール** — 毎フレーム V9958 のスクロールレジスタを進め（`SET SCROLL`＝累積した1ピクセル単位オフセット）、右端から入る**1列だけ**タイルを書きます。CPUは画面全体を動かさないので、8bitのBASICでも1ピクセル単位の動きに追いつけます。
+- **それ以外は読める構造化BASIC** — 地形生成、明示的な「接地／空中」物理ステートマシン（重力・可変高ジャンプ・崖落ち・着地）、ピクセル単位の当たり判定、壁の押し出し、効果音 — すべて `GLOBAL` 状態と STRICT 整数演算の名前付き `FUNCTION`。
+- **ルールのある手続き地形** — ランダム長の平地を、上る段差（跳び乗る）／下る段差（落ちる）でつなぎ、穴・障害物も配置。安全な助走区間を保証するので、毎回違うが常にフェア。
+- **速度のための turbo R** — 純BASICの毎フレーム処理は重く、遊べるフレームレートを保つのは高速な R800。それ未満では動きません。
+
+2つの目玉、2つの哲学：**シューター**はアーケード速度が要る所でインラインZ80に落とす方法を、**ランナー**はMSXハードウェアに重い処理を任せれば*純粋な*構造化BASICでどこまで行けるかを示します。
 
 ---
 

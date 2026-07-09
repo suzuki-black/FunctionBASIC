@@ -39,44 +39,44 @@
 
 STRICT                     ' every variable and constant needs a type suffix
 
-CONST COLS% = 8            ' aliens per row
-CONST ROWS% = 4           ' rows of aliens (each row its own colour)
-CONST STEPX% = 3          ' char columns per alien cell (2 wide + 1 gap)
-CONST STEPY% = 3          ' char rows per alien cell (2 tall + 1 gap)
-CONST TOPROW% = 2         ' top char row of the fleet
-CONST PLAYY% = 176        ' player sprite Y in pixels (row 22)
-CONST PARKY% = 208        ' park inactive sprites off-screen (>=192)
-CONST PSPEED% = 3         ' player pixels per frame
-CONST BSPEED% = 8         ' bullet pixels per frame (up)
-CONST FSPEED% = 4         ' bomb pixels per frame (down)
-CONST NAMEBASE% = &H1800  ' SCREEN 1 name table base in VRAM
+CONST ALIENS_PER_ROW% = 8            ' aliens per row
+CONST ALIEN_ROWS% = 4           ' rows of aliens (each row its own colour)
+CONST CELL_STEP_X% = 3          ' char columns per alien cell (2 wide + 1 gap)
+CONST CELL_STEP_Y% = 3          ' char rows per alien cell (2 tall + 1 gap)
+CONST FLEET_TOP_ROW% = 2         ' top char row of the fleet
+CONST PLAYER_SPRITE_Y% = 176        ' player sprite Y in pixels (row 22)
+CONST PARK_Y% = 208        ' park inactive sprites off-screen (>=192)
+CONST PLAYER_SPEED% = 3         ' player pixels per frame
+CONST BULLET_SPEED% = 8         ' bullet pixels per frame (up)
+CONST BOMB_SPEED% = 4         ' bomb pixels per frame (down)
+CONST NAME_TABLE_BASE% = &H1800  ' SCREEN 1 name table base in VRAM
 
-CONST CBODY% = 3          ' player body colour (light green)
-CONST CGLASS% = 15        ' player cockpit colour (white)
-CONST CBULLET% = 11       ' bullet colour (light yellow)
-CONST CBOMB% = 9          ' bomb colour (light red)
+CONST COLOR_BODY% = 3          ' player body colour (light green)
+CONST COLOR_COCKPIT% = 15        ' player cockpit colour (white)
+CONST COLOR_BULLET% = 11       ' bullet colour (light yellow)
+CONST COLOR_BOMB% = 9          ' bomb colour (light red)
 
-GLOBAL PX%                 ' player X in pixels (0..240)
-GLOBAL SC%                 ' score
-GLOBAL LV%                 ' lives
-GLOBAL DONE%               ' 0=running, 1=win, 2=lose
-GLOBAL BX%                 ' bullet X / Y (pixels) / active
-GLOBAL BY%
-GLOBAL BON%
-GLOBAL FX%                 ' bomb X / Y (pixels) / active
-GLOBAL FY%
-GLOBAL FON%
-GLOBAL AGX%                ' fleet left char column / top char row / direction
-GLOBAL AGY%
-GLOBAL ADIR%
-GLOBAL NA%                 ' aliens still alive
-GLOBAL ANF%                ' animation frame (0/1)
-GLOBAL SDIRTY%             ' status line needs redraw (1) / clean (0)
-GLOBAL AL%                 ' AL%(col,row) = 1 alive / 0 dead
-GLOBAL TILE%               ' TILE%(patternIndex, byte): 8 alien 8x8 chars
-GLOBAL IL%                 ' scratch: 16 left / right bytes when reading art
-GLOBAL IR%
-GLOBAL ROWCOL%             ' ROWCOL%(r) = colour for alien row r
+GLOBAL PLAYER_X%                 ' player X in pixels (0..240)
+GLOBAL SCORE%                 ' score
+GLOBAL LIVES%                 ' lives
+GLOBAL GAME_STATE%               ' 0=running, 1=win, 2=lose
+GLOBAL BULLET_X%                 ' bullet X / Y (pixels) / active
+GLOBAL BULLET_Y%
+GLOBAL BULLET_ON%
+GLOBAL BOMB_X%                 ' bomb X / Y (pixels) / active
+GLOBAL BOMB_Y%
+GLOBAL BOMB_ON%
+GLOBAL FLEET_COL%                ' fleet left char column / top char row / direction
+GLOBAL FLEET_ROW%
+GLOBAL FLEET_DIR%
+GLOBAL ALIENS_LEFT%                 ' aliens still alive
+GLOBAL ANIM_FRAME%                ' animation frame (0/1)
+GLOBAL STATUS_DIRTY%             ' status line needs redraw (1) / clean (0)
+GLOBAL ALIVE%                 ' ALIVE%(col,row) = 1 alive / 0 dead
+GLOBAL ALIEN_TILE%               ' ALIEN_TILE%(patternIndex, byte): 8 alien 8x8 chars
+GLOBAL ART_LEFT%                 ' scratch: 16 left / right bytes when reading art
+GLOBAL ART_RIGHT%
+GLOBAL ROW_COLOR%             ' ROW_COLOR%(r) = colour for alien row r
 
 
 ' Convert 8 characters of an ASCII-art row (starting at ST, 1-based) into
@@ -98,15 +98,15 @@ END FUNCTION
 
 
 ' Read 16 ASCII-art rows (each a 16-char string) for a 16x16 shape, and
-' split each into a left byte IL%() and right byte IR%(). Human readable:
+' split each into a left byte ART_LEFT%() and right byte ART_RIGHT%(). Human readable:
 ' the DATA below *looks like* the sprite/alien you are drawing.
 FUNCTION READ16()
-    GLOBAL IL%
-    GLOBAL IR%
+    GLOBAL ART_LEFT%
+    GLOBAL ART_RIGHT%
     FOR I% = 0 TO 15
         READ RW$
-        IL%(I%) = PIX8(RW$, 1)
-        IR%(I%) = PIX8(RW$, 9)
+        ART_LEFT%(I%) = PIX8(RW$, 1)
+        ART_RIGHT%(I%) = PIX8(RW$, 9)
     NEXT I%
 END FUNCTION
 
@@ -114,53 +114,53 @@ END FUNCTION
 ' Build a 16x16 hardware sprite (pattern N) from the next 16-row shape.
 ' MSX 16x16 sprite byte order is TL(0..7), BL(8..15), TR(0..7), BR(8..15).
 FUNCTION MAKE_SPRITE(N%)
-    GLOBAL IL%
-    GLOBAL IR%
+    GLOBAL ART_LEFT%
+    GLOBAL ART_RIGHT%
     READ16()
     S$ = ""
     FOR I% = 0 TO 7
-        S$ = S$ + CHR$(IL%(I%))
+        S$ = S$ + CHR$(ART_LEFT%(I%))
     NEXT I%
     FOR I% = 8 TO 15
-        S$ = S$ + CHR$(IL%(I%))
+        S$ = S$ + CHR$(ART_LEFT%(I%))
     NEXT I%
     FOR I% = 0 TO 7
-        S$ = S$ + CHR$(IR%(I%))
+        S$ = S$ + CHR$(ART_RIGHT%(I%))
     NEXT I%
     FOR I% = 8 TO 15
-        S$ = S$ + CHR$(IR%(I%))
+        S$ = S$ + CHR$(ART_RIGHT%(I%))
     NEXT I%
     SPRITE$(N%) = S$
 END FUNCTION
 
 
 ' Load the two alien animation frames (each a 16x16 shape = four 8x8
-' chars) into TILE%(), then install them into ROWS colour groups so each
+' chars) into ALIEN_TILE%(), then install them into ROWS colour groups so each
 ' row can be a different colour. Char codes 128.. (group = code\8).
 FUNCTION LOAD_ALIENS()
-    GLOBAL IL%
-    GLOBAL IR%
-    GLOBAL TILE%
-    GLOBAL ROWCOL%
+    GLOBAL ART_LEFT%
+    GLOBAL ART_RIGHT%
+    GLOBAL ALIEN_TILE%
+    GLOBAL ROW_COLOR%
     FOR F% = 0 TO 1
         READ16()
         ' quad order within a frame: 0=TL 1=TR 2=BL 3=BR
         FOR I% = 0 TO 7
-            TILE%(F% * 4 + 0, I%) = IL%(I%)
-            TILE%(F% * 4 + 1, I%) = IR%(I%)
-            TILE%(F% * 4 + 2, I%) = IL%(I% + 8)
-            TILE%(F% * 4 + 3, I%) = IR%(I% + 8)
+            ALIEN_TILE%(F% * 4 + 0, I%) = ART_LEFT%(I%)
+            ALIEN_TILE%(F% * 4 + 1, I%) = ART_RIGHT%(I%)
+            ALIEN_TILE%(F% * 4 + 2, I%) = ART_LEFT%(I% + 8)
+            ALIEN_TILE%(F% * 4 + 3, I%) = ART_RIGHT%(I% + 8)
         NEXT I%
     NEXT F%
     ' install the 8 chars into each row's colour group (base 128 + r*8)
-    FOR R% = 0 TO ROWS% - 1
+    FOR R% = 0 TO ALIEN_ROWS% - 1
         CB% = 128 + R% * 8
         FOR K% = 0 TO 7
             FOR I% = 0 TO 7
-                VPOKE (CB% + K%) * 8 + I%, TILE%(K%, I%)
+                VPOKE (CB% + K%) * 8 + I%, ALIEN_TILE%(K%, I%)
             NEXT I%
         NEXT K%
-        VPOKE &H2010 + R%, ROWCOL%(R%) * 16 + 1
+        VPOKE &H2010 + R%, ROW_COLOR%(R%) * 16 + 1
     NEXT R%
 END FUNCTION
 
@@ -169,17 +169,17 @@ END FUNCTION
 ' erase it when ER=1. Each alien is a 2x2 block of chars, written STRAIGHT
 ' into the name table with VPOKE (fast) - no LOCATE/PRINT BIOS calls.
 FUNCTION DRAW_ALIEN(C%, R%, ER%)
-    GLOBAL AGX%
-    GLOBAL AGY%
-    GLOBAL ANF%
-    AD% = NAMEBASE% + (AGY% + R% * STEPY%) * 32 + (AGX% + C% * STEPX%)
+    GLOBAL FLEET_COL%
+    GLOBAL FLEET_ROW%
+    GLOBAL ANIM_FRAME%
+    AD% = NAME_TABLE_BASE% + (FLEET_ROW% + R% * CELL_STEP_Y%) * 32 + (FLEET_COL% + C% * CELL_STEP_X%)
     IF ER% = 1 THEN
         VPOKE AD%, 32
         VPOKE AD% + 1, 32
         VPOKE AD% + 32, 32
         VPOKE AD% + 33, 32
     ELSE
-        Q% = 128 + R% * 8 + ANF% * 4
+        Q% = 128 + R% * 8 + ANIM_FRAME% * 4
         VPOKE AD%, Q%
         VPOKE AD% + 1, Q% + 1
         VPOKE AD% + 32, Q% + 2
@@ -190,10 +190,10 @@ END FUNCTION
 
 ' Draw or erase every living alien.
 FUNCTION DRAW_FLEET(ER%)
-    GLOBAL AL%
-    FOR R% = 0 TO ROWS% - 1
-        FOR C% = 0 TO COLS% - 1
-            IF AL%(C%, R%) = 1 THEN
+    GLOBAL ALIVE%
+    FOR R% = 0 TO ALIEN_ROWS% - 1
+        FOR C% = 0 TO ALIENS_PER_ROW% - 1
+            IF ALIVE%(C%, R%) = 1 THEN
                 DRAW_ALIEN(C%, R%, ER%)
             END IF
         NEXT C%
@@ -201,12 +201,12 @@ FUNCTION DRAW_FLEET(ER%)
 END FUNCTION
 
 
-' Return the DATA address of FL$ as a SIGNED 16-bit value (fits a % var even in
+' Return the DATA address of FLEET_ALIVE$ as a SIGNED 16-bit value (fits a % var even in
 ' high RAM). Used by CHECK_HIT to poke the survival flag when an alien is shot.
 FUNCTION FLPTR%()
-    GLOBAL FL$
-    L% = PEEK(VARPTR(FL$) + 1)
-    H% = PEEK(VARPTR(FL$) + 2)
+    GLOBAL FLEET_ALIVE$
+    L% = PEEK(VARPTR(FLEET_ALIVE$) + 1)
+    H% = PEEK(VARPTR(FLEET_ALIVE$) + 2)
     RETURN L% + (H% + 256 * (H% >= 128)) * 256
 END FUNCTION
 
@@ -240,102 +240,102 @@ END FUNCTION
 
 
 FUNCTION SETUP_FLEET()
-    GLOBAL AGX%
-    GLOBAL AGY%
-    GLOBAL ADIR%
-    GLOBAL NA%
-    GLOBAL AL%
-    GLOBAL FL$
-    GLOBAL FLDPTR%
-    FOR R% = 0 TO ROWS% - 1
-        FOR C% = 0 TO COLS% - 1
-            AL%(C%, R%) = 1
+    GLOBAL FLEET_COL%
+    GLOBAL FLEET_ROW%
+    GLOBAL FLEET_DIR%
+    GLOBAL ALIENS_LEFT%
+    GLOBAL ALIVE%
+    GLOBAL FLEET_ALIVE$
+    GLOBAL FLEET_DESC_PTR%
+    FOR R% = 0 TO ALIEN_ROWS% - 1
+        FOR C% = 0 TO ALIENS_PER_ROW% - 1
+            ALIVE%(C%, R%) = 1
         NEXT C%
     NEXT R%
     ' Flat survival buffer the ASM walks: 32 cells, index = row*8 + col, 1=alive.
-    ' FLDPTR% caches VARPTR(FL$) - the address of the STRING DESCRIPTOR, which is
+    ' FLEET_DESC_PTR% caches VARPTR(FLEET_ALIVE$) - the address of the STRING DESCRIPTOR, which is
     ' stable for the program's life (only the character DATA moves on GC). The
-    ' ASM reads the live data pointer from that descriptor, so FL$ may be rebuilt
+    ' ASM reads the live data pointer from that descriptor, so FLEET_ALIVE$ may be rebuilt
     ' each game and GC may relocate its data without ever breaking the redraw.
-    FL$ = STRING$(32, 1)
-    FLDPTR% = VARPTR(FL$)
-    NA% = COLS% * ROWS%
-    AGX% = 2
-    AGY% = TOPROW%
-    ADIR% = 1
+    FLEET_ALIVE$ = STRING$(32, 1)
+    FLEET_DESC_PTR% = VARPTR(FLEET_ALIVE$)
+    ALIENS_LEFT% = ALIENS_PER_ROW% * ALIEN_ROWS%
+    FLEET_COL% = 2
+    FLEET_ROW% = FLEET_TOP_ROW%
+    FLEET_DIR% = 1
 END FUNCTION
 
 
 FUNCTION MARCH()
-    GLOBAL AGX%
-    GLOBAL AGY%
-    GLOBAL ADIR%
-    GLOBAL ANF%
-    GLOBAL DONE%
-    GLOBAL OX%
-    GLOBAL OY%
-    GLOBAL FGX%
-    GLOBAL FGY%
-    GLOBAL FQB%
-    GLOBAL FQI%
-    GLOBAL ZS%
-    GLOBAL ZR%
-    GLOBAL ZRA%
-    GLOBAL ZQ%
-    GLOBAL FLDPTR%
+    GLOBAL FLEET_COL%
+    GLOBAL FLEET_ROW%
+    GLOBAL FLEET_DIR%
+    GLOBAL ANIM_FRAME%
+    GLOBAL GAME_STATE%
+    GLOBAL ERASE_COL%
+    GLOBAL ERASE_ROW%
+    GLOBAL PASS_COL%
+    GLOBAL PASS_ROW%
+    GLOBAL PASS_CHAR%
+    GLOBAL PASS_CHARSTEP%
+    GLOBAL DRAW_STEP%
+    GLOBAL DRAW_ROW%
+    GLOBAL DRAW_ADDR%
+    GLOBAL DRAW_CHAR%
+    GLOBAL FLEET_DESC_PTR%
     ASM
       DI
-      LD A,(AGX%)
-      LD (OX%),A
-      LD A,(AGY%)
-      LD (OY%),A
-      LD A,(ADIR%)
+      LD A,(FLEET_COL%)
+      LD (ERASE_COL%),A
+      LD A,(FLEET_ROW%)
+      LD (ERASE_ROW%),A
+      LD A,(FLEET_DIR%)
       CP 1
       JR NZ,CHKLEFT
-      LD A,(AGX%)
+      LD A,(FLEET_COL%)
       CP 8
       JR C,DOMOVE
-      LD A,(AGY%)
+      LD A,(FLEET_ROW%)
       INC A
-      LD (AGY%),A
+      LD (FLEET_ROW%),A
       LD A,255
-      LD (ADIR%),A
+      LD (FLEET_DIR%),A
       JR MVDONE
 CHKLEFT:
-      LD A,(AGX%)
+      LD A,(FLEET_COL%)
       CP 2
       JR NC,DOMOVE
-      LD A,(AGY%)
+      LD A,(FLEET_ROW%)
       INC A
-      LD (AGY%),A
+      LD (FLEET_ROW%),A
       LD A,1
-      LD (ADIR%),A
+      LD (FLEET_DIR%),A
       JR MVDONE
 DOMOVE:
-      LD A,(AGX%)
+      LD A,(FLEET_COL%)
       LD B,A
-      LD A,(ADIR%)
+      LD A,(FLEET_DIR%)
       ADD A,B
-      LD (AGX%),A
+      LD (FLEET_COL%),A
 MVDONE:
-      LD A,(ANF%)
+      LD A,(ANIM_FRAME%)
       XOR 1
-      LD (ANF%),A
-      LD A,(OX%)
-      LD (FGX%),A
-      LD A,(OY%)
-      LD (FGY%),A
+      LD (ANIM_FRAME%),A
+      LD A,(ERASE_COL%)
+      LD (PASS_COL%),A
+      LD A,(ERASE_ROW%)
+      LD (PASS_ROW%),A
       LD A,32
-      LD (FQB%),A
+      LD (PASS_CHAR%),A
       XOR A
-      LD (FQI%),A
-      LD (ZS%),A
-      LD HL,(FLDPTR%)
+      LD (PASS_CHARSTEP%),A
+      LD (DRAW_STEP%),A
+      LD HL,(FLEET_DESC_PTR%)
       INC HL
       LD E,(HL)
       INC HL
       LD D,(HL)
-      LD A,(FGY%)
+      LD A,(PASS_ROW%)
       LD L,A
       LD H,0
       ADD HL,HL
@@ -343,19 +343,19 @@ MVDONE:
       ADD HL,HL
       ADD HL,HL
       ADD HL,HL
-      LD A,(FGX%)
+      LD A,(PASS_COL%)
       LD C,A
       LD B,0
       ADD HL,BC
       LD BC,&H1800
       ADD HL,BC
-      LD (ZRA%),HL
-      LD A,(FQB%)
-      LD (ZQ%),A
+      LD (DRAW_ADDR%),HL
+      LD A,(PASS_CHAR%)
+      LD (DRAW_CHAR%),A
       XOR A
-      LD (ZR%),A
+      LD (DRAW_ROW%),A
 ROWLE:
-      LD HL,(ZRA%)
+      LD HL,(DRAW_ADDR%)
       LD B,8
 COLLE:
       LD A,(DE)
@@ -367,10 +367,10 @@ COLLE:
       LD A,H
       OR &H40
       OUT (&H99),A
-      LD A,(ZQ%)
+      LD A,(DRAW_CHAR%)
       OUT (&H98),A
       LD C,A
-      LD A,(ZS%)
+      LD A,(DRAW_STEP%)
       ADD A,C
       LD C,A
       OUT (&H98),A
@@ -381,11 +381,11 @@ COLLE:
       ADC A,0
       OR &H40
       OUT (&H99),A
-      LD A,(ZS%)
+      LD A,(DRAW_STEP%)
       ADD A,C
       LD C,A
       OUT (&H98),A
-      LD A,(ZS%)
+      LD A,(DRAW_STEP%)
       ADD A,C
       OUT (&H98),A
 DEADE:
@@ -393,39 +393,39 @@ DEADE:
       INC HL
       INC HL
       DJNZ COLLE
-      LD HL,(ZRA%)
+      LD HL,(DRAW_ADDR%)
       LD BC,96
       ADD HL,BC
-      LD (ZRA%),HL
-      LD A,(ZQ%)
+      LD (DRAW_ADDR%),HL
+      LD A,(DRAW_CHAR%)
       LD C,A
-      LD A,(FQI%)
+      LD A,(PASS_CHARSTEP%)
       ADD A,C
-      LD (ZQ%),A
-      LD A,(ZR%)
+      LD (DRAW_CHAR%),A
+      LD A,(DRAW_ROW%)
       INC A
-      LD (ZR%),A
+      LD (DRAW_ROW%),A
       CP 4
       JR NZ,ROWLE
-      LD A,(AGX%)
-      LD (FGX%),A
-      LD A,(AGY%)
-      LD (FGY%),A
-      LD A,(ANF%)
+      LD A,(FLEET_COL%)
+      LD (PASS_COL%),A
+      LD A,(FLEET_ROW%)
+      LD (PASS_ROW%),A
+      LD A,(ANIM_FRAME%)
       ADD A,A
       ADD A,A
       ADD A,128
-      LD (FQB%),A
+      LD (PASS_CHAR%),A
       LD A,8
-      LD (FQI%),A
+      LD (PASS_CHARSTEP%),A
       LD A,1
-      LD (ZS%),A
-      LD HL,(FLDPTR%)
+      LD (DRAW_STEP%),A
+      LD HL,(FLEET_DESC_PTR%)
       INC HL
       LD E,(HL)
       INC HL
       LD D,(HL)
-      LD A,(FGY%)
+      LD A,(PASS_ROW%)
       LD L,A
       LD H,0
       ADD HL,HL
@@ -433,19 +433,19 @@ DEADE:
       ADD HL,HL
       ADD HL,HL
       ADD HL,HL
-      LD A,(FGX%)
+      LD A,(PASS_COL%)
       LD C,A
       LD B,0
       ADD HL,BC
       LD BC,&H1800
       ADD HL,BC
-      LD (ZRA%),HL
-      LD A,(FQB%)
-      LD (ZQ%),A
+      LD (DRAW_ADDR%),HL
+      LD A,(PASS_CHAR%)
+      LD (DRAW_CHAR%),A
       XOR A
-      LD (ZR%),A
+      LD (DRAW_ROW%),A
 ROWLD:
-      LD HL,(ZRA%)
+      LD HL,(DRAW_ADDR%)
       LD B,8
 COLLD:
       LD A,(DE)
@@ -457,10 +457,10 @@ COLLD:
       LD A,H
       OR &H40
       OUT (&H99),A
-      LD A,(ZQ%)
+      LD A,(DRAW_CHAR%)
       OUT (&H98),A
       LD C,A
-      LD A,(ZS%)
+      LD A,(DRAW_STEP%)
       ADD A,C
       LD C,A
       OUT (&H98),A
@@ -471,11 +471,11 @@ COLLD:
       ADC A,0
       OR &H40
       OUT (&H99),A
-      LD A,(ZS%)
+      LD A,(DRAW_STEP%)
       ADD A,C
       LD C,A
       OUT (&H98),A
-      LD A,(ZS%)
+      LD A,(DRAW_STEP%)
       ADD A,C
       OUT (&H98),A
 DEADD:
@@ -483,18 +483,18 @@ DEADD:
       INC HL
       INC HL
       DJNZ COLLD
-      LD HL,(ZRA%)
+      LD HL,(DRAW_ADDR%)
       LD BC,96
       ADD HL,BC
-      LD (ZRA%),HL
-      LD A,(ZQ%)
+      LD (DRAW_ADDR%),HL
+      LD A,(DRAW_CHAR%)
       LD C,A
-      LD A,(FQI%)
+      LD A,(PASS_CHARSTEP%)
       ADD A,C
-      LD (ZQ%),A
-      LD A,(ZR%)
+      LD (DRAW_CHAR%),A
+      LD A,(DRAW_ROW%)
       INC A
-      LD (ZR%),A
+      LD (DRAW_ROW%),A
       CP 4
       JR NZ,ROWLD
       LD A,7
@@ -521,11 +521,11 @@ DEADD:
       OUT (&HA0),A
       XOR A
       OUT (&HA1),A
-      LD A,(AGY%)
+      LD A,(FLEET_ROW%)
       CP 12
       JR C,NOTDN
       LD A,2
-      LD (DONE%),A
+      LD (GAME_STATE%),A
 NOTDN:
       EI
     END ASM
@@ -536,41 +536,41 @@ END FUNCTION
 ' bullet centre maps to a fleet cell, then we check that cell.
 ' Integer division "\" keeps the maths on the fast integer path.
 FUNCTION CHECK_HIT()
-    GLOBAL AGX%
-    GLOBAL AGY%
-    GLOBAL AL%
-    GLOBAL NA%
-    GLOBAL SC%
-    GLOBAL BON%
-    GLOBAL BX%
-    GLOBAL BY%
-    GLOBAL SDIRTY%
-    GLOBAL FL$
-    GLOBAL FLA%
-    CXC% = (BX% + 7) \ 8
-    CYC% = (BY% + 4) \ 8
-    DC% = CXC% - AGX%
-    DR% = CYC% - AGY%
+    GLOBAL FLEET_COL%
+    GLOBAL FLEET_ROW%
+    GLOBAL ALIVE%
+    GLOBAL ALIENS_LEFT%
+    GLOBAL SCORE%
+    GLOBAL BULLET_ON%
+    GLOBAL BULLET_X%
+    GLOBAL BULLET_Y%
+    GLOBAL STATUS_DIRTY%
+    GLOBAL FLEET_ALIVE$
+    GLOBAL FLEET_DATA_PTR%
+    CXC% = (BULLET_X% + 7) \ 8
+    CYC% = (BULLET_Y% + 4) \ 8
+    DC% = CXC% - FLEET_COL%
+    DR% = CYC% - FLEET_ROW%
     IF DC% >= 0 THEN
         IF DR% >= 0 THEN
-            C% = DC% \ STEPX%
-            R% = DR% \ STEPY%
-            IF C% < COLS% THEN
-                IF R% < ROWS% THEN
-                    IF (DC% - C% * STEPX%) < 2 THEN
-                        IF (DR% - R% * STEPY%) < 2 THEN
-                            IF AL%(C%, R%) = 1 THEN
-                                AL%(C%, R%) = 0
-                                ' clear the ASM survival flag too (fresh FL$
+            C% = DC% \ CELL_STEP_X%
+            R% = DR% \ CELL_STEP_Y%
+            IF C% < ALIENS_PER_ROW% THEN
+                IF R% < ALIEN_ROWS% THEN
+                    IF (DC% - C% * CELL_STEP_X%) < 2 THEN
+                        IF (DR% - R% * CELL_STEP_Y%) < 2 THEN
+                            IF ALIVE%(C%, R%) = 1 THEN
+                                ALIVE%(C%, R%) = 0
+                                ' clear the ASM survival flag too (fresh FLEET_ALIVE$
                                 ' pointer: GC may have moved it since MARCH)
-                                FLA% = FLPTR()
-                                POKE FLA% + R% * 8 + C%, 0
-                                NA% = NA% - 1
-                                SC% = SC% + (ROWS% - R%) * 10
-                                BON% = 0
-                                SDIRTY% = 1
+                                FLEET_DATA_PTR% = FLPTR()
+                                POKE FLEET_DATA_PTR% + R% * 8 + C%, 0
+                                ALIENS_LEFT% = ALIENS_LEFT% - 1
+                                SCORE% = SCORE% + (ALIEN_ROWS% - R%) * 10
+                                BULLET_ON% = 0
+                                STATUS_DIRTY% = 1
                                 DRAW_ALIEN(C%, R%, 1)
-                                PUT SPRITE 2, (BX%, PARKY%), CBULLET%, 2
+                                PUT SPRITE 2, (BULLET_X%, PARK_Y%), COLOR_BULLET%, 2
                                 SFXNOISE(24, 12)   ' alien explosion
                             END IF
                         END IF
@@ -584,19 +584,19 @@ END FUNCTION
 
 ' Drop a bomb from the lowest living alien of a random column.
 FUNCTION DROP_BOMB()
-    GLOBAL AGX%
-    GLOBAL AGY%
-    GLOBAL AL%
-    GLOBAL FX%
-    GLOBAL FY%
-    GLOBAL FON%
-    C% = INT(RND(1) * COLS%)
-    FOR R% = ROWS% - 1 TO 0 STEP -1
-        IF AL%(C%, R%) = 1 THEN
-            IF FON% = 0 THEN
-                FX% = (AGX% + C% * STEPX%) * 8
-                FY% = (AGY% + R% * STEPY% + 2) * 8
-                FON% = 1
+    GLOBAL FLEET_COL%
+    GLOBAL FLEET_ROW%
+    GLOBAL ALIVE%
+    GLOBAL BOMB_X%
+    GLOBAL BOMB_Y%
+    GLOBAL BOMB_ON%
+    C% = INT(RND(1) * ALIENS_PER_ROW%)
+    FOR R% = ALIEN_ROWS% - 1 TO 0 STEP -1
+        IF ALIVE%(C%, R%) = 1 THEN
+            IF BOMB_ON% = 0 THEN
+                BOMB_X% = (FLEET_COL% + C% * CELL_STEP_X%) * 8
+                BOMB_Y% = (FLEET_ROW% + R% * CELL_STEP_Y% + 2) * 8
+                BOMB_ON% = 1
             END IF
         END IF
     NEXT R%
@@ -606,41 +606,41 @@ END FUNCTION
 ' Read keys/joystick and slide the player one step (pixels). Re-PUT the
 ' sprite only when it actually moved (saves two VDP writes most frames).
 FUNCTION MOVE_PLAYER()
-    GLOBAL PX%
+    GLOBAL PLAYER_X%
     MV% = 0
     S% = STICK(0)
     IF S% = 6 OR S% = 7 OR S% = 8 THEN
-        PX% = PX% - PSPEED%
-        IF PX% < 0 THEN
-            PX% = 0
+        PLAYER_X% = PLAYER_X% - PLAYER_SPEED%
+        IF PLAYER_X% < 0 THEN
+            PLAYER_X% = 0
         END IF
         MV% = 1
     END IF
     IF S% = 2 OR S% = 3 OR S% = 4 THEN
-        PX% = PX% + PSPEED%
-        IF PX% > 240 THEN
-            PX% = 240
+        PLAYER_X% = PLAYER_X% + PLAYER_SPEED%
+        IF PLAYER_X% > 240 THEN
+            PLAYER_X% = 240
         END IF
         MV% = 1
     END IF
     IF MV% = 1 THEN
-        PUT SPRITE 0, (PX%, PLAYY%), CBODY%, 0
-        PUT SPRITE 1, (PX%, PLAYY%), CGLASS%, 1
+        PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
+        PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
     END IF
 END FUNCTION
 
 
 ' Fire a bullet if none is in flight.
 FUNCTION FIRE()
-    GLOBAL BON%
-    GLOBAL BX%
-    GLOBAL BY%
-    GLOBAL PX%
+    GLOBAL BULLET_ON%
+    GLOBAL BULLET_X%
+    GLOBAL BULLET_Y%
+    GLOBAL PLAYER_X%
     IF STRIG(0) THEN
-        IF BON% = 0 THEN
-            BON% = 1
-            BX% = PX%
-            BY% = PLAYY% - 12
+        IF BULLET_ON% = 0 THEN
+            BULLET_ON% = 1
+            BULLET_X% = PLAYER_X%
+            BULLET_Y% = PLAYER_SPRITE_Y% - 12
             SFXTONE(150, 0, 8)   ' laser "pew" (high tone, quick decay)
         END IF
     END IF
@@ -649,21 +649,21 @@ END FUNCTION
 
 ' Advance the bullet several pixels; test for a hit; park it when spent.
 FUNCTION STEP_BULLET()
-    GLOBAL BON%
-    GLOBAL BX%
-    GLOBAL BY%
-    IF BON% = 1 THEN
-        BY% = BY% - BSPEED%
-        IF BY% < TOPROW% * 8 - 8 THEN
-            BON% = 0
+    GLOBAL BULLET_ON%
+    GLOBAL BULLET_X%
+    GLOBAL BULLET_Y%
+    IF BULLET_ON% = 1 THEN
+        BULLET_Y% = BULLET_Y% - BULLET_SPEED%
+        IF BULLET_Y% < FLEET_TOP_ROW% * 8 - 8 THEN
+            BULLET_ON% = 0
         END IF
-        IF BON% = 1 THEN
+        IF BULLET_ON% = 1 THEN
             CHECK_HIT()
         END IF
-        IF BON% = 1 THEN
-            PUT SPRITE 2, (BX%, BY%), CBULLET%, 2
+        IF BULLET_ON% = 1 THEN
+            PUT SPRITE 2, (BULLET_X%, BULLET_Y%), COLOR_BULLET%, 2
         ELSE
-            PUT SPRITE 2, (BX%, PARKY%), CBULLET%, 2
+            PUT SPRITE 2, (BULLET_X%, PARK_Y%), COLOR_BULLET%, 2
         END IF
     END IF
 END FUNCTION
@@ -671,49 +671,49 @@ END FUNCTION
 
 ' Player struck: explosion animation, lose a life, maybe end the game.
 FUNCTION HIT_PLAYER()
-    GLOBAL LV%
-    GLOBAL PX%
-    GLOBAL DONE%
-    GLOBAL SDIRTY%
-    LV% = LV% - 1
-    SDIRTY% = 1
+    GLOBAL LIVES%
+    GLOBAL PLAYER_X%
+    GLOBAL GAME_STATE%
+    GLOBAL STATUS_DIRTY%
+    LIVES% = LIVES% - 1
+    STATUS_DIRTY% = 1
     SFXNOISE(50, 48)         ' big player explosion (long noise tail)
     FOR K% = 1 TO 6
-        PUT SPRITE 0, (PX%, PLAYY%), 4 + K%, 4
-        PUT SPRITE 1, (PX%, PARKY%), CGLASS%, 1
+        PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), 4 + K%, 4
+        PUT SPRITE 1, (PLAYER_X%, PARK_Y%), COLOR_COCKPIT%, 1
         FOR T% = 1 TO 120
         NEXT T%
     NEXT K%
-    PUT SPRITE 0, (PX%, PLAYY%), CBODY%, 0
-    PUT SPRITE 1, (PX%, PLAYY%), CGLASS%, 1
-    IF LV% <= 0 THEN
-        DONE% = 2
+    PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
+    PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
+    IF LIVES% <= 0 THEN
+        GAME_STATE% = 2
     END IF
 END FUNCTION
 
 
 ' Maybe spawn, then advance the enemy bomb; hit-test the player.
 FUNCTION STEP_BOMB()
-    GLOBAL FON%
-    GLOBAL FX%
-    GLOBAL FY%
-    GLOBAL PX%
-    IF FON% = 0 THEN
+    GLOBAL BOMB_ON%
+    GLOBAL BOMB_X%
+    GLOBAL BOMB_Y%
+    GLOBAL PLAYER_X%
+    IF BOMB_ON% = 0 THEN
         IF RND(1) < 0.1 THEN
             DROP_BOMB()
         END IF
     END IF
-    IF FON% = 1 THEN
-        FY% = FY% + FSPEED%
-        IF FY% >= PLAYY% THEN
-            FON% = 0
-            PUT SPRITE 3, (FX%, PARKY%), CBOMB%, 3
-            IF ABS(FX% - PX%) < 12 THEN
+    IF BOMB_ON% = 1 THEN
+        BOMB_Y% = BOMB_Y% + BOMB_SPEED%
+        IF BOMB_Y% >= PLAYER_SPRITE_Y% THEN
+            BOMB_ON% = 0
+            PUT SPRITE 3, (BOMB_X%, PARK_Y%), COLOR_BOMB%, 3
+            IF ABS(BOMB_X% - PLAYER_X%) < 12 THEN
                 HIT_PLAYER()
             END IF
         END IF
-        IF FON% = 1 THEN
-            PUT SPRITE 3, (FX%, FY%), CBOMB%, 3
+        IF BOMB_ON% = 1 THEN
+            PUT SPRITE 3, (BOMB_X%, BOMB_Y%), COLOR_BOMB%, 3
         END IF
     END IF
 END FUNCTION
@@ -721,14 +721,14 @@ END FUNCTION
 
 ' Top status line - only re-printed when the score/lives/count changed.
 FUNCTION SHOW_STATUS()
-    GLOBAL SC%
-    GLOBAL LV%
-    GLOBAL NA%
-    GLOBAL SDIRTY%
-    IF SDIRTY% = 1 THEN
+    GLOBAL SCORE%
+    GLOBAL LIVES%
+    GLOBAL ALIENS_LEFT%
+    GLOBAL STATUS_DIRTY%
+    IF STATUS_DIRTY% = 1 THEN
         LOCATE 0, 0
-        PRINT "SCORE"; SC%; " LIVES"; LV%; " LEFT"; NA%; "  ";
-        SDIRTY% = 0
+        PRINT "SCORE"; SCORE%; " LIVES"; LIVES%; " LEFT"; ALIENS_LEFT%; "  ";
+        STATUS_DIRTY% = 0
     END IF
 END FUNCTION
 
@@ -745,12 +745,12 @@ END FUNCTION
 
 
 FUNCTION RUNGAME()
-    GLOBAL DONE%
-    GLOBAL NA%
-    GLOBAL SDIRTY%
+    GLOBAL GAME_STATE%
+    GLOBAL ALIENS_LEFT%
+    GLOBAL STATUS_DIRTY%
     MT% = 12
-    SDIRTY% = 1
-    WHILE DONE% = 0
+    STATUS_DIRTY% = 1
+    WHILE GAME_STATE% = 0
         SHOW_STATUS()
         MOVE_PLAYER()
         FIRE()
@@ -759,11 +759,11 @@ FUNCTION RUNGAME()
         MT% = MT% - 1
         IF MT% <= 0 THEN
             MARCH()
-            MD% = 2 + NA% \ 4
+            MD% = 2 + ALIENS_LEFT% \ 4
             MT% = MD%
         END IF
-        IF NA% = 0 THEN
-            DONE% = 1
+        IF ALIENS_LEFT% = 0 THEN
+            GAME_STATE% = 1
         END IF
         WAIT_FRAME()          ' 垂直帰線まで待つ＝正確な60Hz（要所ASM）
     WEND
@@ -789,32 +789,32 @@ END FUNCTION
 
 
 ' ---------------- MAIN ----------------
-GLOBAL PX%
-GLOBAL SC%
-GLOBAL LV%
-GLOBAL DONE%
-GLOBAL BON%
-GLOBAL FON%
-GLOBAL NA%
-GLOBAL ANF%
-GLOBAL AL%
-GLOBAL TILE%
-GLOBAL IL%
-GLOBAL IR%
-GLOBAL ROWCOL%
-GLOBAL FL$                ' 32-byte fleet survival buffer (ASM reads it)
-GLOBAL FLDPTR%            ' VARPTR(FL$) = stable string-descriptor address
-GLOBAL FLA%              ' FL$ data pointer (signed 16-bit) for CHECK_HIT poke
-GLOBAL OX%                ' MARCH scratch: fleet's old col / row (for the erase pass)
-GLOBAL OY%
-GLOBAL FGX%               ' MARCH pass inputs: fleet col / row / char base / row step
-GLOBAL FGY%
-GLOBAL FQB%
-GLOBAL FQI%
-GLOBAL ZR%                ' MARCH draw-loop scratch: row counter / row addr / char / step
-GLOBAL ZRA%
-GLOBAL ZQ%
-GLOBAL ZS%
+GLOBAL PLAYER_X%
+GLOBAL SCORE%
+GLOBAL LIVES%
+GLOBAL GAME_STATE%
+GLOBAL BULLET_ON%
+GLOBAL BOMB_ON%
+GLOBAL ALIENS_LEFT%
+GLOBAL ANIM_FRAME%
+GLOBAL ALIVE%
+GLOBAL ALIEN_TILE%
+GLOBAL ART_LEFT%
+GLOBAL ART_RIGHT%
+GLOBAL ROW_COLOR%
+GLOBAL FLEET_ALIVE$                ' 32-byte fleet survival buffer (ASM reads it)
+GLOBAL FLEET_DESC_PTR%            ' VARPTR(FLEET_ALIVE$) = stable string-descriptor address
+GLOBAL FLEET_DATA_PTR%              ' FLEET_ALIVE$ data pointer (signed 16-bit) for CHECK_HIT poke
+GLOBAL ERASE_COL%                ' MARCH scratch: fleet's old col / row (for the erase pass)
+GLOBAL ERASE_ROW%
+GLOBAL PASS_COL%               ' MARCH pass inputs: fleet col / row / char base / row step
+GLOBAL PASS_ROW%
+GLOBAL PASS_CHAR%
+GLOBAL PASS_CHARSTEP%
+GLOBAL DRAW_ROW%                ' MARCH draw-loop scratch: row counter / row addr / char / step
+GLOBAL DRAW_ADDR%
+GLOBAL DRAW_CHAR%
+GLOBAL DRAW_STEP%
 
 ' turbo R required (version byte at &H2D is 3 on a turbo R).
 IF PEEK(&H2D) < 3 THEN
@@ -830,15 +830,15 @@ COLOR 15, 1, 1
 KEY OFF
 CLS
 
-DIM AL%(COLS%, ROWS%)
-DIM TILE%(7, 7)
-DIM IL%(15)
-DIM IR%(15)
-DIM ROWCOL%(3)
-ROWCOL%(0) = 9             ' row colours (light red / yellow / cyan / green)
-ROWCOL%(1) = 11
-ROWCOL%(2) = 7
-ROWCOL%(3) = 3
+DIM ALIVE%(ALIENS_PER_ROW%, ALIEN_ROWS%)
+DIM ALIEN_TILE%(7, 7)
+DIM ART_LEFT%(15)
+DIM ART_RIGHT%(15)
+DIM ROW_COLOR%(3)
+ROW_COLOR%(0) = 9             ' row colours (light red / yellow / cyan / green)
+ROW_COLOR%(1) = 11
+ROW_COLOR%(2) = 7
+ROW_COLOR%(3) = 3
 
 RESTORE
 LOAD_ALIENS()            ' reads the 2 alien frames (first in DATA)
@@ -853,32 +853,32 @@ TITLE()
 CLS
 ' Pre-assign every variable the ASM reads via VARPTR: MSX-BASIC's VARPTR raises
 ' "Illegal function call" on a variable that was never given a value, and
-' OX%/OY%/FGX%/FGY%/FQB%/FQI%/ZR%/ZRA%/ZQ% start out only ever touched by the Z80.
-' (FLDPTR% is set for real in SETUP_FLEET once FL$ exists.)
-FLDPTR% = 0
-FLA% = 0
-OX% = 0
-OY% = 0
-FGX% = 0
-FGY% = 0
-FQB% = 0
-FQI% = 0
-ZR% = 0
-ZRA% = 0
-ZQ% = 0
-ZS% = 0
+' ERASE_COL%/ERASE_ROW%/PASS_COL%/PASS_ROW%/PASS_CHAR%/PASS_CHARSTEP%/DRAW_ROW%/DRAW_ADDR%/DRAW_CHAR% start out only ever touched by the Z80.
+' (FLEET_DESC_PTR% is set for real in SETUP_FLEET once FLEET_ALIVE$ exists.)
+FLEET_DESC_PTR% = 0
+FLEET_DATA_PTR% = 0
+ERASE_COL% = 0
+ERASE_ROW% = 0
+PASS_COL% = 0
+PASS_ROW% = 0
+PASS_CHAR% = 0
+PASS_CHARSTEP% = 0
+DRAW_ROW% = 0
+DRAW_ADDR% = 0
+DRAW_CHAR% = 0
+DRAW_STEP% = 0
 SETUP_FLEET()
 DRAW_FLEET(0)
 
-PX% = 120
-SC% = 0
-LV% = 3
-DONE% = 0
-BON% = 0
-FON% = 0
-ANF% = 0
-PUT SPRITE 0, (PX%, PLAYY%), CBODY%, 0
-PUT SPRITE 1, (PX%, PLAYY%), CGLASS%, 1
+PLAYER_X% = 120
+SCORE% = 0
+LIVES% = 3
+GAME_STATE% = 0
+BULLET_ON% = 0
+BOMB_ON% = 0
+ANIM_FRAME% = 0
+PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
+PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
 
 RUNGAME()
 
@@ -887,21 +887,21 @@ SOUND 8, 0
 SOUND 9, 0
 SOUND 10, 0
 ' park all sprites
-PUT SPRITE 0, (0, PARKY%), CBODY%, 0
-PUT SPRITE 1, (0, PARKY%), CGLASS%, 1
-PUT SPRITE 2, (0, PARKY%), CBULLET%, 2
-PUT SPRITE 3, (0, PARKY%), CBOMB%, 3
+PUT SPRITE 0, (0, PARK_Y%), COLOR_BODY%, 0
+PUT SPRITE 1, (0, PARK_Y%), COLOR_COCKPIT%, 1
+PUT SPRITE 2, (0, PARK_Y%), COLOR_BULLET%, 2
+PUT SPRITE 3, (0, PARK_Y%), COLOR_BOMB%, 3
 CLS
-IF DONE% = 1 THEN
+IF GAME_STATE% = 1 THEN
     LOCATE 12, 10
     PRINT "YOU WIN!"
 END IF
-IF DONE% = 2 THEN
+IF GAME_STATE% = 2 THEN
     LOCATE 11, 10
     PRINT "GAME OVER"
 END IF
 LOCATE 10, 12
-PRINT "SCORE "; SC%
+PRINT "SCORE "; SCORE%
 LOCATE 6, 22
 PRINT "PRESS SPACE TO EXIT"
 WHILE STRIG(0) = 0

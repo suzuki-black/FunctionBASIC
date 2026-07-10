@@ -34,18 +34,15 @@ in our *embedded* player only.
   Deferred for now (kept the cross-origin iframe) — it needs linking/hosting
   WebMSX's JS, which touches the "link only, do not bundle" licensing stance.
 
-## Transpiler robustness: MAIN line-number collision
+## Transpiler robustness: MAIN line-number collision — RESOLVED
 
-- [ ] **A long MAIN silently collides with the function segments.** The renderer
-  numbers MAIN from 100 (step 10) and each FUNCTION from its own 1000-step
-  segment (1000, 2000, …). If MAIN renders to **more than ~90 lines** it reaches
-  line 1000 and **overlaps the first function**, producing **duplicate line
-  numbers with no diagnostic** — the output is broken MSX-BASIC (`GOSUB 1000`
-  becomes ambiguous). Found while writing `examples/invaders-turbor.msxb` (a big
-  MAIN); worked around by moving the body into functions so MAIN stays short.
-  Fix direction: either **emit an error** (e.g. `E_LINE_OVERFLOW`) or **choose the
-  first function base dynamically** above MAIN's last line. A regression test for
-  a >90-line MAIN should accompany the fix.
+- [x] **A long MAIN colliding with the function segments is fixed.** The first
+  function base is now chosen dynamically above MAIN's last line
+  (`seg = max(1000, (⌊mainLast/1000⌋+1)·1000)`), and later functions advance past
+  each prior block's real end; a safety-net check emits `E_LINE_NUMBER_OVERFLOW`
+  on any non-ascending/duplicate/over-65529 line. Verified: a 120-statement MAIN
+  places the first function at 2000 with zero duplicates. Regression tests:
+  `test/line-numbering.test.ts` (>90-line MAIN, >150-line function, 65529 overflow).
 
 ## turbo R samples: approach TBD (deferred)
 

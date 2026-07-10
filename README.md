@@ -328,6 +328,29 @@ PRINT "GAME OVER"
 
 ---
 
+## Vibe-coding with an AI assistant
+
+Structured BASIC is meant to be written *with* an AI. The reliable workflow:
+
+1. **Give the AI the diff guide as context.** Paste or attach
+   [`docs/00-msx-basic-diff.en.md`](docs/00-msx-basic-diff.en.md) (Japanese:
+   [`docs/00-msx-basic-diff.md`](docs/00-msx-basic-diff.md)). It's a self-contained cheat-sheet of
+   exactly how Structured BASIC differs from MSX-BASIC — the rules, the gotchas and the error
+   codes — so the model generates valid `.msxb` instead of guessing plain MSX-BASIC.
+2. **Describe what you want** in plain language ("a side-scrolling runner where you jump over
+   gaps", "print the first 20 primes") and ask for a complete `.msxb` file.
+3. **Paste the result into FunctionBASIC and convert.** On a mistake the transpiler reports a
+   specific error code (`E_SYNTAX`, `E_NAME_IS_BUILTIN`, `E_STRICT_UNTYPED`, …) and a line — hand
+   that back to the AI ("fix this: &lt;error&gt;") and it self-corrects, because the diff guide
+   lists what each code means. It never mis-converts silently.
+4. **Run it** with ▶ WebMSX (or Save Disk for large programs) and iterate.
+
+Tip: for larger programs, tell the AI to keep game state in `GLOBAL`s with descriptive names, put
+each concern in its own `FUNCTION`, and use `STRICT` with `%` integers for game logic — the two
+featured examples above were built exactly this way.
+
+---
+
 ## Roadmap
 
 FunctionBASIC is early and developing. **`[x]` = done, `[ ]` = not yet** (no fixed dates):
@@ -696,6 +719,19 @@ PRINT "GAME OVER"
 ```
 
 **その他** — MSX2 `SCREEN 5` のグラフィック＋BGM/SEデモ（独自パレット、`LINE …,BF` / `CIRCLE` / `PAINT`、`SET PAGE` ダブルバッファ、`COPY … TO …`、`PLAY`、`SOUND` などMSX2固有書式をそのまま保持）は [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)、再帰のショーケース（階乗／フィボナッチ／相互再帰）は [`examples/recursion.msxb`](examples/recursion.msxb)。[`examples/`](examples/) と機能別の [`examples/cookbook/`](examples/cookbook/) もどうぞ。
+
+---
+
+## AIとのバイブコーディング
+
+構造化BASICは **AIと一緒に書く**ことを想定した設計です。確実なやり方：
+
+1. **差分ガイドをAIにコンテキストとして渡す。** [`docs/00-msx-basic-diff.md`](docs/00-msx-basic-diff.md)（英語版は [`docs/00-msx-basic-diff.en.md`](docs/00-msx-basic-diff.en.md)）を貼るか添付します。これは「構造化BASICがMSX-BASICとどう違うか」— ルール・落とし穴・エラーコード — を1枚にまとめた自己完結の資料なので、モデルが素のMSX-BASICを当て推量せず正しい `.msxb` を生成できます。
+2. **やりたいことを普通の言葉で伝える**（「穴を飛び越える横スクロールランナー」「最初の素数20個を表示」）。完全な `.msxb` ファイルで出力させます。
+3. **結果をFunctionBASICに貼って変換。** 間違いがあれば、トランスパイラが具体的なエラーコード（`E_SYNTAX`・`E_NAME_IS_BUILTIN`・`E_STRICT_UNTYPED` …）と行番号で知らせます。それをAIに返す（「これを直して：〈エラー〉」）と、差分ガイドに各コードの意味が載っているので自己修正します。黙って誤変換はしません。
+4. **実行**（▶WebMSX、大きい例はディスク保存）して反復。
+
+ヒント：大きめのプログラムでは「ゲーム状態は説明的な名前の `GLOBAL` に、機能ごとに `FUNCTION` へ分け、ゲームロジックは `STRICT`＋`%`整数で」と指示すると良いです。上の2つの目玉サンプルもまさにこの作り方です。
 
 ---
 

@@ -1,5 +1,7 @@
 # 00. MSX-BASIC → 構造化BASIC 差分ガイド
 
+> 🌐 English: [00-msx-basic-diff.en.md](00-msx-basic-diff.en.md)
+>
 > **この資料の目的**
 > MSX-BASIC を知っている人が読めば「何が変わったか」だけで書き始められ、
 > AI（バイブコーディング）が読めば構造化BASICを正しく生成できる——両方を満たす**差分チートシート**。

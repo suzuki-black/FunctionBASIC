@@ -35,6 +35,7 @@ import type { MapTable } from "../core/maptable.ts";
 export interface MsxLine {
   lineNo: number;
   text: string;
+  src?: number[]; // 由来の構造化ソース行（統合後・1始まり）。エディタの行連動ハイライト用。
 }
 export interface TransformResult {
   code: MsxLine[];
@@ -934,7 +935,7 @@ function finishTransform(ctx: any): TransformResult {
 
   // ---- 文ブロックの emit（Itemモデル: 行 or ラベル）----
   type Item =
-    | { kind: "line"; text: string; no?: number }
+    | { kind: "line"; text: string; no?: number; src?: number[] }
     | { kind: "label"; id: number }
     | { kind: "frameop"; op: "push" | "pop"; func: string }; // 再帰: フレーム退避/復元（後で展開）
   let labelCounter = 0;
@@ -1218,6 +1219,7 @@ function finishTransform(ctx: any): TransformResult {
 
   const emitInto = (stmts: Stmt[], sc: any, items: Item[]) => {
     for (const s0 of stmts) {
+      const provBefore = items.length;
       const s = prelower(s0, sc, items);
       switch (s.type) {
         case "Global":
@@ -1320,6 +1322,14 @@ function finishTransform(ctx: any): TransformResult {
           break;
         }
       }
+      // provenance: この文で追加された未タグの line 項目へ、その文のソース行を後埋め。
+      // ネストは内側の文が先にタグ付けされるので、外側はブロックの足場(FOR/NEXT・IF先頭・
+      // GOTO 等)だけを拾う。エディタの「行選択で逆タブの対応行をハイライト」に使う。
+      const provLn = (s0 as any)?.pos?.line;
+      if (provLn != null) for (let pi = provBefore; pi < items.length; pi++) {
+        const pit = items[pi] as { kind: string; src?: number[] };
+        if (pit.kind === "line" && pit.src == null) pit.src = [provLn];
+      }
     }
   };
 
@@ -1377,8 +1387,9 @@ function finishTransform(ctx: any): TransformResult {
         prev.text.length + 2 + it.text.length <= CAP
       ) {
         prev.text = prev.text + ": " + it.text;
+        if (it.src) prev.src = [...(prev.src ?? []), ...it.src];
       } else {
-        out.push({ kind: "line", text: it.text });
+        out.push({ kind: "line", text: it.text, src: it.src });
       }
     }
     return out;
@@ -1399,7 +1410,7 @@ function finishTransform(ctx: any): TransformResult {
         continue;
       }
       const pieces = splitLongLine(it.text);
-      for (const text of pieces) items.push({ kind: "line", text });
+      for (const text of pieces) items.push({ kind: "line", text, src: it.src });
     }
     let no = start;
     for (const it of items)
@@ -1416,8 +1427,8 @@ function finishTransform(ctx: any): TransformResult {
       labelLine.set(it.id, target ? target.no : no);
     }
     return items
-      .filter((it): it is { kind: "line"; text: string; no: number } => it.kind === "line")
-      .map((it) => ({ lineNo: it.no, text: it.text }));
+      .filter((it): it is { kind: "line"; text: string; no: number; src?: number[] } => it.kind === "line")
+      .map((it) => ({ lineNo: it.no, text: it.text, src: it.src }));
   };
 
   // MAIN

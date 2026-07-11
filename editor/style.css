@@ -166,6 +166,14 @@ button:hover { background: #1177bb; }
   background: rgba(255, 255, 255, 0.05); pointer-events: none;
 }
 
+/* 行リンク（構造化⇔MSX）: 構造化側の対応行を示す帯（テキスト背後）*/
+#linkhl { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+#linkhl .lhl { position: absolute; left: 0; right: 0; background: rgba(90, 200, 130, 0.20); box-shadow: inset 3px 0 0 rgba(90, 200, 130, 0.9); }
+/* MSX出力は行 <div> で描画（全幅ハイライト＋行クリック）*/
+#msxOut .mln { display: block; white-space: pre; margin: 0; }
+#msxOut .mln:hover { background: rgba(255, 255, 255, 0.045); }
+#msxOut .mln.hl { background: rgba(90, 200, 130, 0.22); box-shadow: inset 3px 0 0 rgba(90, 200, 130, 0.9); }
+
 /* 単純検索バー（タブ直下に全幅ドッキング。PhpStorm の in-file 検索風）*/
 #findbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 5;

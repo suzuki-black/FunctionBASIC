@@ -1473,6 +1473,8 @@ function finishTransform(ctx: any): TransformResult {
         {
           kind: "line",
           text: `' === FUNCTION ${fn.name}${refDesc ? " (" + refDesc + ")" : ""} ===`,
+          // FUNCTION 宣言行を由来に（エディタで FUNCTION 行を選ぶとこの見出しへ飛べる）
+          src: fn.pos ? [fn.pos.line] : undefined,
         },
       ];
       emitInto(fn.body, sc, items);

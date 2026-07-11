@@ -22,7 +22,6 @@ const statusEl = $("status");
 const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
-const linkhlEl = $("linkhl");
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -846,7 +845,7 @@ function renderHeavy() {
     msxPane.classList.add("error");
     msxNote.textContent = t("msx.err");
     msxOut.textContent = t("msx.errbody");
-    linkCode = []; srcToMsxI = new Map(); clearStructHi();
+    linkCode = []; srcToMsxI = new Map();
   }
 
   // Problems パネル（他ファイルにエラーがあれば自動で開く）
@@ -2211,11 +2210,12 @@ function updateCurLine() {
 function applyEditorPrefs() { updateCurLine(); }
 
 // ---- 構造化 ⇔ 変換後MSX の行リンク（双方向ハイライト）----
-// 変換器が各MSX行に付ける src（由来の構造化ソース行）を使い、片方で行を選ぶと
-// もう片方の対応行を色変え表示する。実装者が変換のされ方を追える。
+// 変換器が各MSX行に付ける src（由来の構造化ソース行）を使う。
+//  ・構造化側キャレット → 対応MSX行を緑ハイライト＋スクロール。
+//  ・MSX行クリック → 由来の構造化行へ「ネイティブのキャレット移動」（＝標準の現在行
+//    ハイライトがそのまま出る）。独自の位置計算オーバーレイは使わない＝ズレない。
 let linkCode = [];              // 直近の MsxLine[]（lineNo/text/src）
 let srcToMsxI = new Map();      // 構造化ソース行 → MSX行のインデックス配列
-let structHiLines = [];         // 構造化側で帯ハイライトする 1始まり行番号
 
 function buildMsxLinkView(code) {
   linkCode = code || [];
@@ -2231,11 +2231,9 @@ function buildMsxLinkView(code) {
   msxOut.innerHTML = html;
 }
 function clearMsxHi() { for (const e of msxOut.querySelectorAll(".mln.hl")) e.classList.remove("hl"); }
-function clearStructHi() { structHiLines = []; linkhlEl.innerHTML = ""; }
 
-// 構造化側キャレット → 対応MSX行をハイライト（構造化側が主導なので構造化帯は消す）
+// 構造化側キャレット行 → 対応MSX行を緑ハイライト＋スクロール
 function hiFromStructured() {
-  clearStructHi();
   clearMsxHi();
   if (msxPane.classList.contains("error") || !linkCode.length) return;
   const idxs = srcToMsxI.get(caretLine());
@@ -2248,29 +2246,14 @@ function hiFromStructured() {
   if (first) msxOut.scrollTop = Math.max(0, first.offsetTop - msxOut.clientHeight / 2 + first.offsetHeight / 2);
 }
 
-// 構造化側の帯を現在のスクロール位置に合わせて配置
-function positionStructHi() {
-  if (!structHiLines.length) { linkhlEl.innerHTML = ""; return; }
-  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
-  const padTop = parseFloat(getComputedStyle(srcEl).paddingTop) || 0;
-  linkhlEl.innerHTML = structHiLines
-    .map((ln) => `<div class="lhl" style="top:${padTop + (ln - 1) * lh - srcEl.scrollTop}px;height:${lh}px"></div>`)
-    .join("");
-}
-
-// MSX行クリック → その由来の構造化行を帯ハイライト＋スクロール
+// MSX行クリック → 由来の構造化行へキャレットを移動（ネイティブ現在行ハイライトが出る）
 function hiFromMsx(el) {
   const s = el.getAttribute("data-src");
-  structHiLines = s ? s.split(",").map(Number).filter(Boolean) : [];
-  clearMsxHi();
-  el.classList.add("hl");
-  if (structHiLines.length) {
-    const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
-    const y = (structHiLines[0] - 1) * lh;
-    if (y < srcEl.scrollTop || y > srcEl.scrollTop + srcEl.clientHeight - lh)
-      srcEl.scrollTop = Math.max(0, y - srcEl.clientHeight / 2);
-  }
-  positionStructHi();
+  const srcLines = s ? s.split(",").map(Number).filter(Boolean) : [];
+  if (!srcLines.length) return;   // MAIN ヘッダ/END など由来なしの行は無反応
+  scrollToLine(srcLines[0]);      // 構造化側にキャレット＋スクロール（既存の堅牢な実装）
+  updateCurLine();
+  hiFromStructured();             // 新しいキャレット行に対応するMSX行を緑ハイライト
 }
 
 msxOut.addEventListener("click", (e) => {
@@ -2545,7 +2528,7 @@ srcEl.addEventListener("input", () => {
   clearTimeout(timer);
   timer = setTimeout(renderHeavy, 250); // 重い変換・診断は停止後に
 });
-srcEl.addEventListener("scroll", () => { syncScroll(); updateCurLine(); positionStructHi(); });
+srcEl.addEventListener("scroll", () => { syncScroll(); updateCurLine(); });
 // キャレット移動（クリック/矢印/選択）で現在行を追従＋対応MSX行をリンクハイライト
 srcEl.addEventListener("keyup", () => { updateCurLine(); hiFromStructured(); });
 srcEl.addEventListener("click", () => { updateCurLine(); hiFromStructured(); });

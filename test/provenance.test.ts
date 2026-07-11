@@ -27,6 +27,19 @@ PRINT SCORE%`;
   assert.ok(code.some((l) => /=== MAIN ===/.test(l.text) && (l.src ?? []).length === 0));
 });
 
+test("provenance: FUNCTION 宣言行は その関数の見出し行に対応する", () => {
+  const src = `A% = 0
+FUNCTION DBL%(N%)
+    RETURN N% * 2
+END FUNCTION
+A% = DBL%(3)`;
+  const code = build(src);
+  // 2行目 = FUNCTION 宣言 → '=== FUNCTION DBL ===' 見出し行が src=2 を持つ
+  const header = code.find((l) => /=== FUNCTION DBL ===/.test(l.text));
+  assert.ok(header, "関数見出し行がある");
+  assert.deepEqual(header!.src, [2]);
+});
+
 test("provenance: src の行番号はすべて元ソースの行範囲内", () => {
   const src = `A% = 1
 B% = 2

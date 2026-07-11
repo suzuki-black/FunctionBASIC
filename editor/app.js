@@ -23,7 +23,7 @@ const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.7";
+const APP_VERSION = "0.1.8";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -1570,6 +1570,11 @@ function applyFontSize(px) {
   const v = Math.min(28, Math.max(9, px | 0));
   settings.fontSize = v;
   document.documentElement.style.setProperty("--font-size", v + "px");
+  // 行高を「整数px」に固定する。unitless(1.5)だと 15px→22.5px の端数になり、
+  // WKWebView(デスクトップ)は各行を整数pxに丸めて描画するため、行が下るほど
+  // 現在行ハイライト帯と実テキストがズレていく（例: 56行目で約1行分 drift）。
+  // 整数pxならgetComputedStyleの値と実描画が一致し、ドリフトしない。
+  document.documentElement.style.setProperty("--line", Math.round(v * 1.5) + "px");
 }
 function setFont(delta) {
   applyFontSize((settings.fontSize || 15) + delta);

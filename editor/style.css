@@ -13,7 +13,7 @@
   --com: #6a9955;
   --op: #d4d4d4;
   --err: #f14c4c;
-  --line: 1.5;
+  --line: 23px; /* 整数px（15px font × 1.5=22.5 の端数を排除）。JSがfont変更時に再計算 */
 }
 
 * { box-sizing: border-box; }

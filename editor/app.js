@@ -22,6 +22,8 @@ const statusEl = $("status");
 const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
+// アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
+const APP_VERSION = "0.1.6";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -83,7 +85,7 @@ const I18N = {
     "set.url": "WebMSX URL", "set.save": "保存", "set.cancel": "キャンセル",
     "runmsx": "▶ WebMSXで実行", "reverse": "MSX→構造化に逆変換", "helpsc": "キーボードショートカット…",
     "m.app": "FunctionBASIC", "about": "FunctionBASICについて",
-    "about.body": "FunctionBASIC  v0.1.0\n\n構造化BASIC → MSX-BASIC 変換エディタ",
+    "about.body": (v) => `FunctionBASIC  v${v}\n\n構造化BASIC → MSX-BASIC 変換エディタ`,
     "tb.save": "変換して保存", "tb.play": "▶ WebMSX", "tb.font": "文字",
     "tab.structured": "構造化BASIC", "tab.msx": "MSX-BASIC変換後", "tab.webmsx": "実行 (WebMSX)", "tab.close": "タブを閉じる",
     "note.webmsx": "▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します", "note.copy": "📋 コピー",
@@ -185,7 +187,7 @@ const I18N = {
     "set.url": "WebMSX URL", "set.save": "Save", "set.cancel": "Cancel",
     "runmsx": "▶ Run in WebMSX", "reverse": "Reverse: MSX → Structured", "helpsc": "Keyboard Shortcuts…",
     "m.app": "FunctionBASIC", "about": "About FunctionBASIC",
-    "about.body": "FunctionBASIC  v0.1.0\n\nStructured BASIC → MSX-BASIC converter/editor",
+    "about.body": (v) => `FunctionBASIC  v${v}\n\nStructured BASIC → MSX-BASIC converter/editor`,
     "tb.save": "Convert & Save", "tb.play": "▶ WebMSX", "tb.font": "Font",
     "tab.structured": "Structured BASIC", "tab.msx": "MSX-BASIC (output)", "tab.webmsx": "Run (WebMSX)", "tab.close": "Close tab",
     "note.webmsx": "Press ▶ WebMSX (or Ctrl/Cmd+Enter) to run here automatically.", "note.copy": "📋 Copy",
@@ -1506,6 +1508,7 @@ function renderTabs() {
     }
   }
   saveLayout();
+  hiFromStructured(); // 分割へ切替えた瞬間に現在行の連動を反映（非分割時はゲートで無処理）
 }
 function moveTab(id, from, to, idx) {
   const origIdx = groups[from].indexOf(id);
@@ -2232,8 +2235,13 @@ function buildMsxLinkView(code) {
 }
 function clearMsxHi() { for (const e of msxOut.querySelectorAll(".mln.hl")) e.classList.remove("hl"); }
 
+// 行連動は「分割表示（構造化とMSXの両ペインが同時に見えている）」時のみ動作。
+// 片方だけ表示中は何もしない（勝手にタブを開いたり移動・ハイライトしたりしない）。
+function bothPanesVisible() { return !msxPane.hidden && !$("structuredPane").hidden; }
+
 // 構造化側キャレット行 → 対応MSX行を緑ハイライト＋スクロール
 function hiFromStructured() {
+  if (!bothPanesVisible()) return;   // 分割表示時のみ
   clearMsxHi();
   if (msxPane.classList.contains("error") || !linkCode.length) return;
   const idxs = srcToMsxI.get(caretLine());
@@ -2248,6 +2256,7 @@ function hiFromStructured() {
 
 // MSX行クリック → 由来の構造化行へキャレットを移動（ネイティブ現在行ハイライトが出る）
 function hiFromMsx(el) {
+  if (!bothPanesVisible()) return;   // 分割表示時のみ
   const s = el.getAttribute("data-src");
   const srcLines = s ? s.split(",").map(Number).filter(Boolean) : [];
   if (!srcLines.length) return;   // MAIN ヘッダ/END など由来なしの行は無反応
@@ -2632,7 +2641,7 @@ function runAction(act) {
     case "reverse": return onReverse();
     case "import-basic": return onImportBasic();
     case "help": return showModal(t("sc.title"), t("sc.body"));
-    case "about": return showModal("FunctionBASIC", t("about.body"));
+    case "about": return showModal("FunctionBASIC", t("about.body", APP_VERSION));
     case "lang-ja": return setLang("ja");
     case "lang-en": return setLang("en");
     default: logErr("runAction", "未知のアクション: " + act);

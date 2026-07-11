@@ -23,7 +23,7 @@ const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.6";
+const APP_VERSION = "0.1.7";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -91,6 +91,8 @@ const I18N = {
     "note.webmsx": "▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します", "note.copy": "📋 コピー",
     "ready": "準備完了",
     "msx.ok": "▶ WebMSX で実行できます", "msx.err": "文法エラーのため変換できません",
+    "link.map": (s, m) => `構造化 ${s}行 → MSX ${m}行（緑）`,
+    "link.noout": (s) => `構造化 ${s}行：変換後に出力はありません（GLOBAL宣言・コメント・空行など）`,
     "msx.errbody": "（構造化BASICタブのエラーを修正してください）",
     "st.ok": "OK", "st.okwarn": (n) => `OK（警告 ${n} 件）`, "st.err": (n) => `⚠ エラー ${n} 件`,
     "st.elsewhere": (m) => `（うち他ファイル ${m} 件・クリックでProblems）`,
@@ -193,6 +195,8 @@ const I18N = {
     "note.webmsx": "Press ▶ WebMSX (or Ctrl/Cmd+Enter) to run here automatically.", "note.copy": "📋 Copy",
     "ready": "Ready",
     "msx.ok": "Run it with ▶ WebMSX", "msx.err": "Cannot convert: syntax error",
+    "link.map": (s, m) => `Structured L${s} → MSX ${m} (green)`,
+    "link.noout": (s) => `Structured L${s}: no output (GLOBAL decl / comment / blank)`,
     "msx.errbody": "(Fix the errors in the Structured BASIC tab.)",
     "st.ok": "OK", "st.okwarn": (n) => `OK (${n} warning(s))`, "st.err": (n) => `⚠ ${n} error(s)`,
     "st.elsewhere": (m) => ` (${m} in other files — click for Problems)`,
@@ -2239,19 +2243,32 @@ function clearMsxHi() { for (const e of msxOut.querySelectorAll(".mln.hl")) e.cl
 // 片方だけ表示中は何もしない（勝手にタブを開いたり移動・ハイライトしたりしない）。
 function bothPanesVisible() { return !msxPane.hidden && !$("structuredPane").hidden; }
 
-// 構造化側キャレット行 → 対応MSX行を緑ハイライト＋スクロール
+// 構造化側キャレット行 → 対応MSX行を緑ハイライト＋スクロール＋ヘッダに対応を明示
 function hiFromStructured() {
-  if (!bothPanesVisible()) return;   // 分割表示時のみ
+  const cl = caretLine();
+  const dbg = (m) => { if (window.__LINK_DEBUG__) console.log("[link]", m); };
+  if (!bothPanesVisible()) { dbg("gated (not split)"); return; }
   clearMsxHi();
   if (msxPane.classList.contains("error") || !linkCode.length) return;
-  const idxs = srcToMsxI.get(caretLine());
-  if (!idxs || !idxs.length) return;
+  const idxs = srcToMsxI.get(cl);
+  if (!idxs || !idxs.length) {
+    // この構造化行は変換後に出力が無い（GLOBAL宣言/コメント/空行など）＝ハイライト対象なし。
+    // 「無反応で壊れている」と誤解されないよう、ヘッダに理由を明示する。
+    msxNote.textContent = t("link.noout", cl);
+    dbg("no output for structured line " + cl);
+    return;
+  }
   let first = null;
   for (const i of idxs) {
     const el = msxOut.querySelector(`.mln[data-i="${i}"]`);
     if (el) { el.classList.add("hl"); if (!first) first = el; }
   }
-  if (first) msxOut.scrollTop = Math.max(0, first.offsetTop - msxOut.clientHeight / 2 + first.offsetHeight / 2);
+  if (first) {
+    msxOut.scrollTop = Math.max(0, first.offsetTop - msxOut.clientHeight / 2 + first.offsetHeight / 2);
+    const nos = idxs.map((i) => linkCode[i] && linkCode[i].lineNo).filter((n) => n != null);
+    msxNote.textContent = t("link.map", cl, nos.join(", "));
+    dbg("structured " + cl + " -> MSX " + nos.join(","));
+  }
 }
 
 // MSX行クリック → 由来の構造化行へキャレットを移動（ネイティブ現在行ハイライトが出る）

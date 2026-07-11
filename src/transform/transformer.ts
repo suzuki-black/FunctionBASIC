@@ -1264,7 +1264,16 @@ function finishTransform(ctx: any): TransformResult {
         case "If": {
           const one = tryOneLineIf(s, sc);
           if (one !== null) {
-            items.push({ kind: "line", text: one });
+            // 畳まれた1行IFには、含まれる全ソース行（IF自身＋THEN/ELSE内の各文）を由来に付ける。
+            // これが無いと内側の LOCATE/PRINT 等をクリックしても対応行が無く「出力なし」に見える。
+            const srcLines: number[] = [];
+            const walk = (x: any) => {
+              if (!x) return;
+              if (x.pos && x.pos.line != null) srcLines.push(x.pos.line);
+              (x.then || []).forEach(walk); (x.else || []).forEach(walk); (x.body || []).forEach(walk);
+            };
+            walk(s0);
+            items.push({ kind: "line", text: one, src: [...new Set(srcLines)].sort((a, b) => a - b) });
             break;
           }
           // GOTO平坦化: IF NOT(cond) THEN <else/end> ... [GOTO end] ... label

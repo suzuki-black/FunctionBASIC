@@ -40,6 +40,23 @@ A% = DBL%(3)`;
   assert.deepEqual(header!.src, [2]);
 });
 
+test("provenance: 1行に畳まれたIFは内側の文の行も由来に含む", () => {
+  // IF/LOCATE/PRINT が 1行に畳まれる。内側(LOCATE/PRINT)行をクリックしても対応が出るよう
+  // 畳んだMSX行に IF・内側の全ソース行が付くこと。
+  const src = `X% = 2
+IF X% = 2 THEN
+    LOCATE 1, 1
+    PRINT "HI"
+END IF
+PRINT X%`;
+  const code = build(src);
+  // 畳まれた IF 行を特定（THEN を含む単一MSX行）
+  const folded = code.find((l) => /\bTHEN\b/.test(l.text) && /PRINT/.test(l.text));
+  assert.ok(folded, "IFが1行に畳まれている");
+  // IF(2)・LOCATE(3)・PRINT(4) すべてがこの行の由来に含まれる
+  for (const ln of [2, 3, 4]) assert.ok((folded!.src ?? []).includes(ln), `src に ${ln} を含む`);
+});
+
 test("provenance: src の行番号はすべて元ソースの行範囲内", () => {
   const src = `A% = 1
 B% = 2

@@ -2245,7 +2245,7 @@ function hiFromStructured() {
     const el = msxOut.querySelector(`.mln[data-i="${i}"]`);
     if (el) { el.classList.add("hl"); if (!first) first = el; }
   }
-  if (first) first.scrollIntoView({ block: "nearest" });
+  if (first) msxOut.scrollTop = Math.max(0, first.offsetTop - msxOut.clientHeight / 2 + first.offsetHeight / 2);
 }
 
 // 構造化側の帯を現在のスクロール位置に合わせて配置

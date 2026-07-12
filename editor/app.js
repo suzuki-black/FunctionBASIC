@@ -23,7 +23,7 @@ const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.12";
+const APP_VERSION = "0.1.13";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -1046,7 +1046,7 @@ async function onOpenFolder() {
   project.dir = res.dir;
   if (res.files.length) {
     const files = {};
-    for (const f of res.files) files[f.name] = f.content;
+    for (const f of res.files) files[f.name] = lfNormalize(f.content);
     project.files = files;
     project.mainFile = null;
     project.active = files["main.msxb"] != null ? "main.msxb" : Object.keys(files).sort()[0];
@@ -1072,7 +1072,7 @@ async function onReloadFolder() {
   catch (e) { logErr("read_folder", e); setStatus("err", t("save.err", e?.message ?? e)); return; }
   if (!files.length) { setStatus("err", t("folder.empty")); return; }
   const map = {};
-  for (const f of files) map[f.name] = f.content;
+  for (const f of files) map[f.name] = lfNormalize(f.content);
   project.files = map;
   if (map[project.active] == null) project.active = map["main.msxb"] != null ? "main.msxb" : Object.keys(map).sort()[0];
   setReadOnly(false);
@@ -1601,8 +1601,12 @@ function setFont(delta) {
   saveSettings();
 }
 
+// 改行を LF に正規化。構造化ソース(.msxb)は仕様上 LF だが、Windows/エディタ/git 経由で
+// CRLF(\r\n) や lone CR(\r) が混入し得る。混入すると保存が CRLF のまま残る等の不整合に
+// なるため、エディタに入る全ての構造化ソースを LF へ統一する（出力 .bas は保存時に CRLF 付与）。
+const lfNormalize = (s) => (s || "").replace(/\r\n?/g, "\n");
 function setSource(text) {
-  srcEl.value = text;
+  srcEl.value = lfNormalize(text);
   render();
   calibrateLineHeight(); // 大きなファイル読込後に行高を実測較正（WKWebViewズレ対策）
   resetHistory(); // 読込/逆変換は履歴の起点（巻き戻して消えないように）

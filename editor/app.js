@@ -22,8 +22,10 @@ const statusEl = $("status");
 const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
+const maptableOut = $("maptableOut");
+const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.13";
+const APP_VERSION = "0.1.14";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -87,8 +89,18 @@ const I18N = {
     "m.app": "FunctionBASIC", "about": "FunctionBASICについて",
     "about.body": (v) => `FunctionBASIC  v${v}\n\n構造化BASIC → MSX-BASIC 変換エディタ`,
     "tb.save": "変換して保存", "tb.play": "▶ WebMSX", "tb.font": "文字",
-    "tab.structured": "構造化BASIC", "tab.msx": "MSX-BASIC変換後", "tab.webmsx": "実行 (WebMSX)", "tab.close": "タブを閉じる",
+    "tab.structured": "構造化BASIC", "tab.msx": "MSX-BASIC変換後", "tab.webmsx": "実行 (WebMSX)", "tab.maptable": "変換テーブル", "tab.close": "タブを閉じる",
     "note.webmsx": "▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します", "note.copy": "📋 コピー",
+    "maptable.copy": "📋 JSON",
+    "maptable.note": "変数名の圧縮・関数・制御フローの対応表（読み取り専用）",
+    "maptable.none": "（変換テーブルはまだありません。エラーが無い状態でソースを変換すると表示されます）",
+    "maptable.globals": (n) => `グローバル変数（${n}）`,
+    "maptable.functions": (n) => `関数（${n}）`,
+    "maptable.controlflow": (n) => `制御フロー（BREAK / CONTINUE）（${n}）`,
+    "maptable.col.orig": "元の名前", "maptable.col.msx": "MSX名",
+    "maptable.entry": "先頭行", "maptable.params": "引数", "maptable.ret": "戻り値", "maptable.locals": "ローカル変数",
+    "maptable.ref": "参照", "maptable.none.sub": "（なし）",
+    "maptable.cf.from": "元の行", "maptable.cf.to": "飛び先",
     "ready": "準備完了",
     "msx.ok": "▶ WebMSX で実行できます", "msx.err": "文法エラーのため変換できません",
     "link.map": (s, m) => `構造化 ${s}行 → MSX ${m}行（緑）`,
@@ -191,8 +203,18 @@ const I18N = {
     "m.app": "FunctionBASIC", "about": "About FunctionBASIC",
     "about.body": (v) => `FunctionBASIC  v${v}\n\nStructured BASIC → MSX-BASIC converter/editor`,
     "tb.save": "Convert & Save", "tb.play": "▶ WebMSX", "tb.font": "Font",
-    "tab.structured": "Structured BASIC", "tab.msx": "MSX-BASIC (output)", "tab.webmsx": "Run (WebMSX)", "tab.close": "Close tab",
+    "tab.structured": "Structured BASIC", "tab.msx": "MSX-BASIC (output)", "tab.webmsx": "Run (WebMSX)", "tab.maptable": "Conversion table", "tab.close": "Close tab",
     "note.webmsx": "Press ▶ WebMSX (or Ctrl/Cmd+Enter) to run here automatically.", "note.copy": "📋 Copy",
+    "maptable.copy": "📋 JSON",
+    "maptable.note": "How names are compressed, plus function & control-flow mapping (read-only)",
+    "maptable.none": "(No conversion table yet. It appears once the source converts without errors.)",
+    "maptable.globals": (n) => `Global variables (${n})`,
+    "maptable.functions": (n) => `Functions (${n})`,
+    "maptable.controlflow": (n) => `Control flow (BREAK / CONTINUE) (${n})`,
+    "maptable.col.orig": "Original name", "maptable.col.msx": "MSX name",
+    "maptable.entry": "entry line", "maptable.params": "params", "maptable.ret": "returns", "maptable.locals": "Local variables",
+    "maptable.ref": "REF", "maptable.none.sub": "(none)",
+    "maptable.cf.from": "from line", "maptable.cf.to": "target",
     "ready": "Ready",
     "msx.ok": "Run it with ▶ WebMSX", "msx.err": "Cannot convert: syntax error",
     "link.map": (s, m) => `Structured L${s} → MSX ${m} (green)`,
@@ -846,12 +868,14 @@ function renderHeavy() {
     msxPane.classList.remove("error");
     msxNote.textContent = t("msx.ok");
     buildMsxLinkView(r.code);
+    buildMapTableView(r.map); // 変換テーブル（読み取り専用）も更新
     hiFromStructured(); // 現在行に対応するMSX行を即ハイライト
   } else {
     msxPane.classList.add("error");
     msxNote.textContent = t("msx.err");
     msxOut.textContent = t("msx.errbody");
     linkCode = []; srcToMsxI = new Map();
+    buildMapTableView(null); // エラー時はテーブルなしの案内を表示
   }
 
   // Problems パネル（他ファイルにエラーがあれば自動で開く）
@@ -1420,8 +1444,8 @@ async function renameSymbol() {
 }
 
 // ---- タブ（JetBrains方式: 2グループ。ドラッグで並べ替え＆グループ間移動=分割/統合。状態は永続化）----
-const TAB_PANE = { structured: "structuredPane", msx: "msxPane", webmsx: "webmsxPane" };
-const ALL_TABS = ["structured", "msx", "webmsx"];
+const TAB_PANE = { structured: "structuredPane", msx: "msxPane", webmsx: "webmsxPane", maptable: "maptablePane" };
+const ALL_TABS = ["structured", "msx", "webmsx", "maptable"];
 const LAYOUT_KEY = "fbe-layout-v1";
 
 // groups.A=主(左) / groups.B=分割(右、空なら統合状態)。active=各グループの選択タブ。
@@ -1753,6 +1777,7 @@ function renderTree() {
   }
   html += `<div class="ft-group">${esc(t("proj.run"))}</div>`;
   html += `<div class="ft-row" data-node="msx"><span class="ft-ico">📄</span><span class="ft-name">${esc(t("tab.msx"))}</span></div>`;
+  html += `<div class="ft-row" data-node="maptable"><span class="ft-ico">🔤</span><span class="ft-name">${esc(t("tab.maptable"))}</span></div>`;
   html += `<div class="ft-row node-webmsx" data-node="webmsx"><span class="ft-ico">▶</span><span class="ft-name">WebMSX</span></div>`;
   fileTreeEl.innerHTML = html;
 }
@@ -1769,6 +1794,7 @@ fileTreeEl.addEventListener("click", (e) => {
   if (row.dataset.file) openFile(row.dataset.file);
   else if (row.dataset.lib) openLib(row.dataset.lib);
   else if (row.dataset.node === "msx") openTab("msx");
+  else if (row.dataset.node === "maptable") openTab("maptable");
   else if (row.dataset.node === "webmsx") openTab("webmsx");
 });
 $("newFileBtn").addEventListener("click", newFile);
@@ -2269,6 +2295,42 @@ function buildMsxLinkView(code) {
 }
 function clearMsxHi() { for (const e of msxOut.querySelectorAll(".mln.hl")) e.classList.remove("hl"); }
 
+// 変換テーブル（読み取り専用）: 変数名の圧縮・関数の対応（先頭行/引数/戻り値/ローカル）・
+// 制御フロー(BREAK/CONTINUE)の飛び先を人間が読める表で表示。データは変換結果の map（=.map.json）。
+function buildMapTableView(map) {
+  if (!map) { maptableNote.textContent = t("maptable.none"); maptableOut.innerHTML = ""; return; }
+  maptableNote.textContent = t("maptable.note");
+  const globals = map.globalVarMap || [], fns = map.functions || [], cf = map.controlFlow || [];
+  const nameTable = (rows) => rows.length
+    ? `<table class="mt"><thead><tr><th>${esc(t("maptable.col.orig"))}</th><th>${esc(t("maptable.col.msx"))}</th></tr></thead><tbody>`
+      + rows.map((r) => `<tr><td class="mt-orig">${esc(r.original)}</td><td class="mt-msx">${esc(r.msxName)}</td></tr>`).join("")
+      + `</tbody></table>`
+    : `<div class="mt-empty">${esc(t("maptable.none.sub"))}</div>`;
+  let h = "";
+  h += `<section class="mt-sec"><h3>${esc(t("maptable.globals", globals.length))}</h3>${nameTable(globals)}</section>`;
+  h += `<section class="mt-sec"><h3>${esc(t("maptable.functions", fns.length))}</h3>`;
+  if (!fns.length) h += `<div class="mt-empty">${esc(t("maptable.none.sub"))}</div>`;
+  for (const f of fns) {
+    const entry = f.variants && f.variants[0] && f.variants[0].entryLine != null ? f.variants[0].entryLine : null;
+    const params = (f.params || []).map((p) => `${esc(p.name)}${p.byRef ? ` <span class="mt-ref">${esc(t("maptable.ref"))}</span>` : ""}`).join(", ") || "—";
+    h += `<div class="mt-fn"><div class="mt-fn-head"><span class="mt-fn-name">${esc(f.name + (f.retSuffix || ""))}</span>`;
+    if (entry != null) h += `<span class="mt-fn-entry">${esc(t("maptable.entry"))} ${esc(String(entry))}</span>`;
+    h += `</div><div class="mt-fn-sig"><span class="mt-lbl">${esc(t("maptable.params"))}:</span> ${params}`;
+    if (f.retVar) h += ` &nbsp;·&nbsp; <span class="mt-lbl">${esc(t("maptable.ret"))}:</span> <span class="mt-msx">${esc(f.retVar)}</span>`;
+    h += `</div>`;
+    const locals = f.localVarMap || [];
+    if (locals.length) h += `<div class="mt-locals"><span class="mt-lbl">${esc(t("maptable.locals"))}:</span>${nameTable(locals)}</div>`;
+    h += `</div>`;
+  }
+  h += `</section>`;
+  if (cf.length) {
+    h += `<section class="mt-sec"><h3>${esc(t("maptable.controlflow", cf.length))}</h3><table class="mt"><tbody>`
+      + cf.map((c) => `<tr><td class="mt-orig">${esc(c.kind)}</td><td>${esc(t("maptable.cf.to"))} ${esc(String(c.targetLine))}</td></tr>`).join("")
+      + `</tbody></table></section>`;
+  }
+  maptableOut.innerHTML = h;
+}
+
 // 行連動は「分割表示（構造化とMSXの両ペインが同時に見えている）」時のみ動作。
 // 片方だけ表示中は何もしない（勝手にタブを開いたり移動・ハイライトしたりしない）。
 function bothPanesVisible() { return !msxPane.hidden && !$("structuredPane").hidden; }
@@ -2762,6 +2824,11 @@ $("copyBtn").addEventListener("click", async () => {
   const ok = await copyText((last.msx || "").replace(/\r/g, ""));
   msxNote.textContent = ok ? t("copy.ok") : t("copy.err");
   log("MSXコピー:", ok);
+});
+$("mapCopyBtn").addEventListener("click", async () => {
+  if (!last.map) { flash(t("maptable.none.sub")); return; }
+  const ok = await copyText(JSON.stringify(last.map, null, 1)); // .map.json と同一形式
+  flash(t(ok ? "copy.ok" : "copy.err"));
 });
 $("fontUp").addEventListener("click", () => setFont(1));
 $("fontDown").addEventListener("click", () => setFont(-1));

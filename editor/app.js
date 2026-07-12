@@ -23,7 +23,7 @@ const msxOut = $("msxOut");
 const msxNote = $("msxNote");
 const msxPane = $("msxPane");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.9";
+const APP_VERSION = "0.1.12";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -1575,6 +1575,26 @@ function applyFontSize(px) {
   // 現在行ハイライト帯と実テキストがズレていく（例: 56行目で約1行分 drift）。
   // 整数pxならgetComputedStyleの値と実描画が一致し、ドリフトしない。
   document.documentElement.style.setProperty("--line", Math.round(v * 1.5) + "px");
+  calibrateLineHeight();
+}
+// WKWebView は <textarea> をフォント固有の自然行高で描画する一方、重ねた <div>
+// (#highlight/#gutter) は line-height を整数に丸める。両者が ~0.05px/行 ずれ、下の
+// 行ほどキャレット（textarea）が色付きテキスト・ガター（div）からズレる（900行付近で
+// 約2行）。対策: textarea の実測行高より確実に大きい整数へ --line を引き上げると、
+// div も textarea も同じ整数を厳密に honor して一致する（丸めの影響を受けない）。
+function calibrateLineHeight() {
+  const n = (srcEl.value.split("\n").length) || 1;
+  if (srcEl.scrollHeight <= srcEl.clientHeight + 4) return; // overflow していないと実測不可
+  const cs = getComputedStyle(srcEl);
+  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const realLH = (srcEl.scrollHeight - pad) / n;           // textarea の実描画行高
+  if (!(realLH > 6 && realLH < 80)) return;
+  const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--line")) || realLH;
+  const want = Math.max(cur, Math.ceil(realLH - 0.02));     // 自然行高より上の整数へ
+  if (want !== cur) {
+    document.documentElement.style.setProperty("--line", want + "px");
+    updateCurLine();
+  }
 }
 function setFont(delta) {
   applyFontSize((settings.fontSize || 15) + delta);
@@ -1584,6 +1604,7 @@ function setFont(delta) {
 function setSource(text) {
   srcEl.value = text;
   render();
+  calibrateLineHeight(); // 大きなファイル読込後に行高を実測較正（WKWebViewズレ対策）
   resetHistory(); // 読込/逆変換は履歴の起点（巻き戻して消えないように）
 }
 
@@ -2853,6 +2874,9 @@ setSource(project.files[project.active]);
 renderTree();
 syncFindToggles(); // 検索トグル(Aa/.*)の初期反映
 applyEditorPrefs(); // 現在行ハイライト等の初期反映
+calibrateLineHeight(); // 起動時に行高を実測較正（WKWebViewの textarea/div ズレ対策）
+// ウィンドウ/ペインサイズ変化で行高較正と現在行帯を再計算
+window.addEventListener("resize", () => { calibrateLineHeight(); updateCurLine(); });
 // デスクトップは起動時の言語をネイティブメニューにも反映
 if (isDesktop()) {
   try {

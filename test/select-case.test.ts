@@ -90,15 +90,45 @@ PRINT 2
 END SELECT`).includes("E_SELECT_ELSE_LAST"));
 });
 
-test("SELECT CASE v1: 範囲(TO)/関係(IS)は未対応で E_SELECT_UNSUPPORTED", () => {
+test("SELECT CASE v2: 範囲(lo TO hi) / 関係(IS <演算子>) / 混在", () => {
+  const { text, diags } = compile(`GLOBAL N%
+N% = 42
+SELECT CASE N%
+    CASE 0, 1
+        PRINT "LOW"
+    CASE 10 TO 19
+        PRINT "TEENS"
+    CASE IS >= 100
+        PRINT "BIG"
+    CASE 5 TO 9, IS < 0
+        PRINT "MIX"
+    CASE ELSE
+        PRINT "MID"
+END SELECT`);
+  assert.equal(diags.filter((d) => d.severity === "error").length, 0);
+  assert.match(text, />=10 AND .*<=19/); // 範囲
+  assert.match(text, />=100/); // 関係
+  assert.match(text, />=5 AND .*<=9 OR .*<0/); // 混在（AND優先で正しくグループ化）
+});
+
+test("SELECT CASE v2: 文字列範囲は文字列比較へ（型エラーなし）", () => {
+  const { text, diags } = compile(`GLOBAL G$
+G$ = "F"
+SELECT CASE G$
+    CASE "A" TO "M"
+        PRINT "FIRST HALF"
+    CASE ELSE
+        PRINT "REST"
+END SELECT`);
+  assert.equal(diags.filter((d) => d.severity === "error").length, 0);
+  assert.match(text, />="A" AND .*<="M"/);
+});
+
+test("SELECT CASE v2: CASE IS の後に演算子が無ければ E_SELECT_IS_OP", () => {
   assert.ok(errCodes(`SELECT CASE X%
-CASE 1 TO 5
+CASE IS 5
 PRINT 1
-END SELECT`).includes("E_SELECT_UNSUPPORTED"));
-  assert.ok(errCodes(`SELECT CASE X%
-CASE IS > 5
-PRINT 1
-END SELECT`).includes("E_SELECT_UNSUPPORTED"));
+END SELECT`).includes("E_SELECT_IS_OP"));
 });
 
 test("SELECT CASE: 行対応(src) — CASE 本体の行が MSX 行に紐づく", () => {

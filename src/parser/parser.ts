@@ -21,6 +21,7 @@ import type {
   SelectBlock,
   CaseClause,
   CaseTest,
+  RelOp,
   ForBlock,
   WhileBlock,
   OnTarget,
@@ -470,21 +471,30 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "Select", selector, cases, else: elseBody, pos };
   };
 
-  // v1 の CASE テスト並び: 値のカンマ区切り（CASE 1, 2, 3）。範囲(TO)/関係(IS)は v2 で対応予定。
+  // CASE テスト: 値 / 範囲(lo TO hi) / 関係(IS <演算子> 値)。
+  const parseCaseTest = (): CaseTest => {
+    // CASE IS <関係演算子> 式。IS は文脈依存の非予約語（IDENT）としてここでだけ特別扱い。
+    if (cur().kind === "IDENT" && cur().value === "IS") {
+      advance(); // IS
+      if (cur().kind === "OP" && COMPARE_OPS.has(cur().value)) {
+        const op = advance().value as RelOp;
+        return { kind: "rel", op, expr: parseExpr() };
+      }
+      report("E_SELECT_IS_OP", cur().pos);
+      return { kind: "val", expr: parseExpr() }; // 回復（値テスト扱い）
+    }
+    const lo = parseExpr();
+    if (checkKw("TO")) {
+      advance(); // TO
+      return { kind: "range", lo, hi: parseExpr() };
+    }
+    return { kind: "val", expr: lo };
+  };
+  // CASE テスト並び（カンマ区切り。CASE 1, 5 TO 9, IS>100 のように混在可）。
   const parseCaseTestList = (): CaseTest[] => {
     const tests: CaseTest[] = [];
     do {
-      if (cur().kind === "IDENT" && cur().value === "IS") {
-        report("E_SELECT_UNSUPPORTED", cur().pos, { feature: "IS" });
-        advance(); // IS を読み捨てて回復
-      }
-      const e = parseExpr();
-      if (checkKw("TO")) {
-        report("E_SELECT_UNSUPPORTED", cur().pos, { feature: "TO" });
-        advance();
-        parseExpr(); // 範囲上限を読み捨てて回復
-      }
-      tests.push({ kind: "val", expr: e });
+      tests.push(parseCaseTest());
     } while (checkOp(",") && (advance(), true));
     return tests;
   };

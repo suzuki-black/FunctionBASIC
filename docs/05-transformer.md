@@ -652,7 +652,8 @@ DATA 1,2,3,4
   （明示があればそれ、未指定の数値は `!`、文字列絡みは `$`）。`__` 接頭辞の内部一時は変換テーブル表示からは除外。
 - 各 `CASE` は `else` にネストした `IfBlock` に展開（`ELSEIF` が無いためネスト連鎖）。
   - `CASE v` → `__sel = v`／`CASE a,b,c` → `(__sel=a) OR (__sel=b) OR (__sel=c)`
-  - `CASE lo TO hi`（v2）→ `(__sel>=lo) AND (__sel<=hi)`／`CASE IS <op> n`（v2）→ `__sel <op> n`
+  - `CASE lo TO hi` → `(__sel>=lo) AND (__sel<=hi)`／`CASE IS <op> n` → `__sel <op> n`（op は `= <> < <= > >=`）
+    - 1つの CASE の複数テストは OR。MSX 優先順位で AND が OR より上位のため `a AND b OR c` は正しく `(a AND b) OR c` と評価され括弧不要。
   - `CASE ELSE` → 連鎖末尾の `else`。
 - **フォールスルー無し**は IF ブロックの構造（一致本体の後に `END SELECT` へ GOTO）で自然に満たされる。
 - 生成ノードの `pos` は元の `SELECT`／各 `CASE` 行を継承 → 行対応ハイライト（[11 §11.16](11-editor-features.md)）が効く。

@@ -181,6 +181,10 @@ SELECT CASE STATE%
         TITLE()
     CASE 1, 2, 3          ' 値のリスト
         PLAYING()
+    CASE 10 TO 19         ' 範囲
+        BOSS()
+    CASE IS >= 100        ' 関係（= <> < <= > >=）
+        DEBUG()
     CASE ELSE
         GAMEOVER()
 END SELECT
@@ -188,10 +192,10 @@ END SELECT
 
 - **セレクタは一度だけ評価**される（副作用のある関数呼び出しでも安全。内部で一時変数へ退避）。
 - **フォールスルー無し**・**最初に一致した CASE のみ実行**して `END SELECT` の次へ。C の `switch` と違い `break` は不要。
+- **CASE の書き方**：`CASE 値`／`CASE a, b, c`（リスト）／`CASE lo TO hi`（範囲）／`CASE IS <演算子> 値`（関係。演算子は `= <> < <= > >=`）／`CASE ELSE`。1つの CASE に複数指定は **OR**（例 `CASE 1, 5 TO 9, IS > 100`）。`IS` の後に演算子が無ければ `E_SELECT_IS_OP`。
 - `CASE ELSE` は任意・**最後に1つだけ**（違反は `E_SELECT_ELSE_LAST`）。
 - CASE 本体内の `BREAK`/`CONTINUE` は **外側のループ**に係る（SELECT はループではない）。
-- **v1 スコープ**：`CASE 値`／`CASE a, b, c`（リスト）／`CASE ELSE`。範囲 `CASE lo TO hi` と関係 `CASE IS <演算子> 値` は **v2 予定**（今は `E_SELECT_UNSUPPORTED`）。
-- 変換方式は [05 §5.15](05-transformer.md) を参照（一時Let＋ネスト IF へ desugar）。
+- 文字列セレクタも可（`CASE "A" TO "M"` は文字列比較へ）。変換方式は [05 §5.15](05-transformer.md) を参照（一時Let＋ネスト IF へ desugar）。
 
 ---
 
@@ -298,10 +302,9 @@ select_block   = "SELECT" "CASE" expr newline
                  [ "CASE" "ELSE" newline { statement } ]   (* 末尾に1つだけ *)
                  "END" "SELECT" newline ;
 case_clause    = "CASE" case_test { "," case_test } newline { statement } ;
-case_test      = expr [ "TO" expr ]        (* v2: 範囲 lo TO hi *)
-               | "IS" rel_op expr ;        (* v2: 関係。IS は文脈依存で非予約 *)
+case_test      = expr [ "TO" expr ]        (* 値、または範囲 lo TO hi *)
+               | "IS" rel_op expr ;        (* 関係。IS は文脈依存で非予約 *)
 rel_op         = "=" | "<>" | "<" | "<=" | ">" | ">=" ;
-(* v1 は case_test = expr（＋カンマ区切りのリスト）のみ。TO / IS は E_SELECT_UNSUPPORTED *)
 
 for_block      = "FOR" ident "=" expr "TO" expr [ "STEP" expr ] newline
                  { statement }

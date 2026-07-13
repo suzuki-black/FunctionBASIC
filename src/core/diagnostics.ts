@@ -117,10 +117,10 @@ const CATALOG: Record<string, Entry> = {
     ja: () => "CASE ELSE は SELECT CASE の最後に1つだけ置けます",
     en: () => "CASE ELSE must be the single last clause of a SELECT CASE",
   },
-  E_SELECT_UNSUPPORTED: {
-    code: "E_SELECT_UNSUPPORTED",
-    ja: (p) => `CASE の ${p.feature} はまだ対応していません（範囲 TO・関係 IS は今後対応）`,
-    en: (p) => `CASE ${p.feature} is not supported yet (ranges TO / relational IS are planned)`,
+  E_SELECT_IS_OP: {
+    code: "E_SELECT_IS_OP",
+    ja: () => "CASE IS の後には関係演算子（= <> < <= > >=）が必要です",
+    en: () => "CASE IS must be followed by a relational operator (= <> < <= > >=)",
   },
   E_DUP_FUNCTION: {
     code: "E_DUP_FUNCTION",

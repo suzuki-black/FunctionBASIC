@@ -131,6 +131,18 @@ PRINT 1
 END SELECT`).includes("E_SELECT_IS_OP"));
 });
 
+test("SELECT CASE: ヘッダ/CASE 行末のインラインコメントを許容", () => {
+  const codes = errCodes(`GLOBAL X%
+X% = 1
+SELECT CASE X%        ' selector comment
+    CASE 1, 2         ' first
+        PRINT "A"
+    CASE ELSE         ' rest
+        PRINT "B"
+END SELECT`);
+  assert.deepEqual(codes, []);
+});
+
 test("SELECT CASE: 行対応(src) — CASE 本体の行が MSX 行に紐づく", () => {
   // 4行目 = CASE 本体の PRINT。desugar 後もその行が由来(src)に含まれること（#1 行連動の土台）。
   const { code } = compile(`SELECT CASE X%

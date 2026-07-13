@@ -440,6 +440,13 @@ export function parse(tokens: Token[]): ParseResult {
     return body;
   };
 
+  // ブロックヘッダ行末: 行末インラインコメント → 改行 をまとめて読み飛ばす
+  // （SELECT CASE 式 ' コメント / DATASET 名 ' コメント のように書けるように）。
+  const eatLineEnd = (): void => {
+    if (checkKind("COMMENT")) advance();
+    if (checkKind("NEWLINE")) advance();
+  };
+
   const parseIf = (pos: Position): IfBlock => {
     advance(); // IF
     const cond = parseExpr();
@@ -464,7 +471,7 @@ export function parse(tokens: Token[]): ParseResult {
     advance(); // SELECT
     expectKw("CASE", "SELECT"); // SELECT の直後は CASE
     const selector = parseExpr();
-    if (checkKind("NEWLINE")) advance();
+    eatLineEnd();
     skipNewlines();
     const cases: CaseClause[] = [];
     let elseBody: Stmt[] | undefined;
@@ -480,12 +487,12 @@ export function parse(tokens: Token[]): ParseResult {
         advance();
         if (sawElse) report("E_SELECT_ELSE_LAST", casePos);
         sawElse = true;
-        if (checkKind("NEWLINE")) advance();
+        eatLineEnd();
         elseBody = parseBlockBody(["CASE", "END"]);
       } else {
         if (sawElse) report("E_SELECT_ELSE_LAST", casePos); // CASE ELSE の後に CASE は不可
         const tests = parseCaseTestList();
-        if (checkKind("NEWLINE")) advance();
+        eatLineEnd();
         const body = parseBlockBody(["CASE", "END"]);
         cases.push({ tests, body, pos: casePos });
       }
@@ -528,7 +535,7 @@ export function parse(tokens: Token[]): ParseResult {
   const parseDataset = (pos: Position): DatasetBlock => {
     advance(); // DATASET
     const name = expectIdent("DATASET");
-    if (checkKind("NEWLINE")) advance();
+    eatLineEnd();
     skipNewlines();
     const data: Stmt[] = [];
     while (!atEof() && !atTerminator("END")) {
@@ -568,7 +575,7 @@ export function parse(tokens: Token[]): ParseResult {
   const parseStruct = (pos: Position): StructDecl => {
     advance(); // STRUCT
     const name = expectIdent("STRUCT");
-    if (checkKind("NEWLINE")) advance();
+    eatLineEnd();
     skipNewlines();
     const fields: string[] = [];
     while (!atEof() && !atTerminator("END")) {

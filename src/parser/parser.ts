@@ -18,6 +18,9 @@ import type {
   ArrayDecl,
   BuiltinPart,
   IfBlock,
+  SelectBlock,
+  CaseClause,
+  CaseTest,
   ForBlock,
   WhileBlock,
   OnTarget,
@@ -389,7 +392,7 @@ export function parse(tokens: Token[]): ParseResult {
   // 裸の END（プログラム終了文）はブロック内の文として扱う（終端にしない）。
   const atTerminator = (t: string): boolean => {
     if (!checkKw(t)) return false;
-    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION");
+    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT");
     return true;
   };
   const parseBlockBody = (terminators: string[]): Stmt[] => {
@@ -427,6 +430,63 @@ export function parse(tokens: Token[]): ParseResult {
     expectKw("END", "IF");
     expectKw("IF", "IF");
     return { type: "If", cond, then: thenBody, else: elseBody, pos };
+  };
+
+  // SELECT CASE <式> / CASE 節… / CASE ELSE / END SELECT。
+  // v1: CASE は「値」と「値のリスト(CASE a,b,c)」＋ CASE ELSE のみ。範囲(TO)/関係(IS)は v2。
+  const parseSelect = (pos: Position): SelectBlock => {
+    advance(); // SELECT
+    expectKw("CASE", "SELECT"); // SELECT の直後は CASE
+    const selector = parseExpr();
+    if (checkKind("NEWLINE")) advance();
+    skipNewlines();
+    const cases: CaseClause[] = [];
+    let elseBody: Stmt[] | undefined;
+    let sawElse = false;
+    while (!atEof() && !atTerminator("END")) {
+      if (!checkKw("CASE")) {
+        report("E_SYNTAX_EXPECT", cur().pos, { ctx: "SELECT", v: "CASE" });
+        break;
+      }
+      const casePos = cur().pos;
+      advance(); // CASE
+      if (checkKw("ELSE")) {
+        advance();
+        if (sawElse) report("E_SELECT_ELSE_LAST", casePos);
+        sawElse = true;
+        if (checkKind("NEWLINE")) advance();
+        elseBody = parseBlockBody(["CASE", "END"]);
+      } else {
+        if (sawElse) report("E_SELECT_ELSE_LAST", casePos); // CASE ELSE の後に CASE は不可
+        const tests = parseCaseTestList();
+        if (checkKind("NEWLINE")) advance();
+        const body = parseBlockBody(["CASE", "END"]);
+        cases.push({ tests, body, pos: casePos });
+      }
+      skipNewlines();
+    }
+    expectKw("END", "SELECT");
+    expectKw("SELECT", "SELECT");
+    return { type: "Select", selector, cases, else: elseBody, pos };
+  };
+
+  // v1 の CASE テスト並び: 値のカンマ区切り（CASE 1, 2, 3）。範囲(TO)/関係(IS)は v2 で対応予定。
+  const parseCaseTestList = (): CaseTest[] => {
+    const tests: CaseTest[] = [];
+    do {
+      if (cur().kind === "IDENT" && cur().value === "IS") {
+        report("E_SELECT_UNSUPPORTED", cur().pos, { feature: "IS" });
+        advance(); // IS を読み捨てて回復
+      }
+      const e = parseExpr();
+      if (checkKw("TO")) {
+        report("E_SELECT_UNSUPPORTED", cur().pos, { feature: "TO" });
+        advance();
+        parseExpr(); // 範囲上限を読み捨てて回復
+      }
+      tests.push({ kind: "val", expr: e });
+    } while (checkOp(",") && (advance(), true));
+    return tests;
   };
 
   const parseFor = (pos: Position): ForBlock => {
@@ -531,6 +591,8 @@ export function parse(tokens: Token[]): ParseResult {
         }
         case "IF":
           return parseIf(pos);
+        case "SELECT":
+          return parseSelect(pos);
         case "FOR":
           return parseFor(pos);
         case "WHILE":

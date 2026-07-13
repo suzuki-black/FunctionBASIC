@@ -171,6 +171,28 @@ END IF
 > 処理を整理したい場合は従来どおり FUNCTION へ切り出してもよいが、**必須ではない**。
 > ネスト解消のためだけに関数化する必要はなくなった。
 
+### 1.4.1 SELECT CASE（多分岐）
+
+`ELSEIF` の代わりの読みやすい多分岐。`SELECT CASE <式>` … `CASE …` … `CASE ELSE` … `END SELECT`。
+
+```basic
+SELECT CASE STATE%
+    CASE 0
+        TITLE()
+    CASE 1, 2, 3          ' 値のリスト
+        PLAYING()
+    CASE ELSE
+        GAMEOVER()
+END SELECT
+```
+
+- **セレクタは一度だけ評価**される（副作用のある関数呼び出しでも安全。内部で一時変数へ退避）。
+- **フォールスルー無し**・**最初に一致した CASE のみ実行**して `END SELECT` の次へ。C の `switch` と違い `break` は不要。
+- `CASE ELSE` は任意・**最後に1つだけ**（違反は `E_SELECT_ELSE_LAST`）。
+- CASE 本体内の `BREAK`/`CONTINUE` は **外側のループ**に係る（SELECT はループではない）。
+- **v1 スコープ**：`CASE 値`／`CASE a, b, c`（リスト）／`CASE ELSE`。範囲 `CASE lo TO hi` と関係 `CASE IS <演算子> 値` は **v2 予定**（今は `E_SELECT_UNSUPPORTED`）。
+- 変換方式は [05 §5.15](05-transformer.md) を参照（一時Let＋ネスト IF へ desugar）。
+
 ---
 
 ## 1.5 BREAK / CONTINUE（仕様1-5）
@@ -263,13 +285,23 @@ simple_stmt    = let_stmt | dim_stmt | global_stmt | print_stmt | call_stmt
 
 global_stmt    = "GLOBAL" ident { "," ident } ;   (* 関数内でグローバルを使う宣言。§1.10 *)
 
-block_stmt     = if_block | for_block | while_block ;   (* 内部に statement を任意ネスト可 *)
+block_stmt     = if_block | select_block | for_block | while_block ;   (* 内部に statement を任意ネスト可 *)
 
 (* ブロック本体は statement を再帰的に含む = 自由なネストを許可 *)
 if_block       = "IF" expr "THEN" newline
                  { statement }
                  [ "ELSE" newline { statement } ]
                  "END" "IF" newline ;
+
+select_block   = "SELECT" "CASE" expr newline
+                 { case_clause }
+                 [ "CASE" "ELSE" newline { statement } ]   (* 末尾に1つだけ *)
+                 "END" "SELECT" newline ;
+case_clause    = "CASE" case_test { "," case_test } newline { statement } ;
+case_test      = expr [ "TO" expr ]        (* v2: 範囲 lo TO hi *)
+               | "IS" rel_op expr ;        (* v2: 関係。IS は文脈依存で非予約 *)
+rel_op         = "=" | "<>" | "<" | "<=" | ">" | ">=" ;
+(* v1 は case_test = expr（＋カンマ区切りのリスト）のみ。TO / IS は E_SELECT_UNSUPPORTED *)
 
 for_block      = "FOR" ident "=" expr "TO" expr [ "STEP" expr ] newline
                  { statement }

@@ -25,7 +25,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.14";
+const APP_VERSION = "0.1.15";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -2300,7 +2300,10 @@ function clearMsxHi() { for (const e of msxOut.querySelectorAll(".mln.hl")) e.cl
 function buildMapTableView(map) {
   if (!map) { maptableNote.textContent = t("maptable.none"); maptableOut.innerHTML = ""; return; }
   maptableNote.textContent = t("maptable.note");
-  const globals = map.globalVarMap || [], fns = map.functions || [], cf = map.controlFlow || [];
+  // コンパイラ内部の一時変数（__sel0/__T1 等、SELECT CASE 展開や関数戻り値の退避）は
+  // ユーザ名ではないので表示から除外（.map.json 自体は不変）。
+  const userVars = (rows) => (rows || []).filter((r) => !/^__/.test(r.original));
+  const globals = userVars(map.globalVarMap), fns = map.functions || [], cf = map.controlFlow || [];
   const nameTable = (rows) => rows.length
     ? `<table class="mt"><thead><tr><th>${esc(t("maptable.col.orig"))}</th><th>${esc(t("maptable.col.msx"))}</th></tr></thead><tbody>`
       + rows.map((r) => `<tr><td class="mt-orig">${esc(r.original)}</td><td class="mt-msx">${esc(r.msxName)}</td></tr>`).join("")
@@ -2318,7 +2321,7 @@ function buildMapTableView(map) {
     h += `</div><div class="mt-fn-sig"><span class="mt-lbl">${esc(t("maptable.params"))}:</span> ${params}`;
     if (f.retVar) h += ` &nbsp;·&nbsp; <span class="mt-lbl">${esc(t("maptable.ret"))}:</span> <span class="mt-msx">${esc(f.retVar)}</span>`;
     h += `</div>`;
-    const locals = f.localVarMap || [];
+    const locals = userVars(f.localVarMap);
     if (locals.length) h += `<div class="mt-locals"><span class="mt-lbl">${esc(t("maptable.locals"))}:</span>${nameTable(locals)}</div>`;
     h += `</div>`;
   }

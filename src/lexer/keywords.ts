@@ -9,6 +9,8 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "IF",
   "THEN",
   "ELSE",
+  "SELECT", // SELECT CASE 多分岐（構造化。IF チェーンへ desugar）
+  "CASE",   // SELECT CASE の分岐。IS は文脈依存で予約しない（変数名に使える）
   "FOR",
   "TO",
   "STEP",

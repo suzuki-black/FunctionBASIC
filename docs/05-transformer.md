@@ -639,3 +639,36 @@ DATA 1,2,3,4
 - `INCLUDE` で統合された全ファイルは **1つのコンパイル単位**。よって **2文字名アロケータの予算（約960/型）は
   全ファイル合算で消費**される（§5.11・[01 §1.13](01-language-spec.md#113-include分割ファイル)）。
 - グローバル変数・関数名も単位全体で共有。各 `MsxLine` に **由来ファイル(provenance)** を付与し、逆変換の分割復元に使う（[06 §6.12](06-reverse-transformer.md)）。
+
+---
+
+## 5.15 SELECT CASE → 一時Let + ネストIF（desugar）
+
+`SELECT CASE`（[01 §1.4.1](01-language-spec.md#141-select-case多分岐)）は、変換の**最初のパス** `lower-select.ts` で
+**AST→AST の desugar** を行い、以降のパス（名前検査・CONST展開・畳み込み・型検査・emit）は `SelectBlock` を一切見ない。
+これにより既存の **IF lowering（畳み or GOTO化）・provenance(src)・最適化・STRICT 型検査**をそのまま再利用できる。
+
+- セレクタは **一時変数 `__sel<n><型>`**（普通のローカル。Let で退避）へ**一度だけ**代入。型サフィックスはセレクタ式から推定
+  （明示があればそれ、未指定の数値は `!`、文字列絡みは `$`）。`__` 接頭辞の内部一時は変換テーブル表示からは除外。
+- 各 `CASE` は `else` にネストした `IfBlock` に展開（`ELSEIF` が無いためネスト連鎖）。
+  - `CASE v` → `__sel = v`／`CASE a,b,c` → `(__sel=a) OR (__sel=b) OR (__sel=c)`
+  - `CASE lo TO hi`（v2）→ `(__sel>=lo) AND (__sel<=hi)`／`CASE IS <op> n`（v2）→ `__sel <op> n`
+  - `CASE ELSE` → 連鎖末尾の `else`。
+- **フォールスルー無し**は IF ブロックの構造（一致本体の後に `END SELECT` へ GOTO）で自然に満たされる。
+- 生成ノードの `pos` は元の `SELECT`／各 `CASE` 行を継承 → 行対応ハイライト（[11 §11.16](11-editor-features.md)）が効く。
+
+例（`SELECT CASE STATE% / CASE 0 / CASE 1,2,3 / CASE ELSE`）:
+```basic
+110 A%=2                                  ' STATE%
+120 B%=A%                                 ' __sel0% ← セレクタを一度だけ退避
+130 IF NOT(B%=0) THEN 160
+140 ...CASE 0 本体...
+150 GOTO 200                              ' 一致したので END SELECT へ（fall-through 無し）
+160 IF NOT(B%=1 OR B%=2 OR B%=3) THEN 190
+170 ...CASE 1,2,3 本体...
+180 GOTO 200
+190 ...CASE ELSE 本体...
+200 ...END SELECT の次...
+```
+> v3 の任意最適化として、全 CASE が密な小整数リテラルの時に `ON __sel GOTO …`（O(1) ジャンプテーブル）へ
+> 落とす余地がある（emit レベル。既存 `ON <式> GOTO/GOSUB` を利用）。v1/v2 では IF チェーンで正しく動く。

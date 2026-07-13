@@ -112,6 +112,16 @@ const CATALOG: Record<string, Entry> = {
     ja: () => "FUNCTION の中に FUNCTION は定義できません",
     en: () => "Cannot define a FUNCTION inside another FUNCTION",
   },
+  E_SELECT_ELSE_LAST: {
+    code: "E_SELECT_ELSE_LAST",
+    ja: () => "CASE ELSE は SELECT CASE の最後に1つだけ置けます",
+    en: () => "CASE ELSE must be the single last clause of a SELECT CASE",
+  },
+  E_SELECT_UNSUPPORTED: {
+    code: "E_SELECT_UNSUPPORTED",
+    ja: (p) => `CASE の ${p.feature} はまだ対応していません（範囲 TO・関係 IS は今後対応）`,
+    en: (p) => `CASE ${p.feature} is not supported yet (ranges TO / relational IS are planned)`,
+  },
   E_DUP_FUNCTION: {
     code: "E_DUP_FUNCTION",
     ja: (p) => `関数 ${p.name} が重複しています`,

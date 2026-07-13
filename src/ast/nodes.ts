@@ -37,6 +37,7 @@ export type Stmt =
   | CallStmt
   | BuiltinStmt
   | IfBlock
+  | SelectBlock
   | ForBlock
   | WhileBlock
   | OnStmt
@@ -142,6 +143,25 @@ export interface IfBlock {
   cond: Expr;
   then: Stmt[];
   else?: Stmt[];
+  pos: Position;
+}
+// SELECT CASE 多分岐。パース後、lower-select パスで「一時Let + ネストIfBlock連鎖」へ
+// desugar されるため、変換器/最適化/型検査など下流のパスは SelectBlock を見ない。
+export type RelOp = "=" | "<>" | "<" | "<=" | ">" | ">=";
+export type CaseTest =
+  | { kind: "val"; expr: Expr } // CASE expr
+  | { kind: "range"; lo: Expr; hi: Expr } // CASE lo TO hi（v2）
+  | { kind: "rel"; op: RelOp; expr: Expr }; // CASE IS <rel> expr（v2）
+export interface CaseClause {
+  tests: CaseTest[]; // CASE 1,3,5 → 3件（OR 結合）
+  body: Stmt[];
+  pos: Position; // その CASE 行（行対応/provenance 用）
+}
+export interface SelectBlock {
+  type: "Select";
+  selector: Expr;
+  cases: CaseClause[]; // 宣言順。CASE ELSE は含めない
+  else?: Stmt[]; // CASE ELSE の本体
   pos: Position;
 }
 export interface ForBlock {

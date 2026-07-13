@@ -42,7 +42,10 @@ export type Stmt =
   | WhileBlock
   | OnStmt
   | IncludeStmt
-  | AsmStmt;
+  | AsmStmt
+  | DatasetBlock
+  | ReadIntoStmt
+  | RestoreDatasetStmt;
 
 // インライン Z80 アセンブリ（ASM…END ASM）。lines=生ニーモニック行。
 export interface AsmStmt {
@@ -162,6 +165,28 @@ export interface SelectBlock {
   selector: Expr;
   cases: CaseClause[]; // 宣言順。CASE ELSE は含めない
   else?: Stmt[]; // CASE ELSE の本体
+  pos: Position;
+}
+// 名前付きデータブロック（DATASET name … END DATASET）。本体は DATA 行（と注釈）。
+// 変換方式Aは docs/05 §5.16：末尾にラベル付きで DATA を出力し、READ name INTO で
+// 「別ブロックなら RESTORE、そして READ」（切替検出は1個の内部整数で。逐次前提）。
+export interface DatasetBlock {
+  type: "Dataset";
+  name: string; // ブロック名（型サフィックス無し。変数ではなくラベル）
+  data: Stmt[]; // 本体（DATA / 注釈のみ）
+  pos: Position;
+}
+// READ <dataset> INTO <lvalue> { , <lvalue> } — 名前付きブロックから順に読む。
+export interface ReadIntoStmt {
+  type: "ReadInto";
+  dataset: string;
+  targets: LValue[];
+  pos: Position;
+}
+// RESTORE <dataset> — そのブロックの読み取り位置を先頭へ巻き戻す。
+export interface RestoreDatasetStmt {
+  type: "RestoreDataset";
+  dataset: string;
   pos: Position;
 }
 export interface ForBlock {

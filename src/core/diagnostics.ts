@@ -122,6 +122,21 @@ const CATALOG: Record<string, Entry> = {
     ja: () => "CASE IS の後には関係演算子（= <> < <= > >=）が必要です",
     en: () => "CASE IS must be followed by a relational operator (= <> < <= > >=)",
   },
+  E_DATASET_BODY: {
+    code: "E_DATASET_BODY",
+    ja: () => "DATASET の中には DATA 行のみ置けます",
+    en: () => "A DATASET may only contain DATA lines",
+  },
+  E_DATASET_UNKNOWN: {
+    code: "E_DATASET_UNKNOWN",
+    ja: (p) => `未定義の DATASET です: ${p.name}`,
+    en: (p) => `Unknown DATASET: ${p.name}`,
+  },
+  E_DATASET_DUP: {
+    code: "E_DATASET_DUP",
+    ja: (p) => `DATASET 名が重複しています: ${p.name}`,
+    en: (p) => `Duplicate DATASET name: ${p.name}`,
+  },
   E_DUP_FUNCTION: {
     code: "E_DUP_FUNCTION",
     ja: (p) => `関数 ${p.name} が重複しています`,

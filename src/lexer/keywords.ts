@@ -31,6 +31,8 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "REF",
   "GLOBAL",
   "DIM",
+  "DATASET", // 名前付きデータブロック（DATASET name … END DATASET）
+  "INTO", // READ <dataset> INTO <変数>
   "INCLUDE",
   "STRICT", // 厳格モード宣言（構造化専用ディレクティブ。MSX出力なし）
   // 語演算子（docs/01 §1.11.2）

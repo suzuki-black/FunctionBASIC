@@ -197,6 +197,29 @@ END SELECT
 - CASE 本体内の `BREAK`/`CONTINUE` は **外側のループ**に係る（SELECT はループではない）。
 - 文字列セレクタも可（`CASE "A" TO "M"` は文字列比較へ）。変換方式は [05 §5.15](05-transformer.md) を参照（一時Let＋ネスト IF へ desugar）。
 
+### 1.4.2 DATASET（名前付きデータブロック）
+
+`READ`/`DATA` を名前付きにして「どのデータを読んでいるか」を明示する。`DATASET name … END DATASET` で定義し、`READ name INTO 変数` で順に読む。
+
+```basic
+DATASET ALIEN_A
+    DATA "..####..", ".######."
+END DATASET
+
+FOR I% = 0 TO 15
+    READ ALIEN_A INTO ROW$    ' ALIEN_A から順に読む
+NEXT I%
+RESTORE ALIEN_A               ' そのブロックを先頭へ巻き戻す
+```
+
+- **本体は `DATA` 行のみ**（＋注釈）。値は数値・文字列を混在可（MSX の DATA と同じ）。本体に他の文があれば `E_DATASET_BODY`、名前重複は `E_DATASET_DUP`。
+- **`READ name INTO t1, t2, …`**：そのブロックから次の値を読む（複数ターゲット可）。未定義名は `E_DATASET_UNKNOWN`。
+- **`RESTORE name`**：そのブロックの読み取り位置を先頭へ戻す（引数なし RESTORE と違い、**ブロック指定で巻き戻せる**＝現状に無い能力）。
+- **方式A（v1）の制限**：MSX のデータポインタは1本なので、実装は「**別ブロックへ切り替わる時だけ自動 `RESTORE`**」。したがって——
+  - **各ブロックは“読み切ってから”次へ**が前提。**一度離れたブロックに戻ると先頭から読み直し**（途中位置は保存されない）。交互アクセスは非対応（必要なら明示 `RESTORE name`）。
+  - 追加RAMゼロ・O(1)。ゲームの起動時ロード（敵/マップ/パターンをブロック単位で読む）にそのまま合う。将来ランダムアクセス用に配列バッキング方式(B)を opt-in で足す余地あり。
+- 素の `READ`/`DATA` とも併存可（ポインタは共有なので、どちらかに統一推奨）。変換方式は [05 §5.16](05-transformer.md)。
+
 ---
 
 ## 1.5 BREAK / CONTINUE（仕様1-5）
@@ -289,7 +312,13 @@ simple_stmt    = let_stmt | dim_stmt | global_stmt | print_stmt | call_stmt
 
 global_stmt    = "GLOBAL" ident { "," ident } ;   (* 関数内でグローバルを使う宣言。§1.10 *)
 
-block_stmt     = if_block | select_block | for_block | while_block ;   (* 内部に statement を任意ネスト可 *)
+block_stmt     = if_block | select_block | for_block | while_block | dataset_block ;   (* 内部に statement を任意ネスト可 *)
+
+dataset_block  = "DATASET" ident newline
+                 { data_stmt | comment }        (* 本体は DATA 行のみ *)
+                 "END" "DATASET" newline ;
+read_into      = "READ" ident "INTO" lvalue { "," lvalue } ;   (* 名前付きブロックから読む *)
+restore_ds     = "RESTORE" ident ;              (* 名前付きブロックを先頭へ巻き戻す *)
 
 (* ブロック本体は statement を再帰的に含む = 自由なネストを許可 *)
 if_block       = "IF" expr "THEN" newline

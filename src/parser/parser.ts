@@ -22,6 +22,9 @@ import type {
   CaseClause,
   CaseTest,
   RelOp,
+  DatasetBlock,
+  ReadIntoStmt,
+  RestoreDatasetStmt,
   ForBlock,
   WhileBlock,
   OnTarget,
@@ -393,7 +396,7 @@ export function parse(tokens: Token[]): ParseResult {
   // 裸の END（プログラム終了文）はブロック内の文として扱う（終端にしない）。
   const atTerminator = (t: string): boolean => {
     if (!checkKw(t)) return false;
-    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT");
+    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT" || peek().value === "DATASET");
     return true;
   };
   const parseBlockBody = (terminators: string[]): Stmt[] => {
@@ -497,6 +500,46 @@ export function parse(tokens: Token[]): ParseResult {
       tests.push(parseCaseTest());
     } while (checkOp(",") && (advance(), true));
     return tests;
+  };
+
+  // DATASET name … END DATASET。本体は DATA 行（と注釈）のみ許可。
+  const parseDataset = (pos: Position): DatasetBlock => {
+    advance(); // DATASET
+    const name = expectIdent("DATASET");
+    if (checkKind("NEWLINE")) advance();
+    skipNewlines();
+    const data: Stmt[] = [];
+    while (!atEof() && !atTerminator("END")) {
+      const before = p;
+      const s = parseStatement();
+      if (s) {
+        if ((s.type === "Builtin" && s.name === "DATA") || s.type === "Comment") data.push(s);
+        else report("E_DATASET_BODY", s.pos);
+      } else if (p === before) advance();
+      skipNewlines();
+    }
+    expectKw("END", "DATASET");
+    expectKw("DATASET", "DATASET");
+    return { type: "Dataset", name, data, pos };
+  };
+
+  // READ <dataset> INTO <lvalue> { , <lvalue> }
+  const parseReadInto = (pos: Position): ReadIntoStmt => {
+    advance(); // READ
+    const dataset = expectIdent("READ INTO");
+    expectKw("INTO", "READ");
+    const targets: LValue[] = [];
+    do {
+      targets.push(parseLValue());
+    } while (checkOp(",") && (advance(), true));
+    return { type: "ReadInto", dataset, targets, pos };
+  };
+
+  // RESTORE <dataset>（ブロックの読み取り位置を先頭へ）
+  const parseRestoreDataset = (pos: Position): RestoreDatasetStmt => {
+    advance(); // RESTORE
+    const dataset = expectIdent("RESTORE");
+    return { type: "RestoreDataset", dataset, pos };
   };
 
   const parseFor = (pos: Position): ForBlock => {
@@ -603,6 +646,8 @@ export function parse(tokens: Token[]): ParseResult {
           return parseIf(pos);
         case "SELECT":
           return parseSelect(pos);
+        case "DATASET":
+          return parseDataset(pos);
         case "FOR":
           return parseFor(pos);
         case "WHILE":
@@ -674,6 +719,17 @@ export function parse(tokens: Token[]): ParseResult {
       }
     }
     if (t.kind === "IDENT") {
+      // DATASET 連携: READ <名> INTO … / RESTORE <名>（組み込み READ/RESTORE より先に判定）。
+      if (t.value === "READ" && peek(1).kind === "IDENT" && peek(2).kind === "KEYWORD" && peek(2).value === "INTO") {
+        const s = parseReadInto(pos);
+        endOfStmt("READ INTO");
+        return s;
+      }
+      if (t.value === "RESTORE" && peek(1).kind === "IDENT") {
+        const s = parseRestoreDataset(pos);
+        endOfStmt("RESTORE");
+        return s;
+      }
       // 組み込み文、または '_' 始まりの拡張ステートメント短縮形（_MUSIC = CALL MUSIC）。
       if (isBuiltinStatement(t.value) || t.value.startsWith("_")) {
         const s = parseBuiltinStmt(pos);

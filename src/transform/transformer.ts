@@ -331,6 +331,7 @@ function collectVarNames(program: Program): Set<string> {
         case "Return": we(s.expr); break;
         case "Builtin": for (const p of s.parts) if (p.kind === "expr") we(p.expr); break;
         case "On": we(s.arg); break;
+        case "ReadInto": for (const t of s.targets) { names.add(t.name); if (t.type === "ArrayRef") t.indices.forEach(we); } break;
       }
     }
   };
@@ -950,6 +951,33 @@ function finishTransform(ctx: any): TransformResult {
   const labelLine = new Map<number, number>(); // labelId → MSX行番号
   const entryLineOf = new Map<string, number>(); // variant key → 先頭行番号
 
+  // --- DATASET レジストリ（変換方式A・docs/05 §5.16）---
+  // 名前 → { labelId(RESTORE先＝先頭DATA行), id(切替検出用の番号≥1), data(DATA文) }。
+  // DATA は末尾にまとめて出力。READ name INTO は「別ブロックなら先頭へ RESTORE、そして READ」。
+  const datasets = new Map<string, { labelId: number; id: number; data: Stmt[] }>();
+  let dsIdSeq = 0;
+  let hasDsRead = false;
+  const scanDatasets = (ss: Stmt[]): void => {
+    for (const s of ss) {
+      switch (s.type) {
+        case "Dataset":
+          if (datasets.has(s.name)) fail("E_DATASET_DUP", { name: s.name }, s.pos);
+          else datasets.set(s.name, { labelId: newLabel(), id: ++dsIdSeq, data: s.data });
+          break;
+        case "ReadInto":
+        case "RestoreDataset":
+          hasDsRead = true;
+          break;
+        case "If": scanDatasets(s.then); if (s.else) scanDatasets(s.else); break;
+        case "For": case "While": scanDatasets(s.body); break;
+      }
+    }
+  };
+  scanDatasets(program.toplevel);
+  for (const f of program.functions) scanDatasets(f.body);
+  // 現在ブロック番号（0=未設定）。MSX出力は全変数がグローバル2文字名なので1個で足りる。
+  const dsCur = hasDsRead ? ctx.pool.next("%") : null;
+
   const emitLValueText = (lv: LValue, sc: any): string =>
     lv.type === "Var"
       ? resolveVar(lv.name, sc)
@@ -1254,6 +1282,23 @@ function finishTransform(ctx: any): TransformResult {
         case "Asm":
           emitAsm(s, sc, items);
           break;
+        case "Dataset":
+          break; // DATA 行は末尾にまとめて出力（ここでは何も出さない）
+        case "ReadInto": {
+          const d = datasets.get(s.dataset);
+          if (!d) { fail("E_DATASET_UNKNOWN", { name: s.dataset }, s.pos); break; }
+          const tgts = s.targets.map((t) => emitLValueText(t, sc)).join(",");
+          // 別ブロックなら先頭へ RESTORE（切替検出。同ブロック連続読みは RESTORE を出さずO(1)）→ READ
+          items.push({ kind: "line", text: `IF ${dsCur}<>${d.id} THEN RESTORE @@L:${d.labelId}@@:${dsCur}=${d.id}` });
+          items.push({ kind: "line", text: `READ ${tgts}` });
+          break;
+        }
+        case "RestoreDataset": {
+          const d = datasets.get(s.dataset);
+          if (!d) { fail("E_DATASET_UNKNOWN", { name: s.dataset }, s.pos); break; }
+          items.push({ kind: "line", text: `RESTORE @@L:${d.labelId}@@:${dsCur}=${d.id}` });
+          break;
+        }
         case "Break": {
           const top = loopStack[loopStack.length - 1];
           if (top) items.push({ kind: "line", text: `GOTO @@L:${top.b}@@` });
@@ -1462,6 +1507,8 @@ function finishTransform(ctx: any): TransformResult {
       kind: "line",
       text: `DIM ${recStack.numArr}(${recStack.depth}), ${recStack.strArr}(${recStack.depth})`,
     });
+  // DATASET の現在ブロック番号を 0 に初期化（最初の READ name INTO より前に）。
+  if (dsCur) mainItems.splice(1, 0, { kind: "line", text: `${dsCur}=0` });
   const out: MsxLine[] = [...numberBlock(mainItems, 100)];
 
   // 関数 variant ブロック。最初の関数の開始セグメントは MAIN の実末尾の先（切りの良い千番台）
@@ -1506,6 +1553,21 @@ function finishTransform(ctx: any): TransformResult {
       const lastNo = lines.length ? lines[lines.length - 1].lineNo : seg;
       seg = Math.max(seg + 1000, (Math.floor(lastNo / 1000) + 1) * 1000);
     }
+  }
+
+  // DATASET の DATA 行を末尾にまとめて出力。各ブロック先頭にラベルを置き、READ/RESTORE の
+  // @@L がその先頭 DATA 行へ解決される（RESTORE はリテラル行のみ可という MSX 制約に適合）。
+  if (datasets.size) {
+    const dsItems: Item[] = [];
+    for (const [, d] of datasets) {
+      dsItems.push({ kind: "label", id: d.labelId });
+      for (const st of d.data) {
+        if (st.type === "Comment" && /^\s*'@/.test(st.text)) continue; // ニーモニック注釈は除去
+        const text = simpleStmtText(st, { func: undefined });
+        if (text != null) dsItems.push({ kind: "line", text, src: st.pos?.line != null ? [st.pos.line] : undefined });
+      }
+    }
+    out.push(...numberBlock(dsItems, seg));
   }
 
   // プレースホルダ解決（GOSUB entry / ラベル）

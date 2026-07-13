@@ -691,3 +691,18 @@ DATA 1,2,3,4
 - `RESTORE name` → `RESTORE <先頭行>:<cur>=id`（巻き戻し＋現在ブロック更新）。直後の `READ name INTO` はガードが一致して二重 RESTORE しない。
 - RESTORE 先は**リテラル行番号**（MSX は `RESTORE` に変数不可）。先頭 DATA 行のラベルを既存の `@@L:` 機構で解決する。
 - **制限**：一度離れたブロックに戻ると先頭から（途中位置は保存不可＝MSX の単一データポインタ由来）。逐次前提。将来、ランダムアクセス用途に配列バッキング方式(B)を opt-in で足す余地を残す。
+
+---
+
+## 5.17 STRUCT → struct-of-arrays（desugar）
+
+`STRUCT`（[01 §1.4.3](01-language-spec.md#143-struct構造体)）は変換の前処理パス `lower-struct.ts`（`lowerSelect` の後）で **AST→AST の desugar**。以降のパスは `Struct`/`Field` を見ない＝**フィールド＝ただの合成配列/変数**なので、実行時コストは手書き並行配列と同一（追加RAM・速度ゼロ）。
+
+- STRUCT 型（`name → フィールド基底名→型付き完全名`）とインスタンス（`DIM … AS 型` から `name → {fields, isArray}`）を収集。
+- **合成名 `インスタンス@完全フィールド名`**（例 `FOE@HP%`）へ機械展開。`@` はユーザ名に出ないので衝突しない（emit で 2文字名へ解決）。
+  - `foe(i).HP` → `ArrayRef FOE@HP%(i)`／`p.X` → `VarRef P@X%`
+  - `DIM foe(20) AS Enemy` → `DIM FOE@X%(20), FOE@Y%(20), …`（**配列インスタンスのみ**。スカラは DIM 不要）
+  - `GLOBAL foe` → `GLOBAL FOE@X%, FOE@Y%, …`（**インスタンスを全フィールドへ展開**＝関数跨ぎで同じ配列を共有）
+  - `STRUCT` 宣言は除去。
+- 式・lvalue・`READ name INTO` ターゲットも含め全 `Field` を再帰的に書き換える。
+- **制限**：平坦な基本型フィールドのみ（ネスト非対応）。1レコード丸ごとの受け渡しは不可（MSX にレコード型なし）。エラーは `E_STRUCT_UNKNOWN`/`_FIELD`/`_NOT_INSTANCE`/`_FIELD_TYPE`。

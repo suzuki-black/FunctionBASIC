@@ -217,7 +217,9 @@ export function tokenize(source: string): LexResult {
     }
     // '#' はファイル番号(PRINT #1 等)の記号。型サフィックス(A#)は識別子側で
     // 先に消費されるため、ここに来る '#' は単独記号＝OP として扱う。
-    if ("+-*/\\^=<>(),:;#".includes(c)) {
+    // '.' は STRUCT のフィールドアクセス(foo.bar)。数値の小数点は上の数値字句で
+    // 先に消費されるため、ここに来る '.' は単独記号＝OP。
+    if ("+-*/\\^=<>(),:;#.".includes(c)) {
       advance();
       push("OP", c, c, start);
       continue;

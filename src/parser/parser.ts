@@ -25,6 +25,8 @@ import type {
   DatasetBlock,
   ReadIntoStmt,
   RestoreDatasetStmt,
+  StructDecl,
+  FieldAccess,
   ForBlock,
   WhileBlock,
   OnTarget,
@@ -181,11 +183,16 @@ export function parse(tokens: Token[]): ParseResult {
     // 座標）では組込関数 STEP として素通しする（BUILTIN_FUNCTIONS に登録済み＝改名されない）。
     if (t.kind === "IDENT" || (t.kind === "KEYWORD" && t.value === "STEP")) {
       const name = advance().value;
-      if (checkOp("(")) {
-        const args = parseArgList();
-        // 式中の name(args) は CallExpr（配列なら解決時に ArrayRef へ）
-        return { type: "CallExpr", name, args };
+      let args: Arg[] | null = null;
+      if (checkOp("(")) args = parseArgList();
+      if (checkOp(".")) {
+        // STRUCT フィールドアクセス: name.field / name(indices).field
+        advance();
+        const field = expectIdent("フィールド");
+        return { type: "Field", base: name, indices: (args ?? []).map((a) => a.expr), field, pos: t.pos };
       }
+      // 式中の name(args) は CallExpr（配列なら解決時に ArrayRef へ）
+      if (args) return { type: "CallExpr", name, args };
       return { type: "Var", name };
     }
     report("E_SYNTAX_EXPR", t.pos, { kind: t.kind, v: t.value });
@@ -225,11 +232,20 @@ export function parse(tokens: Token[]): ParseResult {
   };
 
   const parseLValue = (): LValue => {
+    const startPos = cur().pos;
     const name = expectIdent("代入先");
+    let indices: Expr[] | null = null;
     if (checkOp("(")) {
       const args = parseArgList();
-      return { type: "ArrayRef", name, indices: args.map((a) => a.expr) };
+      indices = args.map((a) => a.expr);
     }
+    if (checkOp(".")) {
+      // STRUCT フィールドへの代入先: name.field / name(indices).field
+      advance();
+      const field = expectIdent("フィールド");
+      return { type: "Field", base: name, indices: indices ?? [], field, pos: startPos };
+    }
+    if (indices) return { type: "ArrayRef", name, indices };
     return { type: "Var", name };
   };
 
@@ -245,8 +261,14 @@ export function parse(tokens: Token[]): ParseResult {
     const decls: ArrayDecl[] = [];
     const one = (): ArrayDecl => {
       const name = expectIdent("DIM");
-      const args = parseArgList();
-      return { name, dims: args.map((a) => a.expr) };
+      // STRUCT インスタンスはスカラ（括弧なし）も可: DIM p AS Point / DIM foe(20) AS Enemy
+      const args = checkOp("(") ? parseArgList() : [];
+      const decl: ArrayDecl = { name, dims: args.map((a) => a.expr) };
+      if (cur().kind === "IDENT" && cur().value === "AS") {
+        advance(); // AS
+        decl.asType = expectIdent("AS");
+      }
+      return decl;
     };
     decls.push(one());
     while (checkOp(",")) {
@@ -396,7 +418,7 @@ export function parse(tokens: Token[]): ParseResult {
   // 裸の END（プログラム終了文）はブロック内の文として扱う（終端にしない）。
   const atTerminator = (t: string): boolean => {
     if (!checkKw(t)) return false;
-    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT" || peek().value === "DATASET");
+    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT" || peek().value === "DATASET" || peek().value === "STRUCT");
     return true;
   };
   const parseBlockBody = (terminators: string[]): Stmt[] => {
@@ -542,6 +564,31 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "RestoreDataset", dataset, pos };
   };
 
+  // STRUCT name … END STRUCT。本体は型付きフィールド名（X%, MSG$）のカンマ/改行区切り。
+  const parseStruct = (pos: Position): StructDecl => {
+    advance(); // STRUCT
+    const name = expectIdent("STRUCT");
+    if (checkKind("NEWLINE")) advance();
+    skipNewlines();
+    const fields: string[] = [];
+    while (!atEof() && !atTerminator("END")) {
+      if (checkKind("IDENT")) {
+        fields.push(advance().value);
+        while (checkOp(",")) { advance(); if (checkKind("IDENT")) fields.push(advance().value); }
+      } else if (checkKind("COMMENT")) {
+        advance(); // 本体内コメントは無視
+      } else {
+        report("E_STRUCT_FIELD", cur().pos, {});
+        advance();
+      }
+      if (checkKind("NEWLINE")) advance();
+      skipNewlines();
+    }
+    expectKw("END", "STRUCT");
+    expectKw("STRUCT", "STRUCT");
+    return { type: "Struct", name, fields, pos };
+  };
+
   const parseFor = (pos: Position): ForBlock => {
     advance(); // FOR
     const varName = expectIdent("FOR");
@@ -648,6 +695,8 @@ export function parse(tokens: Token[]): ParseResult {
           return parseSelect(pos);
         case "DATASET":
           return parseDataset(pos);
+        case "STRUCT":
+          return parseStruct(pos);
         case "FOR":
           return parseFor(pos);
         case "WHILE":
@@ -736,16 +785,32 @@ export function parse(tokens: Token[]): ParseResult {
         endOfStmt(t.value);
         return s;
       }
-      // 代入 or 呼び出し
+      // 代入 or 呼び出し（STRUCT フィールド代入 name.field= / name(i).field= も）
       const name = advance().value;
-      if (checkOp("(")) {
-        const args = parseArgList();
+      let callArgs: Arg[] | null = null;
+      if (checkOp("(")) callArgs = parseArgList();
+      if (checkOp(".")) {
+        advance();
+        const field = expectIdent("フィールド");
+        expectOp("=", "代入");
+        const expr = parseExpr();
+        const s: Stmt = {
+          type: "Let",
+          target: { type: "Field", base: name, indices: (callArgs ?? []).map((a) => a.expr), field, pos },
+          expr,
+          hadLet: false,
+          pos,
+        };
+        endOfStmt("代入");
+        return s;
+      }
+      if (callArgs) {
         if (checkOp("=")) {
           advance();
           const expr = parseExpr();
           const s: Stmt = {
             type: "Let",
-            target: { type: "ArrayRef", name, indices: args.map((a) => a.expr) },
+            target: { type: "ArrayRef", name, indices: callArgs.map((a) => a.expr) },
             expr,
             hadLet: false,
             pos,
@@ -753,7 +818,7 @@ export function parse(tokens: Token[]): ParseResult {
           endOfStmt("代入");
           return s;
         }
-        const s: Stmt = { type: "Call", call: { type: "CallExpr", name, args }, pos };
+        const s: Stmt = { type: "Call", call: { type: "CallExpr", name, args: callArgs }, pos };
         endOfStmt("呼び出し");
         return s;
       }

@@ -27,6 +27,7 @@ import { inlineConsts } from "./const-inline.ts";
 import { checkNameCollisions } from "./check-names.ts";
 import { foldProgram } from "./fold-expr.ts";
 import { lowerSelect } from "./lower-select.ts";
+import { lowerStruct } from "./lower-struct.ts";
 import { reduceStrengthProgram } from "./strength-reduce.ts";
 import { stripComments } from "./strip-comments.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
@@ -348,6 +349,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   // SELECT CASE を「一時Let + ネストIfBlock連鎖」へ desugar（最初に実行。以降のパスは
   // SelectBlock を見ない＝既存の IF lowering・provenance・最適化・型検査を丸ごと再利用）。
   lowerSelect(program);
+  // STRUCT を struct-of-arrays へ desugar（フィールド→合成配列/変数。以降は通常の変数のみ）。
+  diagnostics.push(...lowerStruct(program));
 
   // 変数名と組み込み（命令/関数）名の衝突検出（黙って誤変換しない）。
   diagnostics.push(...checkNameCollisions(program));

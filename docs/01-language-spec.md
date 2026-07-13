@@ -220,6 +220,29 @@ RESTORE ALIEN_A               ' そのブロックを先頭へ巻き戻す
   - 追加RAMゼロ・O(1)。ゲームの起動時ロード（敵/マップ/パターンをブロック単位で読む）にそのまま合う。将来ランダムアクセス用に配列バッキング方式(B)を opt-in で足す余地あり。
 - 素の `READ`/`DATA` とも併存可（ポインタは共有なので、どちらかに統一推奨）。変換方式は [05 §5.16](05-transformer.md)。
 
+### 1.4.3 STRUCT（構造体）
+
+敵・弾・アイテム等の「まとまったデータ」を構造体で書き、MSX の配列文化を内部で吸収する。
+
+```basic
+STRUCT Enemy
+    X%, Y%, HP%, Pattern$      ' 平坦な型付きフィールド（% ! # $）
+END STRUCT
+
+DIM foe(20) AS Enemy           ' 配列インスタンス
+DIM p AS Point                 ' スカラインスタンス
+GLOBAL foe                     ' 関数から使うなら宣言（全フィールドへ展開される）
+
+foe(i).HP = foe(i).HP - 1      ' 配列は () 添字＋ . フィールド
+p.X = 10
+```
+
+- **struct-of-arrays へ desugar**：フィールドごとに配列（または変数）へ機械展開するだけ。**実行時のRAM・速度は手書き並行配列と完全に同一**（追加ゼロ）。`foe(i).HP` は配列アクセス1回で、間接参照・オフセット計算は無い。
+- **配列は `()`／フィールドは `.`**。宣言は `DIM 名 [(N)] AS 型`。
+- **`GLOBAL 名`** はインスタンス名で書けば**全フィールドへ展開**され、関数を跨いで同じ配列を共有する。
+- **v1 の制限**（正直に）：フィールドは**平坦な基本型のみ**（ネスト構造体は非対応）。**1レコード丸ごとの関数受け渡し／戻り値は不可**（MSX にレコード型が無いため。添字＋`GLOBAL 名`で扱う）。2文字名予算はフィールド数ぶん消費（手書きと同じ）。
+- エラー：未定義型で `DIM` → `E_STRUCT_UNKNOWN`／未知フィールド → `E_STRUCT_FIELD`／`.` を非インスタンスに → `E_STRUCT_NOT_INSTANCE`／型サフィックス無しフィールド → `E_STRUCT_FIELD_TYPE`。変換方式は [05 §5.17](05-transformer.md)。
+
 ---
 
 ## 1.5 BREAK / CONTINUE（仕様1-5）
@@ -319,6 +342,12 @@ dataset_block  = "DATASET" ident newline
                  "END" "DATASET" newline ;
 read_into      = "READ" ident "INTO" lvalue { "," lvalue } ;   (* 名前付きブロックから読む *)
 restore_ds     = "RESTORE" ident ;              (* 名前付きブロックを先頭へ巻き戻す *)
+
+struct_decl    = "STRUCT" ident newline
+                 { typed_ident { "," typed_ident } newline }    (* 平坦フィールド *)
+                 "END" "STRUCT" newline ;
+struct_dim     = "DIM" ident [ "(" expr { "," expr } ")" ] "AS" ident ;   (* インスタンス宣言 *)
+field_access   = ident [ "(" expr { "," expr } ")" ] "." ident ;   (* lvalue/式の両方 *)
 
 (* ブロック本体は statement を再帰的に含む = 自由なネストを許可 *)
 if_block       = "IF" expr "THEN" newline

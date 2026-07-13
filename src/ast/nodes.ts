@@ -45,7 +45,8 @@ export type Stmt =
   | AsmStmt
   | DatasetBlock
   | ReadIntoStmt
-  | RestoreDatasetStmt;
+  | RestoreDatasetStmt
+  | StructDecl;
 
 // インライン Z80 アセンブリ（ASM…END ASM）。lines=生ニーモニック行。
 export interface AsmStmt {
@@ -71,6 +72,7 @@ export interface ConstStmt {
 export interface ArrayDecl {
   name: string;
   dims: Expr[];
+  asType?: string; // STRUCT インスタンス（DIM foo(N) AS Enemy）の型名。lower-struct が展開
 }
 export interface DimStmt {
   type: "Dim";
@@ -189,6 +191,14 @@ export interface RestoreDatasetStmt {
   dataset: string;
   pos: Position;
 }
+// STRUCT 型宣言（コンパイル時のみ・MSX出力なし）。フィールドは平坦な型付き名（X%, MSG$）。
+// lower-struct パスで、インスタンスのフィールドを合成配列/変数（instance@field）へ desugar。
+export interface StructDecl {
+  type: "Struct";
+  name: string;
+  fields: string[]; // 型サフィックス込み（"X%", "PATTERN$"）
+  pos: Position;
+}
 export interface ForBlock {
   type: "For";
   varName: string;
@@ -207,7 +217,7 @@ export interface WhileBlock {
   pos: Position;
 }
 
-export type LValue = VarRef | ArrayRef;
+export type LValue = VarRef | ArrayRef | FieldAccess;
 
 export type Expr =
   | NumLit
@@ -217,7 +227,18 @@ export type Expr =
   | Unary
   | Binary
   | Group
-  | CallExpr;
+  | CallExpr
+  | FieldAccess;
+
+// STRUCT フィールドアクセス: base.field / base(indices).field。
+// lower-struct パスで VarRef / ArrayRef（合成名 base@field）へ書き換えられ、下流は見ない。
+export interface FieldAccess {
+  type: "Field";
+  base: string; // インスタンス名
+  indices: Expr[]; // 配列インスタンス foo(i) は [i]、スカラは []
+  field: string; // フィールド名（型サフィックス無しの見た目。実型は STRUCT 定義から）
+  pos: Position;
+}
 
 export interface NumLit {
   type: "Num";

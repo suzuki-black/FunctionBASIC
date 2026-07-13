@@ -137,6 +137,26 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `DATASET 名が重複しています: ${p.name}`,
     en: (p) => `Duplicate DATASET name: ${p.name}`,
   },
+  E_STRUCT_FIELD: {
+    code: "E_STRUCT_FIELD",
+    ja: (p) => (p.field ? `STRUCT ${p.struct} にフィールド ${p.field} はありません` : "STRUCT の本体には型付きフィールド名のみ置けます"),
+    en: (p) => (p.field ? `STRUCT ${p.struct} has no field ${p.field}` : "A STRUCT body may only contain typed field names"),
+  },
+  E_STRUCT_UNKNOWN: {
+    code: "E_STRUCT_UNKNOWN",
+    ja: (p) => `未定義の STRUCT 型です: ${p.name}`,
+    en: (p) => `Unknown STRUCT type: ${p.name}`,
+  },
+  E_STRUCT_NOT_INSTANCE: {
+    code: "E_STRUCT_NOT_INSTANCE",
+    ja: (p) => `${p.name} は STRUCT インスタンスではありません（.${p.field} は使えません）`,
+    en: (p) => `${p.name} is not a STRUCT instance (cannot use .${p.field})`,
+  },
+  E_STRUCT_FIELD_TYPE: {
+    code: "E_STRUCT_FIELD_TYPE",
+    ja: (p) => `STRUCT のフィールドには型サフィックス(% ! # $)が必要です: ${p.field}`,
+    en: (p) => `STRUCT fields need a type suffix (% ! # $): ${p.field}`,
+  },
   E_DUP_FUNCTION: {
     code: "E_DUP_FUNCTION",
     ja: (p) => `関数 ${p.name} が重複しています`,

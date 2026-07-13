@@ -31,6 +31,7 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "REF",
   "GLOBAL",
   "DIM",
+  "STRUCT", // 構造体型宣言（STRUCT name … END STRUCT）。struct-of-arrays へ desugar
   "DATASET", // 名前付きデータブロック（DATASET name … END DATASET）
   "INTO", // READ <dataset> INTO <変数>
   "INCLUDE",

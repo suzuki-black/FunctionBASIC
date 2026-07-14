@@ -39,6 +39,11 @@
 '     (lowers to plain per-field variables = zero runtime cost).
 '   - SELECT CASE for the joystick direction (CASE 6,7,8 / 2,3,4) and the
 '     win/lose end screen.
+'   - DATASET blocks name each sprite's artwork (ALIEN_A, PLAYER_BODY, ...);
+'     the loader RESTOREs the first block and reads the rest in order.
+'  (Frame timing stays on HALT/WAIT_FRAME, not EVENT TIMER: the game wants a
+'   deterministic per-frame loop, which is exactly the EVENT VBLANK use-case
+'   that BASIC can't do safely — see the EVENT notes in the language spec.)
 '
 '  Controls:  LEFT / RIGHT = move,   SPACE = fire.
 ' ============================================================
@@ -835,7 +840,7 @@ ROW_COLOR%(1) = 11
 ROW_COLOR%(2) = 7
 ROW_COLOR%(3) = 3
 
-RESTORE
+RESTORE ALIEN_A
 LOAD_ALIENS()            ' reads the 2 alien frames (first in DATA)
 MAKE_SPRITE(0)           ' player body
 MAKE_SPRITE(1)           ' player cockpit
@@ -907,11 +912,13 @@ END
 '  Artwork as ASCII pictures - each shape is 16 rows x 16 columns.
 '  "#" = pixel on, "." = pixel off. READ16/PIX8 turn these strings into
 '  bytes at startup, so you EDIT THE PICTURE, not hex. Just keep every
-'  row exactly 16 characters. READ order: alien frame A, alien frame B,
-'  then player body, cockpit, bullet, bomb, explosion.
+'  row exactly 16 characters. Each sprite is a named DATASET below; the loader
+'  RESTOREs the first (ALIEN_A) and READs them in declaration order: alien
+'  frame A, frame B, then player body, cockpit, bullet, bomb, explosion.
 ' ============================================================
 
 ' --- alien, frame A (arms up, legs out) ---
+DATASET ALIEN_A
 DATA "......####......"
 DATA ".....######....."
 DATA "....########...."
@@ -928,8 +935,10 @@ DATA "....#......#...."
 DATA "...#........#..."
 DATA "................"
 DATA "................"
+END DATASET
 
 ' --- alien, frame B (arms down, legs in) ---
+DATASET ALIEN_B
 DATA "......####......"
 DATA ".....######....."
 DATA "....########...."
@@ -946,8 +955,10 @@ DATA ".....#....#....."
 DATA "....#......#...."
 DATA "................"
 DATA "................"
+END DATASET
 
 ' --- player body (cannon) ---
+DATASET PLAYER_BODY
 DATA ".......##......."
 DATA ".......##......."
 DATA "......####......"
@@ -964,8 +975,10 @@ DATA "################"
 DATA "##.##########.##"
 DATA "##.##########.##"
 DATA "#...########...#"
+END DATASET
 
 ' --- player cockpit overlay (white) ---
+DATASET COCKPIT
 DATA "................"
 DATA "................"
 DATA "................"
@@ -982,8 +995,10 @@ DATA "................"
 DATA "................"
 DATA "................"
 DATA "................"
+END DATASET
 
 ' --- bullet (thin bolt) ---
+DATASET BULLET_ART
 DATA ".......##......."
 DATA ".......##......."
 DATA ".......##......."
@@ -1000,8 +1015,10 @@ DATA "................"
 DATA "................"
 DATA "................"
 DATA "................"
+END DATASET
 
 ' --- bomb (zig-zag) ---
+DATASET BOMB_ART
 DATA ".......##......."
 DATA "........##......"
 DATA ".......##......."
@@ -1018,8 +1035,10 @@ DATA "................"
 DATA "................"
 DATA "................"
 DATA "................"
+END DATASET
 
 ' --- explosion (starburst) ---
+DATASET EXPLOSION
 DATA "..#..........#.."
 DATA "...#........#..."
 DATA ".#..#..##..#..#."
@@ -1036,3 +1055,4 @@ DATA "..#..#....#..#.."
 DATA ".#..#..##..#..#."
 DATA "...#........#..."
 DATA "..#..........#.."
+END DATASET

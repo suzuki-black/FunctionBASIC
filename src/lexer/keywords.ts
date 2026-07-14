@@ -32,6 +32,7 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "GLOBAL",
   "DIM",
   "STRUCT", // 構造体型宣言（STRUCT name … END STRUCT）。struct-of-arrays へ desugar
+  "EVENT", // 周期イベント（EVENT TIMER n … END EVENT）→ ON INTERVAL GOSUB
   "DATASET", // 名前付きデータブロック（DATASET name … END DATASET）
   "INTO", // READ <dataset> INTO <変数>
   "INCLUDE",

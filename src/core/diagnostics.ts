@@ -157,6 +157,26 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `STRUCT のフィールドには型サフィックス(% ! # $)が必要です: ${p.field}`,
     en: (p) => `STRUCT fields need a type suffix (% ! # $): ${p.field}`,
   },
+  E_EVENT_KIND: {
+    code: "E_EVENT_KIND",
+    ja: (p) => `EVENT の種別が不明です: ${p.v}（EVENT TIMER n … END EVENT）`,
+    en: (p) => `Unknown EVENT kind: ${p.v} (use EVENT TIMER n … END EVENT)`,
+  },
+  E_EVENT_VBLANK: {
+    code: "E_EVENT_VBLANK",
+    ja: () => "EVENT VBLANK は未対応です（BASIC は割り込みから安全に再入できないため）。HALT でのフレーム同期を使ってください",
+    en: () => "EVENT VBLANK is not supported (BASIC cannot be safely re-entered from an interrupt). Use HALT-based frame sync",
+  },
+  E_EVENT_TIMER_DUP: {
+    code: "E_EVENT_TIMER_DUP",
+    ja: () => "EVENT TIMER は1つだけです（MSX の INTERVAL タイマーは1系統）",
+    en: () => "Only one EVENT TIMER is allowed (MSX has a single INTERVAL timer)",
+  },
+  E_EVENT_NOT_TOPLEVEL: {
+    code: "E_EVENT_NOT_TOPLEVEL",
+    ja: () => "EVENT TIMER はトップレベル（MAIN）にのみ置けます",
+    en: () => "EVENT TIMER may only appear at top level (MAIN)",
+  },
   E_DUP_FUNCTION: {
     code: "E_DUP_FUNCTION",
     ja: (p) => `関数 ${p.name} が重複しています`,

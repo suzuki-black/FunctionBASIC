@@ -27,6 +27,7 @@ import type {
   RestoreDatasetStmt,
   StructDecl,
   FieldAccess,
+  EventBlock,
   ForBlock,
   WhileBlock,
   OnTarget,
@@ -418,7 +419,7 @@ export function parse(tokens: Token[]): ParseResult {
   // 裸の END（プログラム終了文）はブロック内の文として扱う（終端にしない）。
   const atTerminator = (t: string): boolean => {
     if (!checkKw(t)) return false;
-    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT" || peek().value === "DATASET" || peek().value === "STRUCT");
+    if (t === "END") return peek().kind === "KEYWORD" && (peek().value === "IF" || peek().value === "FUNCTION" || peek().value === "SELECT" || peek().value === "DATASET" || peek().value === "STRUCT" || peek().value === "EVENT");
     return true;
   };
   const parseBlockBody = (terminators: string[]): Stmt[] => {
@@ -571,6 +572,23 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "RestoreDataset", dataset, pos };
   };
 
+  // EVENT TIMER n … END EVENT（v1 は TIMER のみ）。
+  const parseEvent = (pos: Position): EventBlock => {
+    advance(); // EVENT
+    // 種別（TIMER）は文脈依存の非予約語。VBLANK は将来対応。
+    let isTimer = false;
+    if (cur().kind === "IDENT" && cur().value === "TIMER") { advance(); isTimer = true; }
+    else if (cur().kind === "IDENT" && cur().value === "VBLANK") { report("E_EVENT_VBLANK", cur().pos, {}); advance(); }
+    else { report("E_EVENT_KIND", cur().pos, { v: cur().value }); if (cur().kind === "IDENT") advance(); }
+    // TIMER のみ INTERVAL 値を読む（VBLANK 等は引数なし）
+    const arg: Expr = isTimer ? parseExpr() : { type: "Num", value: 0, raw: "0" };
+    if (checkKind("NEWLINE")) advance();
+    const body = parseBlockBody(["END"]);
+    expectKw("END", "EVENT");
+    expectKw("EVENT", "EVENT");
+    return { type: "Event", kind: "TIMER", arg, body, pos };
+  };
+
   // STRUCT name … END STRUCT。本体は型付きフィールド名（X%, MSG$）のカンマ/改行区切り。
   const parseStruct = (pos: Position): StructDecl => {
     advance(); // STRUCT
@@ -704,6 +722,8 @@ export function parse(tokens: Token[]): ParseResult {
           return parseDataset(pos);
         case "STRUCT":
           return parseStruct(pos);
+        case "EVENT":
+          return parseEvent(pos);
         case "FOR":
           return parseFor(pos);
         case "WHILE":

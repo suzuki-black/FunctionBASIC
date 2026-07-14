@@ -243,6 +243,22 @@ p.X = 10
 - **v1 の制限**（正直に）：フィールドは**平坦な基本型のみ**（ネスト構造体は非対応）。**1レコード丸ごとの関数受け渡し／戻り値は不可**（MSX にレコード型が無いため。添字＋`GLOBAL 名`で扱う）。2文字名予算はフィールド数ぶん消費（手書きと同じ）。
 - エラー：未定義型で `DIM` → `E_STRUCT_UNKNOWN`／未知フィールド → `E_STRUCT_FIELD`／`.` を非インスタンスに → `E_STRUCT_NOT_INSTANCE`／型サフィックス無しフィールド → `E_STRUCT_FIELD_TYPE`。変換方式は [05 §5.17](05-transformer.md)。
 
+### 1.4.4 EVENT TIMER（周期イベント）
+
+一定間隔で実行される周期ハンドラ。MSX の `ON INTERVAL=n GOSUB` に対応。
+
+```basic
+EVENT TIMER 60          ' 60割り込み(≒1秒)ごとに本体を実行
+    TICK% = TICK% + 1
+END EVENT
+```
+
+- **意味**：宣言位置でタイマーを設置（`ON INTERVAL=n GOSUB … : INTERVAL ON`）。以後、本体が周期的に実行される。
+- **⚠️ 協調的・粗い割り込み**：`ON INTERVAL` は**BASIC の文の切れ目で発火**するため、長い文があると遅延する（真のプリエンプティブ割り込みではない）。本体は**割り込み安全な短い処理**を推奨。
+- 本体の変数は **MAIN と同じ**（同名なら同じ2文字MSX名を共有）。本体は MAIN の `END` の後にラベル付きで配置され `RETURN` で戻る。
+- **v1 の制限**：INTERVAL は MSX に1系統なので **`EVENT TIMER` は1つだけ**（2つ目 → `E_EVENT_TIMER_DUP`）。**トップレベル（MAIN）専用**（関数内 → `E_EVENT_NOT_TOPLEVEL`）。
+- **`EVENT VBLANK` は非対応**（`E_EVENT_VBLANK`）：真の VBLANK 割り込みから **BASIC インタプリタへ安全に再入できない**ため。毎フレーム処理は `HALT`/`WAIT_FRAME` によるメインループ同期（シューター参照）か、ASM フックがフラグを立てて BASIC がポーリングする形で。変換方式は [05 §5.18](05-transformer.md)。
+
 ---
 
 ## 1.5 BREAK / CONTINUE（仕様1-5）
@@ -348,6 +364,10 @@ struct_decl    = "STRUCT" ident newline
                  "END" "STRUCT" newline ;
 struct_dim     = "DIM" ident [ "(" expr { "," expr } ")" ] "AS" ident ;   (* インスタンス宣言 *)
 field_access   = ident [ "(" expr { "," expr } ")" ] "." ident ;   (* lvalue/式の両方 *)
+
+event_block    = "EVENT" "TIMER" expr newline      (* v1 は TIMER のみ *)
+                 { statement }
+                 "END" "EVENT" newline ;
 
 (* ブロック本体は statement を再帰的に含む = 自由なネストを許可 *)
 if_block       = "IF" expr "THEN" newline

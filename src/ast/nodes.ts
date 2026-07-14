@@ -46,7 +46,8 @@ export type Stmt =
   | DatasetBlock
   | ReadIntoStmt
   | RestoreDatasetStmt
-  | StructDecl;
+  | StructDecl
+  | EventBlock;
 
 // インライン Z80 アセンブリ（ASM…END ASM）。lines=生ニーモニック行。
 export interface AsmStmt {
@@ -197,6 +198,15 @@ export interface StructDecl {
   type: "Struct";
   name: string;
   fields: string[]; // 型サフィックス込み（"X%", "PATTERN$"）
+  pos: Position;
+}
+// 周期イベント（EVENT TIMER n … END EVENT）。MSX の ON INTERVAL=n GOSUB へ lower。
+// v1 は TIMER のみ（VBLANK は BASIC 再入不可のため非対応）。
+export interface EventBlock {
+  type: "Event";
+  kind: "TIMER";
+  arg: Expr; // INTERVAL 値（割り込み数）
+  body: Stmt[];
   pos: Position;
 }
 export interface ForBlock {

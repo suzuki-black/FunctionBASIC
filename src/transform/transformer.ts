@@ -296,6 +296,7 @@ function countCallSites(program: Program): Map<string, number> {
         case "While": we(s.cond); ws(s.body); break;
         case "Builtin": for (const p of s.parts) if (p.kind === "expr") we(p.expr); break;
         case "On": we(s.arg); break;
+        case "Event": we(s.arg); ws(s.body); break;
       }
     }
   };
@@ -332,6 +333,7 @@ function collectVarNames(program: Program): Set<string> {
         case "Return": we(s.expr); break;
         case "Builtin": for (const p of s.parts) if (p.kind === "expr") we(p.expr); break;
         case "On": we(s.arg); break;
+        case "Event": we(s.arg); ws(s.body); break;
         case "ReadInto": for (const t of s.targets) { names.add(t.name); if (t.type === "ArrayRef") t.indices.forEach(we); } break;
       }
     }
@@ -981,6 +983,10 @@ function finishTransform(ctx: any): TransformResult {
   // 現在ブロック番号（0=未設定）。MSX出力は全変数がグローバル2文字名なので1個で足りる。
   const dsCur = hasDsRead ? ctx.pool.next("%") : null;
 
+  // EVENT TIMER: ハンドラ本体を MAIN の END 後にラベル付きで配置（GOSUB 先）。
+  const eventHandlers: { hid: number; body: Stmt[] }[] = [];
+  let eventTimerDone = false;
+
   const emitLValueText = (lv: LValue, sc: any): string =>
     lv.type === "Var"
       ? resolveVar(lv.name, sc)
@@ -1167,6 +1173,8 @@ function finishTransform(ctx: any): TransformResult {
         return { ...s, from: L(s.from), to: L(s.to), step: s.step ? L(s.step) : undefined };
       case "While":
         return { ...s, cond: L(s.cond) };
+      case "Event":
+        return { ...s, arg: L(s.arg) };
       default:
         return s;
     }
@@ -1285,6 +1293,18 @@ function finishTransform(ctx: any): TransformResult {
         case "Asm":
           emitAsm(s, sc, items);
           break;
+        case "Event": {
+          // EVENT TIMER n: 宣言位置で ON INTERVAL=n GOSUB <handler>:INTERVAL ON。
+          // 本体は MAIN の END 後にラベル付き＋RETURN で配置（MAINスコープ＝変数を共有）。
+          if (sc.func) { fail("E_EVENT_NOT_TOPLEVEL", {}, s.pos); break; }
+          if (eventTimerDone) { fail("E_EVENT_TIMER_DUP", {}, s.pos); break; }
+          eventTimerDone = true;
+          const hid = newLabel();
+          items.push({ kind: "line", text: `ON INTERVAL=${emitExpr(s.arg, sc)} GOSUB @@L:${hid}@@` });
+          items.push({ kind: "line", text: `INTERVAL ON` });
+          eventHandlers.push({ hid, body: s.body });
+          break;
+        }
         case "Dataset":
           break; // DATA 行は末尾にまとめて出力（ここでは何も出さない）
         case "ReadInto": {
@@ -1502,6 +1522,13 @@ function finishTransform(ctx: any): TransformResult {
   const mainItems: Item[] = [{ kind: "line", text: "' === MAIN ===" }];
   emitInto(program.toplevel, { func: undefined }, mainItems);
   mainItems.push({ kind: "line", text: "END" });
+  // EVENT TIMER ハンドラ本体を END の後（通常フロー外）に配置。GOSUB 先＝ラベル、末尾 RETURN。
+  // MAIN スコープで emit するので本体の変数は MAIN と同じ2文字名を共有する。
+  for (const h of eventHandlers) {
+    mainItems.push({ kind: "label", id: h.hid });
+    emitInto(h.body, { func: undefined }, mainItems);
+    mainItems.push({ kind: "line", text: "RETURN" });
+  }
   // ASM コード配置プロローグを MAIN ヘッダ直後へ（最初の USR より前に配置される）。
   if (asmReg.size) mainItems.splice(1, 0, ...asmPrologueItems());
   // 再帰スタックの DIM をMAIN先頭（ヘッダ直後）に挿入。最初の再帰呼び出しより前に確保する。

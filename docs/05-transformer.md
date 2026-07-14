@@ -706,3 +706,19 @@ DATA 1,2,3,4
   - `STRUCT` 宣言は除去。
 - 式・lvalue・`READ name INTO` ターゲットも含め全 `Field` を再帰的に書き換える。
 - **制限**：平坦な基本型フィールドのみ（ネスト非対応）。1レコード丸ごとの受け渡しは不可（MSX にレコード型なし）。エラーは `E_STRUCT_UNKNOWN`/`_FIELD`/`_NOT_INSTANCE`/`_FIELD_TYPE`。
+
+---
+
+## 5.18 EVENT TIMER → ON INTERVAL GOSUB（emit）
+
+`EVENT TIMER`（[01 §1.4.4](01-language-spec.md#144-event-timer周期イベント)）は変換器で処理する（GOSUB 先＝emit レベルのラベルが要るため。DATASET 同様の emit 実装）。
+
+- 宣言位置（トップレベルのみ。関数内は `E_EVENT_NOT_TOPLEVEL`）で 2 行を出力：
+  ```basic
+  ON INTERVAL=<n> GOSUB <handler>
+  INTERVAL ON
+  ```
+  `<handler>` はラベル（`@@L:` 機構で行番号へ解決）。
+- **ハンドラ本体**は MAIN の `END` の後に「ラベル → 本体 → `RETURN`」で配置。**MAIN スコープで emit** するので本体の変数は MAIN と同じ 2 文字名を共有する。
+- MSX の INTERVAL は 1 系統 → **1 つだけ**（2 つ目は `E_EVENT_TIMER_DUP`）。
+- **`EVENT VBLANK` は非対応**（`E_EVENT_VBLANK`）：真の VBLANK 割り込みから BASIC インタプリタへ安全に再入できないため。`HALT` フレーム同期か ASM フック＋フラグポーリングで代替。

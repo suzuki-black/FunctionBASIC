@@ -25,7 +25,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.20";
+const APP_VERSION = "0.1.21";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -73,6 +73,12 @@ const I18N = {
     "find.gcount": (n, f) => `${n} 件 / ${f} ファイル`,
     "src.main": "構造化BASIC", "src.msx": "MSX-BASIC（出力）",
     "proj.title": "プロジェクト", "proj.libs": "ライブラリ（読み取り専用）", "proj.run": "実行",
+    "tip.browser": (n) => `${n}\n（ブラウザ内プロジェクト・ディスク未保存）`,
+    "tip.unbound": (n) => `${n}\n（フォルダ未バインド・ファイルメニューでフォルダを開くと保存先が決まります）`,
+    "tip.lib": (n) => `${n}\n（読み取り専用の埋め込みライブラリ）`,
+    "tip.node.msx": "MSX-BASIC変換後（読み取り専用）",
+    "tip.node.maptable": "変換テーブル：変数名の圧縮・関数・制御フローの対応（読み取り専用）",
+    "tip.node.webmsx": "アプリ内 WebMSX で実行",
     "proj.newfile": "新規ファイル", "proj.newfilemsg": "ファイル名（.msxb）:",
     "proj.rename": "名前を変更", "proj.renamemsg": "新しいファイル名:",
     "proj.delete": "削除", "proj.deletemsg": (n) => `「${n}」を削除しますか？`,
@@ -187,6 +193,12 @@ const I18N = {
     "find.gcount": (n, f) => `${n} in ${f} file(s)`,
     "src.main": "Structured BASIC", "src.msx": "MSX-BASIC (output)",
     "proj.title": "Project", "proj.libs": "Libraries (read-only)", "proj.run": "Run",
+    "tip.browser": (n) => `${n}\n(browser project — not saved to disk)`,
+    "tip.unbound": (n) => `${n}\n(folder not bound — open a folder from the File menu to set where it saves)`,
+    "tip.lib": (n) => `${n}\n(read-only bundled library)`,
+    "tip.node.msx": "MSX-BASIC output (read-only)",
+    "tip.node.maptable": "Conversion table: name compression, functions, control flow (read-only)",
+    "tip.node.webmsx": "Run in the in-app WebMSX",
     "proj.newfile": "New file", "proj.newfilemsg": "File name (.msxb):",
     "proj.rename": "Rename", "proj.renamemsg": "New file name:",
     "proj.delete": "Delete", "proj.deletemsg": (n) => `Delete "${n}"?`,
@@ -1735,6 +1747,16 @@ function includeChildren(f) {
   }
   return out;
 }
+// ツリー行ホバー用ツールチップ: デスクトップ＆フォルダバインド時は絶対パス、
+// それ以外はブラウザ/未バインドの注記（機能#3）。
+function pathTip(name) {
+  if (isDesktop() && project.dir) {
+    const dir = project.dir.replace(/[\/\\]+$/, "");
+    const sep = dir.includes("\\") ? "\\" : "/";
+    return dir + sep + name;
+  }
+  return t(isDesktop() ? "tip.unbound" : "tip.browser", name);
+}
 function renderTree() {
   let html = "";
   const entry = currentEntry();
@@ -1757,7 +1779,7 @@ function renderTree() {
       ? `<button class="ft-act" data-main="" title="${esc(t("proj.clearmain"))}">📌</button>`
       : `<button class="ft-act" data-main="${esc(f)}" title="${esc(t("proj.setmain"))}">📍</button>`;
     const pad = 12 + depth * 14;
-    let h = `<div class="ft-row${a}" data-file="${esc(f)}" style="padding-left:${pad}px">` +
+    let h = `<div class="ft-row${a}" data-file="${esc(f)}" title="${esc(pathTip(f))}" style="padding-left:${pad}px">` +
       `<span class="ft-ico">${depth ? "↳" : "📄"}</span>${badge}<span class="ft-name">${esc(f)}</span>` +
       pin +
       `<button class="ft-act" data-ren="${esc(f)}" title="${esc(t("proj.rename"))}">✎</button>` +
@@ -1772,13 +1794,13 @@ function renderTree() {
     html += `<div class="ft-group">${esc(t("proj.libs"))}</div>`;
     for (const f of libs) {
       const a = viewingLib === f ? " active" : "";
-      html += `<div class="ft-row${a}" data-lib="${esc(f)}"><span class="ft-ico">📦</span><span class="ft-name">${esc(f)}</span></div>`;
+      html += `<div class="ft-row${a}" data-lib="${esc(f)}" title="${esc(t("tip.lib", f))}"><span class="ft-ico">📦</span><span class="ft-name">${esc(f)}</span></div>`;
     }
   }
   html += `<div class="ft-group">${esc(t("proj.run"))}</div>`;
-  html += `<div class="ft-row" data-node="msx"><span class="ft-ico">📄</span><span class="ft-name">${esc(t("tab.msx"))}</span></div>`;
-  html += `<div class="ft-row" data-node="maptable"><span class="ft-ico">🔤</span><span class="ft-name">${esc(t("tab.maptable"))}</span></div>`;
-  html += `<div class="ft-row node-webmsx" data-node="webmsx"><span class="ft-ico">▶</span><span class="ft-name">WebMSX</span></div>`;
+  html += `<div class="ft-row" data-node="msx" title="${esc(t("tip.node.msx"))}"><span class="ft-ico">📄</span><span class="ft-name">${esc(t("tab.msx"))}</span></div>`;
+  html += `<div class="ft-row" data-node="maptable" title="${esc(t("tip.node.maptable"))}"><span class="ft-ico">🔤</span><span class="ft-name">${esc(t("tab.maptable"))}</span></div>`;
+  html += `<div class="ft-row node-webmsx" data-node="webmsx" title="${esc(t("tip.node.webmsx"))}"><span class="ft-ico">▶</span><span class="ft-name">WebMSX</span></div>`;
   fileTreeEl.innerHTML = html;
 }
 // クリック委譲

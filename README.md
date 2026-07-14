@@ -8,11 +8,13 @@
 
 Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and run it instantly in webMSX — all inside one editor.
 
+**[日本語](#functionbasic日本語)** · **[⬇ Download the desktop app](https://github.com/suzuki-black/FunctionBASIC/releases/latest)**
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 [![Status: Experimental / WIP](https://img.shields.io/badge/status-experimental%20%2F%20WIP-orange.svg)](#roadmap)
 [![Build](https://github.com/suzuki-black/FunctionBASIC/actions/workflows/build.yml/badge.svg)](https://github.com/suzuki-black/FunctionBASIC/actions)
-[![Built with Tauri + TypeScript](https://img.shields.io/badge/built%20with-Tauri%20%2B%20TypeScript-blue.svg)](#overview)
+[![Built with Tauri + TypeScript](https://img.shields.io/badge/built%20with-Tauri%20%2B%20TypeScript-blue.svg)](#what-it-is)
 
 > ⚠️ **This is an experimental, work-in-progress tool.** The language, the transpiler, and the editor are all evolving. Expect rough edges, breaking changes, and missing features. Feedback and contributions are very welcome.
 
@@ -26,100 +28,37 @@ Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and r
 
 ---
 
-## Download
+## What it is
 
-Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — **macOS** (Apple Silicon): `.dmg` (drag to Applications) or `.zip` (unzip the `.app`); **Windows** (x64): `.msi` or `.exe` installer.
+**FunctionBASIC** is a small editor and transpiler for **Structured BASIC** — a modern dialect with real functions, block structures, local variables, and reference parameters. It converts your code to **classic MSX-BASIC** (line numbers, `GOSUB`/`GOTO`, two-letter variables) that runs on real 8-bit hardware and emulators, then runs the result instantly in embedded **webMSX** — so the *write → convert → run* loop is a single click.
 
-> ⚠️ **Prebuilt for macOS (Apple Silicon / arm64) and Windows (x64).** Other targets (macOS Intel, Linux) → [build from source](#building-from-source). The apps are **not code-signed/notarized**, so the first launch is blocked: on **macOS**, right-click the app → Open → Open (once), or run `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`; on **Windows**, SmartScreen may warn — click **More info → Run anyway**. You can also just run the browser editor (`npm run serve`).
+**Structured BASIC** is BASIC the way you would write it today: named `FUNCTION`s instead of `GOSUB` line jumps, freely nestable `IF/ELSE/END IF` and `FOR/NEXT`, locals by default, `GLOBAL` to opt in to shared state, and `REF` parameters for true pass-by-reference. No line numbers, no manual variable juggling.
 
----
-
-## Overview
-
-**FunctionBASIC** is a small editor and transpiler that lets you write **Structured BASIC** — a modern dialect with real functions, block structures, local variables, and reference parameters — and converts it into **classic MSX-BASIC** (line numbers, `GOSUB`/`GOTO`, two-letter variables). You can then run the result instantly in **webMSX** without leaving the editor.
-
-**What is Structured BASIC?** It is BASIC the way you would write it today: named `FUNCTION`s instead of `GOSUB` line jumps, `IF / ELSE / END IF` and `FOR / NEXT` blocks you can freely nest, locals by default, `GLOBAL` to opt in to shared state, and `REF` parameters for true pass-by-reference. No line numbers, no manual variable juggling.
-
-**Why convert to MSX-BASIC?** Real MSX machines (and emulators) run tokenized MSX-BASIC. By transpiling, you keep the comfort of structured code while producing programs that run on actual 8-bit hardware and emulators — line-numbered, two-letter-variable, `GOSUB`-based BASIC that an MSX understands natively.
-
-**It also goes the other way.** FunctionBASIC can *decompile* plain, line-numbered MSX-BASIC back into Structured BASIC — no map required. Drop in an old type-in listing and get nested blocks, named `FUNCTION`s, recovered loops, and inferred variable names. The result re-transpiles cleanly for the large majority of real-world programs (see the import/decompiler feature below).
-
-**Why webMSX?** webMSX is an excellent browser MSX emulator. FunctionBASIC embeds it (via an iframe, as an external service) and feeds your converted program straight in, so the loop of *write → convert → run* takes a single click. No floppy juggling, no manual `RUN`.
-
-**Why it pairs well with AI (Claude).** Structured BASIC reads like ordinary structured code, which is exactly what large language models such as Claude generate well — far more reliably than hand-numbered spaghetti BASIC. You can ask an AI for a function, paste it in, convert, and run. This project itself was built iteratively with Claude.
+It also goes the other way: FunctionBASIC can *decompile* plain, line-numbered MSX-BASIC back into Structured BASIC with no map required (see [Reverse tools](#reverse-tools)). And because Structured BASIC reads like ordinary structured code, it pairs unusually well with AI assistants such as Claude (see [Vibe-coding](#vibe-coding-with-an-ai-assistant)) — this project itself was built iteratively with Claude.
 
 ---
 
-## Features
+## Quick start
 
-**Language**
-- **Structured BASIC** — `FUNCTION`, freely nestable `IF/FOR/WHILE`, local-by-default variables, `GLOBAL`, `REF` parameters, `BREAK`/`CONTINUE`, `RETURN`, arrays (incl. by reference), and `CONST` named constants (folded & inlined at compile time).
+1. **Write Structured BASIC** in the editor — functions, blocks, locals, no line numbers.
+2. **Convert** — the *MSX-BASIC (output)* tab shows the generated line-numbered BASIC live as you type; **Convert & Save** writes it to disk as Shift-JIS.
+3. **Run** — press **▶ WebMSX** (or Ctrl/Cmd+Enter). The program is packaged and loaded into the embedded webMSX, which boots and `RUN`s it automatically. For real hardware or openMSX, use **Save Disk (.dsk)** instead.
+
+Prefer a prebuilt app? Grab it from **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — see [Run & export](#run--export) and [Building from source](#building-from-source). Or run the browser editor with `npm run serve`.
+
+---
+
+## The language
+
+### Structured control flow
+
+- **`FUNCTION`** — named, top-level functions with their own locals; calls become `GOSUB` for you. `REF` before a parameter gives true pass-by-reference (including arrays and string arrays).
+- **Nestable `IF/FOR/WHILE`** — block forms you can freely nest, with `BREAK` / `CONTINUE` and `RETURN [value]`.
+- **Locals by default, `GLOBAL` to share** — variables are local unless declared `GLOBAL`, so functions don't clobber each other.
+- **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX distinguishes only the first two characters).
+- **`CONST`** — compile-time named constants, folded and inlined as literals (re-assignment is an error).
 - **Recursion** — self- and mutually-recursive functions work, via automatic frame save/restore on a software stack (depth configurable; `REF` params in a recursive function are reported, not mis-compiled).
-- **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX only distinguishes the first two characters).
-- **Inline Z80 assembly** — `ASM … END ASM` blocks are assembled to machine code and wired in automatically: the code is placed in a buffer reserved just below `HIMEM` (read at run time, so it is machine-independent and not bound by the 255-byte string limit), `VARPTR` operand patching so `(NAME)` reaches a `%` integer BASIC variable (applied once), labels with relative jumps (`JR` / `DJNZ`) for loops and branches, and `DEFUSR`/`USR` to run it. Powers the arcade-smooth fleet redraw in the [Space Shooter](#featured-example--space-shooter-turbo-r). (`%` integer variables only; no absolute `CALL`/`JP` to labels yet.)
-
-**Transpile to MSX-BASIC**
-- **Automatic conversion** — line numbering, 2-char variable allocation, `FUNCTION`→`GOSUB`, return-value handling, and 255-byte line auto-splitting.
-- **Multi-file projects** — split code with `INCLUDE`; the build/run uses a single **entry (main) file**, auto-detected (the file with top-level code that nothing else `INCLUDE`s) or pinned explicitly in the project tree. Library files (functions only) are never run standalone. MSX-BASIC has no linker, so everything merges into one program — matching the classic `$INCLUDE`/main-module model.
-- **Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), jump-safe comment stripping, and **hot-function placement** (frequently-called functions get lower line numbers to shorten MSX's `GOSUB` line search). Off by default and guarded so runtime results never change.
-- **Safe diagnostics** — never silently mis-converts; errors carry codes and line/column and show as gutter markers. Output is Shift-JIS (unrepresentable characters are reported, not corrupted).
-- **Target machines** — MSX1 / MSX2 / MSX2+ / turbo R (default turbo R); the built-in command table is editable.
-
-**Run & export**
-- **Instant run** — one click loads and `RUN`s the program in an embedded webMSX.
-- **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX or real hardware.
-- **MSXPLAYer export (`.sav`)** — write a `.sav` virtual floppy for the official MSX emulator **MSXPLAYer** (the same FAT12 image, repacked). Overwrite-safe — the existing file is auto-backed-up first. It is a data hand-off, not a boot disk: place it on MSXPLAYer's work drive, then `FILES` / `RUN"NAME.BAS"`.
-
-**Reverse tools**
-- **Decompiler** — import *any* line-numbered MSX-BASIC and get Structured BASIC back: rebuilt blocks, `GOSUB`→`FUNCTION`, recovered `GOTO` loops, event traps, and inferred variable names. ~95% of a real-world `.bas` corpus re-transpiles cleanly. *File → Import plain MSX-BASIC…*
-- **Reverse transpilation** — turn FunctionBASIC's own output back into Structured BASIC via the generated map (restoring the original file split where possible).
-- **Machine-code annotation** — disassembles Z80 machine code embedded in `DATA` (the `READ`→`POKE`→`USR` idiom) into mnemonic comments with BIOS calls named; stripped on transpile.
-
-**Editor** — syntax highlighting, live preview, error markers, and an **INCLUDE-aware project tree** (entries with their includes nested). **Line correspondence** — in split view, moving the caret in either the Structured or the MSX-BASIC pane highlights the exact line(s) it maps to in the other and scrolls them into view, so you can see how each source line becomes output; a source line that produces nothing (a `GLOBAL` declaration, comment, or blank line) says so in the header instead. **Conversion table** — a read-only view (open it from the project tree) of the generated map: how each long name is compressed to its 2-char MSX name (globals and per-function locals), and every function's entry line / parameters (incl. `REF`) / return variable, plus `BREAK`/`CONTINUE` jump targets; copy it as `.map.json`. On the desktop app a project is a **folder**: `Cmd+O` opens it, `Cmd+S` saves the current `.msxb` in place (no dialog), *Convert & Save* / Run write everything then transpile, and *Reload from Disk* re-reads it. A **Problems panel** validates the whole project live (every entry's `INCLUDE` graph), so cross-file errors (e.g. a duplicate function in a library) always surface with the right file:line and one-click jump — plus a quick-fix to create a missing `INCLUDE`, and an unused-`INCLUDE` warning. Cross-file **go-to-definition / find-usages / rename** (with a preview), `INCLUDE`-line jump (`Cmd+B` / `Cmd`-click) and `INCLUDE` path autocomplete. Also: find / replace / project-wide "Find in Files" (JetBrains keymap, regex), token-aware **safe rename** (`Shift+F6`), undo/redo, editing aids (auto-indent, bracket/quote close, current-line highlight, line move/duplicate — each toggleable), closable split tabs, a native OS menu, and Japanese / English UI.
-
----
-
-## Usage
-
-1. **Write Structured BASIC** in the editor (functions, blocks, locals — no line numbers).
-2. **Convert** — the "MSX-BASIC (output)" tab shows the generated line-numbered BASIC live as you type; "Convert & Save" writes it to disk as Shift-JIS.
-3. **Run** — press **▶ WebMSX** (or Ctrl/Cmd+Enter). The program is packaged and loaded into the embedded webMSX, which boots and runs it automatically. For real hardware or openMSX, use **Save Disk (.dsk)** instead.
-
-### Current limitations of the embedded WebMSX player
-
-The in-app player embeds [webMSX](https://webmsx.org) as a **cross-origin iframe**, which means it can only be driven by rebooting with a data-URL disk each run. This brings a few limitations (transpilation itself is unaffected — the generated MSX-BASIC is correct):
-
-- **No FM (MSX-MUSIC) sound here.** Programs using `CALL MUSIC` / `PLAY #2` transpile correctly and play in MSXPen / openMSX / real hardware, but FM stays silent in the embedded player. Verify FM elsewhere.
-- **No MSX-AUDIO.** webMSX does not emulate MSX-AUDIO (Y8950); `CALL AUDIO` etc. need openMSX or real hardware.
-- **Reboot per run.** Every run reboots the machine (there is a short lead time and no state is preserved between runs).
-- **Machine is webMSX's default.** turbo R–only programs (`_TURBO …`, examples/turbo-r.msxb) need the machine switched to turbo R via the webMSX gear (⚙) menu.
-- **Audio needs a click.** Browsers may keep audio suspended until you click the webMSX screen once (Web Audio autoplay policy).
-- **Very large programs can exceed the autorun URL.** Each run embeds the transpiled program as a ZIP inside the page URL. The app minimizes it automatically — it **strips comments, packs statements onto fewer lines, and uses a compact URL encoding** for the run payload only (your source, saved files and the program's behavior are all unchanged). A program much larger than the Space Shooter example can still exceed the URL length the embedded WebView accepts; if a run reports **"URI Too Long"**, use **Save Disk (.dsk)** and drag it into webMSX (`RUN"NAME.BAS"`) instead. (The comment-strip *setting* is separate — it only affects the displayed/saved `.bas`, not the run, which always optimizes internally.)
-
-For sound-accurate or stateful testing, **Save Disk (.dsk)** and run in openMSX or on real hardware. (A future same-origin player could remove the reboot-per-run and FM limitations — see `TODO.md`.)
-
-> **Tip — paste into MSXPen.** Use the **📋 Copy** button on the *MSX-BASIC (output)* tab to copy the converted program, then paste it into [MSXPen](https://msxpen.com) and run it there — the same program plays with FM audible. Exactly **why FM stays silent in this app's embedded player is still unclear** (a likely-but-unconfirmed cause is that our per-run reboot auto-runs the program from disk before the FM chip has finished initializing). For now, pasting into MSXPen is a reliable way to hear FM without leaving the browser.
-
----
-
-## Building from source
-
-**Prerequisites:** [Node.js](https://nodejs.org/) ≥ 22.6 (for the zero-dependency core and the browser editor). For the desktop app you also need the [Rust toolchain](https://www.rust-lang.org/tools/install) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS (on macOS, the Xcode Command Line Tools).
-
-The core has **no npm dependencies**, so there is nothing to `npm install`.
-
-- **Run the core tests:** `npm test` — type-stripped TypeScript tests via Node's built-in test runner.
-- **Browser editor (no build tools):** `npm run serve`, then open `http://localhost:8123`. This type-strips the core into `editor/core/` and serves the editor.
-- **Desktop app (development):** `npm run app:dev` — builds the core and launches the Tauri dev window (Rust + system WebView).
-- **Desktop app (release build):** `npm run app:build` — produces a bundled application under `src-tauri/target/release/bundle/` for your platform. On macOS this is `FunctionBASIC.app` (in `bundle/macos/`) and a `FunctionBASIC_<version>_<arch>.dmg` installer (in `bundle/dmg/`).
-
-The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on demand (still no committed dependencies).
-
-> **macOS — opening an unsigned build.** The app is not yet code-signed/notarized (that needs an Apple Developer ID). The first launch is blocked by Gatekeeper; **right-click the app → Open → Open** (once), or run `xattr -dr com.apple.quarantine FunctionBASIC.app`. The default build is Apple-Silicon (arm64); building an Intel/universal binary needs the extra Rust target.
-
----
-
-## Syntax Guide
+- **`STRICT`** — opt-in static typing (see [below](#strict-mode)).
 
 | Construct | Form | Notes |
 | --- | --- | --- |
@@ -130,19 +69,71 @@ The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on de
 | `GLOBAL` | `GLOBAL X` | Opt in to a shared (global) variable; otherwise variables are local. |
 | `CONST` | `CONST NAME[%!#$] = const-expr` | Compile-time constant; folded and inlined as a literal. Re-assignment is an error. An optional type suffix is validated (`CONST N% = 3`; `%` requires an integer value) and is **required under `STRICT`**. |
 | `RETURN` | `RETURN [value]` | Returns from a function, optionally with a value. |
-| `ASM` | `ASM` … `END ASM` | Inline Z80 assembly, assembled into a buffer below `HIMEM` and run via `DEFUSR`/`USR`. `(NAME)` references a `%` integer BASIC variable (patched once with `VARPTR`). Labels + relative jumps (`JR`/`DJNZ`); `%` integers only. |
+| `SELECT CASE` | `SELECT CASE x … CASE … CASE ELSE … END SELECT` | Multi-way branch (see below). |
+| `STRUCT` | `STRUCT … END STRUCT` ; `DIM a(n) AS T` | Struct-of-arrays (see below). |
+| `DATASET` | `DATASET name … END DATASET` | Named data block (see below). |
+| `EVENT TIMER` | `EVENT TIMER n … END EVENT` | Periodic handler (see below). |
+| `ASM` | `ASM` … `END ASM` | Inline Z80 assembly (see below). |
 | Arrays | `DIM A(n)` ; pass with `REF A` | Arrays may be passed by reference, including string arrays. |
 
----
+### Game-BASIC constructs
 
-## Transpiler Rules
+These are the newest headline features — higher-level constructs that lower to authentic MSX-BASIC at (mostly) zero runtime cost.
 
-- **Line numbering** — `MAIN` (your top-level code) starts at 100; each function gets its own 1000-step segment (1000, 2000, …). Comments mark each segment.
-- **Variable names (length extension)** — MSX-BASIC keeps only a name's first two characters (`COUNT` and `COUNTER` collide) and rejects `_`. FunctionBASIC lifts that: write long descriptive names and an allocator maps each to a unique 2-char MSX name. Pools are per type (`%`/`!`/`#`/`$`, ~960 names each, reserved words excluded) and non-overlapping locals reuse names; a full pool reports `E_VAR_NAMES_EXHAUSTED`.
-- **Function expansion** — every `FUNCTION` becomes a `GOSUB` block; calls become `GOSUB <line>` and the call site reads the result variable afterward.
-- **Return values** — a function's return value is assigned to a dedicated internal variable, which the caller copies immediately after the `GOSUB`.
-- **Internal variable naming** — locals, loop counters, and return variables are allocated from a fixed two-letter pool so they never collide; recursion is handled by saving/restoring frames on a software stack.
-- **Arrays by reference** — passing the same array always reuses one block (zero copy); calling a function with *different* arrays duplicates the block per array (monomorphization), so there is no per-call array copy.
+- **`SELECT CASE`** — the readable multi-way branch (Structured BASIC has no `ELSEIF`). Supports value / list (`CASE 6,7,8`), `TO` ranges (`CASE lo TO hi`), `IS` relational (`CASE IS < 0`), and `CASE ELSE`; strings work too. The selector is evaluated **once**, then lowered to a cached-selector `IF` chain.
+
+  ```basic
+  SELECT CASE STATE%
+      CASE 6, 7, 8        ' list
+          MOVE_LEFT()
+      CASE 10 TO 20       ' range
+          SPEED_UP()
+      CASE IS < 0         ' relational
+          RESET()
+      CASE ELSE
+          IDLE()
+  END SELECT
+  ```
+
+- **`STRUCT`** — declare a record and `DIM` an array of it, then access fields with dot notation:
+
+  ```basic
+  STRUCT Enemy
+      HP%
+      X%
+      Y%
+  END STRUCT
+  DIM foe(20) AS Enemy
+  foe(3).HP% = 100
+  ```
+
+  It lowers to a **struct-of-arrays** (parallel per-field MSX arrays), so it costs exactly the same as hand-written parallel arrays — **zero runtime overhead**. `GLOBAL foe` shares every field across functions. (v1: flat fields; no whole-record pass yet.)
+
+- **`DATASET`** — named data blocks that replace the opaque global `READ`/`DATA`/`RESTORE` pointer:
+
+  ```basic
+  DATASET ALIEN_A
+      DATA 8, 28, 62, 127
+  END DATASET
+  ' …
+  READ ALIEN_A INTO A%, B%, C%, D%
+  ```
+
+  A block body holds only `DATA` lines (values may mix numbers and strings). v1 uses the memory-optimal **strategy A**: zero extra RAM, auto-`RESTORE` on block switch, so read each block to completion before moving to the next. `RESTORE name` rewinds a block.
+
+- **`EVENT TIMER`** — a periodic handler that lowers to `ON INTERVAL=n GOSUB` + `INTERVAL ON`:
+
+  ```basic
+  EVENT TIMER 60          ' every 60 interrupts (~1s)
+      TICK()
+  END EVENT
+  ```
+
+  One timer only, top-level (MAIN) only; the handler shares MAIN's variables. It is a **cooperative** interrupt — it fires at BASIC statement boundaries, not preemptively. **`EVENT VBLANK` is intentionally not supported**: a true VBLANK hook can't safely re-enter the BASIC interpreter — use `HALT`-based frame sync (as the shooter does) or an ASM hook that sets a flag BASIC polls.
+
+### Inline Z80 assembly
+
+`ASM … END ASM` blocks are assembled to machine code and wired in automatically. The code is placed in a buffer reserved just below `HIMEM` (read at run time, so it is machine-independent and not bound by the 255-byte string limit); `(NAME)` references a `%` integer BASIC variable via `VARPTR` operand patching (applied once); labels support relative jumps (`JR` / `DJNZ`) for loops and branches; and `DEFUSR`/`USR` runs it. This powers the arcade-smooth fleet redraw in the [Space Shooter](#featured-example--space-shooter-turbo-r). (`%` integer variables only; no absolute `CALL`/`JP` to labels yet.)
 
 ### Not available in Structured BASIC
 
@@ -154,7 +145,7 @@ Because Structured BASIC has **no line numbers** and **renames variables to two-
 | `ON x GOTO/GOSUB <line numbers>` (`E_ON_LINE_TARGET`) | `ON x GOTO/GOSUB <FUNCTION names>` (handlers must be no-arg) |
 | `ON ERROR GOTO <line>` | `ON ERROR GOTO <FUNCTION>`, or `ON ERROR GOTO 0` to disable |
 | `RESUME <line>` (`E_RESUME_LINE`) | `RESUME` / `RESUME NEXT` / `RESUME 0` |
-| `RESTORE <line>` (`E_RESTORE_LINE`) | bare `RESTORE` (reset to the first `DATA`) |
+| `RESTORE <line>` (`E_RESTORE_LINE`) | bare `RESTORE` (reset to the first `DATA`), or `RESTORE name` for a `DATASET` |
 | `DEFINT` / `DEFSNG` / `DEFDBL` / `DEFSTR` (`E_DEF_UNSUPPORTED`) | name suffixes: `%` int, `!` single, `#` double, `$` string (e.g. `COUNT%`, `LABEL$`) |
 | `DEF FN` / `DEF USR` | a `FUNCTION` (and `POKE` the USR vector if you truly need machine code) |
 | Direct/editor commands: `RUN` `LIST` `AUTO` `RENUM` `NEW` `CONT` `DELETE` `EDIT` | not program statements — they are interactive only |
@@ -162,11 +153,9 @@ Because Structured BASIC has **no line numbers** and **renames variables to two-
 
 (`ON … GOSUB <fn>` handler functions and `ON x GOTO/GOSUB <fn>` targets must take **no parameters** — `E_HANDLER_PARAMS`.)
 
-### Strict mode (optional static typing)
+### Strict mode
 
-Put `STRICT` at the top of a program to turn on **opt-in static type checking** (Rust-style: no implicit conversions). It is off by default — existing code is unaffected, and MSX's usual implicit numeric conversions still apply in non-strict code.
-
-Under `STRICT`:
+Put `STRICT` at the top of a program to turn on **opt-in static type checking** (Rust-style: no implicit conversions). It is off by default — existing code is unaffected, and MSX's usual implicit numeric conversions still apply in non-strict code. Under `STRICT`:
 
 - **Every variable, array, parameter, `FOR` variable and `CONST` must carry a type suffix** — `%` integer, `!` single, `#` double, `$` string. Untyped names are an error (`E_STRICT_UNTYPED`).
 - **Assignments, function arguments and return values must match the type exactly.** No implicit conversion: `A% = B#`, `A% = 1.5`, and any string/number mix are errors (`E_TYPE_MISMATCH`). Convert explicitly with `CINT` / `CSNG` / `CDBL` / `INT` / `FIX` / `ASC` / `STR$` / `VAL` …
@@ -186,6 +175,73 @@ AVG! = CSNG(TOTAL%) / 10        ' explicit % -> ! conversion
 ```
 
 See [`examples/strict-demo.msxb`](examples/strict-demo.msxb).
+
+---
+
+## Transpiler & output
+
+**Automatic conversion.** The transpiler never silently mis-converts — it maps structured code to line-numbered MSX-BASIC deterministically:
+
+- **Line numbering** — `MAIN` (your top-level code) starts at 100; each function gets its own 1000-step segment (1000, 2000, …), each marked with a comment.
+- **Variable names (length extension)** — MSX-BASIC keeps only a name's first two characters (`COUNT` and `COUNTER` collide) and rejects `_`. FunctionBASIC lifts that: write long descriptive names and an allocator maps each to a unique 2-char MSX name. Pools are per type (`%`/`!`/`#`/`$`, ~960 names each, reserved words excluded) and non-overlapping locals reuse names; a full pool reports `E_VAR_NAMES_EXHAUSTED`.
+- **Function expansion** — every `FUNCTION` becomes a `GOSUB` block; calls become `GOSUB <line>` and the call site reads the result variable afterward. Return values go through a dedicated internal variable copied immediately after the `GOSUB`; recursion saves/restores frames on a software stack.
+- **Arrays by reference** — passing the same array always reuses one block (zero copy); calling a function with *different* arrays duplicates the block per array (monomorphization), so there is no per-call array copy.
+- **255-byte line auto-split** — long generated lines are split safely.
+
+**Multi-file projects.** Split code with `INCLUDE`; the build/run uses a single **entry (main) file**, auto-detected (the file with top-level code that nothing else `INCLUDE`s) or pinned explicitly in the project tree. Library files (functions only) are never run standalone. MSX-BASIC has no linker, so everything merges into one program — matching the classic `$INCLUDE`/main-module model. A bundled MSX2 helper library ships too: `INCLUDE "lib/msx2.msxb"` gives high-level `M2_*` helpers (SCREEN 5 + 16×16 sprite setup, palette `M2_PAL`, sprite define/show, flicker-free double buffering `M2_FRAME`/`M2_SHOW`, frame timing `M2_WAIT`, channel-C SFX `M2_SE`); the browser editor resolves bundled libraries. See [`examples/lib/msx2.msxb`](examples/lib/msx2.msxb) and [`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb).
+
+**Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), jump-safe comment stripping, and **hot-function placement** (frequently-called functions get lower line numbers to shorten MSX's `GOSUB` line search). Off by default and guarded so runtime results never change.
+
+**Safe diagnostics** — errors carry codes and line/column and show as gutter markers. Output is Shift-JIS (unrepresentable characters are reported, not corrupted).
+
+**Target machines** — MSX1 / MSX2 / MSX2+ / turbo R (default turbo R); the built-in command table is editable in Settings. The whole per-generation command set transpiles correctly — text/printing/file I/O (`PRINT USING`, `LPRINT`, `LINE INPUT`, `OPEN/CLOSE/FIELD … AS`, `GET/PUT #`, `KILL`, `NAME … AS`), type conversion (`CINT`/`CSNG`/`CDBL`, `CVI`/`MKI$` …), file/format functions (`EOF`, `LOC`, `LOF`, `DSKF`, `TAB`, `SPC`, `USR`), the `CALL <name>` / `_<name>` extension mechanism (incl. MSX-MUSIC and MSX-AUDIO), MSX2+ modes (`SCREEN 10`–`12`, `SET SCROLL`), turbo R (`_TURBO ON`/`OFF`, `CALL PCMPLAY`/`PCMREC`/`PAUSE`), and event traps (`ON SPRITE/KEY/INTERVAL … GOSUB <fn>`, `ON ERROR GOTO`, computed `ON <x> GOTO/GOSUB`). A category cookbook in [`examples/cookbook/`](examples/cookbook/) exercises every built-in at least once, checked by `test/cookbook-coverage.test.ts`.
+
+---
+
+## Editor
+
+- **INCLUDE-aware project tree** — entries with their includes nested; on the desktop app a project is a **folder** (`Cmd+O` opens it, `Cmd+S` saves the current `.msxb` in place with no dialog, *Convert & Save* / Run write everything then transpile, *Reload from Disk* re-reads it). Hover a tree entry for a **file-path tooltip**.
+- **Structured⇔MSX-BASIC line-correspondence highlight** — in split view, moving the caret in either pane highlights the exact line(s) it maps to in the other and scrolls them into view; a source line that produces nothing (a `GLOBAL` declaration, comment, or blank line) says so in the header instead.
+- **Read-only conversion table** — open it from the project tree to see the generated map: how each long name compresses to its 2-char MSX name (globals and per-function locals), every function's entry line / parameters (incl. `REF`) / return variable, and `BREAK`/`CONTINUE` jump targets. Copy it as `.map.json`.
+- **Problems panel** — validates the whole project live (every entry's `INCLUDE` graph), so cross-file errors (e.g. a duplicate function in a library) surface with the right file:line and one-click jump, plus a quick-fix to create a missing `INCLUDE` and an unused-`INCLUDE` warning.
+- **Cross-file navigation** — go-to-definition / find-usages / rename (with a preview), `INCLUDE`-line jump (`Cmd+B` / `Cmd`-click) and `INCLUDE` path autocomplete.
+- **Find / replace** — plus project-wide "Find in Files" (JetBrains keymap, regex) and token-aware **safe rename** (`Shift+F6`).
+- **Editing aids** — auto-indent, bracket/quote auto-close, current-line highlight, line move/duplicate (each toggleable), undo/redo, and closable split tabs.
+- **In-app Settings** — language, font size, and the webMSX run machine / `PRESETS` / URL.
+- **Native OS menu** and **Japanese / English UI**, all in the lightweight, zero-dependency editor.
+
+---
+
+## Run & export
+
+- **Instant run** — one click loads and `RUN`s the program in an embedded webMSX.
+- **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX or real hardware.
+- **MSXPLAYer export (`.sav`)** — write a `.sav` virtual floppy for the official MSX emulator **MSXPLAYer** (the same FAT12 image, all 1440 sectors repacked). Overwrite-safe — the existing file is auto-backed-up first. It is a data hand-off, not a boot disk: place it on MSXPLAYer's work drive, then `FILES` / `RUN"NAME.BAS"`. (*File → Save for MSXPLAYer (.sav)…*) Format per SAVList / MakeBlankSav (MIT).
+
+Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — **macOS** (Apple Silicon): `.dmg` (drag to Applications) or `.zip` (unzip the `.app`); **Windows** (x64): `.msi` or `.exe` installer. Other targets (macOS Intel, Linux) → [build from source](#building-from-source). The apps are **not code-signed/notarized**, so the first launch is blocked: on **macOS**, right-click the app → Open → Open (once), or run `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`; on **Windows**, SmartScreen may warn — click **More info → Run anyway**. You can also just run the browser editor (`npm run serve`).
+
+### Current limitations of the embedded WebMSX player
+
+The in-app player embeds [webMSX](https://webmsx.org) as a **cross-origin iframe**, which means it can only be driven by rebooting with a data-URL disk each run. This brings a few limitations (transpilation itself is unaffected — the generated MSX-BASIC is correct):
+
+- **No FM (MSX-MUSIC) sound here.** Programs using `CALL MUSIC` / `PLAY #2` transpile correctly and play in MSXPen / openMSX / real hardware, but FM stays silent in the embedded player. Verify FM elsewhere.
+- **No MSX-AUDIO.** webMSX does not emulate MSX-AUDIO (Y8950); `CALL AUDIO` etc. need openMSX or real hardware.
+- **Reboot per run.** Every run reboots the machine (there is a short lead time and no state is preserved between runs).
+- **Machine is webMSX's default.** turbo R–only programs (`_TURBO …`, examples/turbo-r.msxb) need the machine switched to turbo R via the webMSX gear (⚙) menu.
+- **Audio needs a click.** Browsers may keep audio suspended until you click the webMSX screen once (Web Audio autoplay policy).
+- **Very large programs can exceed the autorun URL.** Each run embeds the transpiled program as a ZIP inside the page URL. The app minimizes it automatically — it **strips comments, packs statements onto fewer lines, and uses a compact URL encoding** for the run payload only (your source, saved files and the program's behavior are all unchanged). A program much larger than the Space Shooter example can still exceed the URL length the embedded WebView accepts; if a run reports **"URI Too Long"**, use **Save Disk (.dsk)** and drag it into webMSX (`RUN"NAME.BAS"`) instead. (The comment-strip *setting* is separate — it only affects the displayed/saved `.bas`, not the run, which always optimizes internally.)
+
+For sound-accurate or stateful testing, **Save Disk (.dsk)** and run in openMSX or on real hardware. (A future same-origin player could remove the reboot-per-run and FM limitations — see `TODO.md`.)
+
+> **Tip — paste into MSXPen.** Use the **📋 Copy** button on the *MSX-BASIC (output)* tab to copy the converted program, then paste it into [MSXPen](https://msxpen.com) and run it there — the same program plays with FM audible. Exactly **why FM stays silent in this app's embedded player is still unclear** (a likely-but-unconfirmed cause is that our per-run reboot auto-runs the program from disk before the FM chip has finished initializing). For now, pasting into MSXPen is a reliable way to hear FM without leaving the browser.
+
+---
+
+## Reverse tools
+
+- **Decompiler** — import *any* line-numbered MSX-BASIC and get Structured BASIC back: rebuilt blocks, `GOSUB`→`FUNCTION`, recovered `GOTO` loops, `DEF FN`, event traps, and inferred variable names (best-effort, with warnings). A round-trip harness (`scripts/eval-reverse.ts`) measures accuracy on a real-world corpus (kept local, not committed): **~95% of real `.bas` listings re-transpile cleanly** (essentially all within MSX-BASIC scope; the residual gaps are non-MSX dialects like `PRINT @` / `THEN`-less `IF`, or corrupted/binary listings). *File → Import plain MSX-BASIC…*
+- **Reverse transpilation** — turn FunctionBASIC's own output back into Structured BASIC via the generated map (restoring the original file split where possible).
+- **Machine-code annotation** — disassembles Z80 machine code embedded in `DATA` (the `READ`→`POKE`→`USR` idiom) into mnemonic comments with BIOS calls named; stripped on transpile.
 
 ### Machine-code disassembly (annotation)
 
@@ -214,117 +270,49 @@ DATA 62, 42, 205, 162, 0, ...
 
 A complete, playable **fixed shooter** — a colourful alien fleet that marches and speeds up as it thins, two-plane hardware sprites, per-row colours, leg animation, sound effects, lives, and a title screen — written **entirely in Structured BASIC** and transpiled to authentic MSX-BASIC that runs on a real turbo R. Full source: [`examples/space-shooter-turbor.msxb`](examples/space-shooter-turbor.msxb).
 
+It now doubles as a showcase for the game-BASIC constructs: **`STRUCT`** for the projectiles (`Projectile { X%, Y%, ACTIVE% }`), **`SELECT CASE`** for the joystick direction and the win/lose end screen, and **`DATASET`** blocks naming each sprite's artwork (`ALIEN_A`, `PLAYER_BODY`, …). Frame timing deliberately stays on `HALT`/`WAIT_FRAME` rather than `EVENT TIMER` — the game wants a deterministic per-frame loop.
+
 **How to play** — in webMSX pick the **turbo R** machine, press **▶ WebMSX**, then **be patient**: webMSX's turbo R boot is slow, so it can take **~30–40 seconds** before the title screen appears. At the title press **SPACE** to start. **← / →** move, **SPACE** fires. (The game deliberately refuses to run on anything older than a turbo R.)
 
-**Why write it in Structured BASIC?** The same game in hand-numbered MSX-BASIC would be a wall of `GOSUB`s and cryptic two-letter variables. Here it stays readable:
+Why write it in Structured BASIC? The same game in hand-numbered MSX-BASIC would be a wall of `GOSUB`s and cryptic two-letter variables. Here it stays readable:
 
-- **Real functions, not `GOSUB` line-jumps** — `MARCH()`, `FIRE()`, `CHECK_HIT()`, `DRAW_ALIEN()`, `HIT_PLAYER()` … each a named `FUNCTION` with its own local variables. The transpiler assigns the line numbers, the `GOSUB`/`RETURN` wiring, and the two-character MSX variable names for you.
-- **`GLOBAL` for shared state, locals by default** — persistent game state (`FLEET_COL%` fleet position, `SCORE%`, `LIVES%` …) is declared `GLOBAL`; loop counters and scratch stay local automatically, so functions don't clobber each other. (Names are yours to make descriptive — the transpiler compresses each to a unique two-character MSX name at zero runtime cost.)
-- **STRICT static typing** — every variable and constant carries a type suffix and is `%` (16-bit integer), keeping the whole game on MSX-BASIC's fast integer path.
+- **Real functions, not `GOSUB` line-jumps** — `MARCH()`, `FIRE()`, `CHECK_HIT()`, `DRAW_ALIEN()`, `HIT_PLAYER()` … each a named `FUNCTION` with its own locals. The transpiler assigns the line numbers, the `GOSUB`/`RETURN` wiring, and the two-character MSX variable names.
+- **`GLOBAL` for shared state, locals by default** — persistent game state (`FLEET_COL%`, `SCORE%`, `LIVES%` …) is `GLOBAL`; loop counters and scratch stay local automatically. Descriptive names compress to unique two-character MSX names at zero runtime cost.
+- **STRICT static typing** — every variable and constant is `%` (16-bit integer), keeping the whole game on MSX-BASIC's fast integer path.
 - **Art you can read** — the ship, bullets and alien tiles are drawn as ASCII pictures inside `DATA` (`"......####......"`), converted to bytes at load. You edit the *picture*, not hex.
-- **Inline Z80 for the hot path** — the entire fleet redraw is an `ASM … END ASM` block. The transpiler assembles it, reserves a machine-code buffer just below `HIMEM`, patches its variable references, and calls it with `USR` — no `DATA`/`READ`/`POKE` boilerplate. That single change took the alien march from a stuttery **~10 fps** to a smooth **~27 fps** on a turbo R: arcade-smooth motion, still from one readable BASIC source.
+- **Inline Z80 for the hot path** — the entire fleet redraw is an `ASM … END ASM` block: assembled, given a machine-code buffer just below `HIMEM`, its variable references patched, and called with `USR` — no `DATA`/`READ`/`POKE` boilerplate. That single change took the alien march from a stuttery **~10 fps** to a smooth **~27 fps** on a turbo R.
 
 It reads like modern structured code, and runs on a real 8-bit MSX.
-
----
 
 ### Featured example #2 — Scroll Runner (turbo R)
 
 ![A side-scrolling runner in webMSX: a white runner on green terraced blocks under a blue sky, with flat ground, a gap and a raised multi-tile ledge ahead](docs/images/runner-play.png)
 
-A complete **forced-scroll auto-runner** — the ground slides by on the V9958's **hardware horizontal smooth scroll**, procedurally generated terraced terrain (flat plateaus joined by multi-tile ledges, pits and obstacles) rolls in from the right, and you time jumps to ride the hills, drop off the cliffs, clear the gaps and hop the rocks. Written **entirely in Structured BASIC — no inline assembly at all** — and still playable on a real turbo R. Full source: [`examples/runner-turbor.msxb`](examples/runner-turbor.msxb).
+A complete **forced-scroll auto-runner** — the ground slides by on the V9958's **hardware horizontal smooth scroll**, procedurally generated terraced terrain (plateaus, ledges, pits, obstacles) rolls in from the right, and you time jumps to ride the hills, drop off the cliffs and clear the gaps. Written **entirely in Structured BASIC — no inline assembly at all** — and still playable on a real turbo R. Full source: [`examples/runner-turbor.msxb`](examples/runner-turbor.msxb).
 
-**How to play** — pick the **turbo R** machine, press **▶ WebMSX**, wait for the (slow) turbo R boot, then at the title press **SPACE**. **← / →** move, **SPACE** jumps — *hold it longer to jump higher and farther*. Ride the terraces, fall off the ledges, clear the pits. Fail to clear a tall wall and the forced scroll squeezes you off the left edge — game over. It speeds up the farther you get. (turbo R required.)
+**How to play** — pick the **turbo R** machine, press **▶ WebMSX**, wait for the (slow) turbo R boot, then at the title press **SPACE**. **← / →** move, **SPACE** jumps — *hold it longer to jump higher and farther*. Fail to clear a tall wall and the forced scroll squeezes you off the left edge — game over. It speeds up the farther you get.
 
-**The interesting part: a smooth scroller in _pure_ BASIC.** The space shooter above drops to inline Z80 for its hot path; this one deliberately uses **none** — and still scrolls smoothly, because the heavy lifting is handed to the hardware, not the CPU:
-
-- **Hardware smooth scroll, not redrawing the screen** — each frame nudges the V9958 scroll register (`SET SCROLL`, an accumulated per-pixel offset) and writes only the **one** new tile column entering at the right edge. The CPU never moves the whole playfield, so 8-bit BASIC keeps up with per-pixel motion.
-- **Everything else is readable Structured BASIC** — terrain generation, an explicit *grounded / airborne* physics state machine (gravity, variable-height jump, run-off-a-cliff, land), pixel-accurate collision, the wall-push squeeze and sound — all named `FUNCTION`s with `GLOBAL` state and STRICT integer math.
-- **Procedural terrain with rules** — plateaus of random length joined by ledges that step up (jump onto them) or drop off (fall), plus pits and obstacles, with a guaranteed safe run-in — so every run differs but stays fair.
-- **turbo R for the speed** — pure-BASIC per-frame logic is heavy; the fast R800 is what keeps it at a playable frame rate. It refuses to run on anything slower.
+The interesting part is that it scrolls smoothly in **pure** BASIC: each frame nudges the V9958 scroll register (`SET SCROLL`) and writes only the **one** new tile column entering at the right edge, so the CPU never redraws the whole playfield. Everything else — terrain generation, an explicit *grounded/airborne* physics state machine, pixel-accurate collision, the wall-push squeeze and sound — is readable named `FUNCTION`s with `GLOBAL` state and STRICT integer math. The fast R800 (turbo R) is what keeps the pure-BASIC per-frame logic at a playable frame rate.
 
 Two showcases, two philosophies: **the shooter** shows how to drop to inline Z80 for a hot loop when you need arcade speed; **the runner** shows how far *pure* Structured BASIC gets you when you let the MSX hardware do the heavy lifting.
 
----
+### Smaller examples
 
-**1. A simple function** — find the first zero in an array.
-
-Structured BASIC:
+A representative snippet — a function with a `REF` parameter and an early `RETURN`, scanning an array for the first zero:
 
 ```basic
-' find the first zero in an array
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
-        IF A(I) = 0 THEN
-            IDX = I
-            RETURN 1
-        END IF
+        IF A(I) = 0 THEN IDX = I : RETURN 1
     NEXT I
     RETURN 0
 END FUNCTION
-
-DIM A(10)
-A(3) = 0
-RESULT = FIND_ZERO(WHERE)
-PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
-Generated MSX-BASIC:
+Each `FUNCTION` becomes a `GOSUB` routine and every long name gets a unique 2-character MSX variable.
 
-```basic
-100 ' === MAIN ===
-110 ' find the first zero in an array
-120 DIM A(10)
-130 A(3)=0
-140 GOSUB 1000: B=E
-150 PRINT "FOUND=";B;" AT ";C
-160 END
-1000 ' === FUNCTION FIND_ZERO (IDX->C) ===
-1010 FOR D=1 TO 10
-1020 IF A(D)=0 THEN C=D: E=1: RETURN
-1030 NEXT
-1040 E=0: RETURN
-```
-
-**2. Multicolour cat from two overlapping sprites (MSX2)** — MSX hardware sprites are a single colour each, so a classic trick is to stack two sprites at the same position to get more colours. A cat (a white face sprite over an orange body sprite) bounces around the screen on its own. Full, convert-tested source: [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb).
-
-The heart of it — one cat is two sprites drawn at the same spot, then moved:
-
-```basic
-' one cat = two sprites at the same spot, in two colours
-PUT SPRITE 0, (CATX, CATY), 15, 0  ' front: white face
-PUT SPRITE 1, (CATX, CATY), 9, 1   ' behind: orange body
-```
-
-…which the transpiler turns into authentic MSX-BASIC (variables allocated, coordinates preserved):
-
-```basic
-300 PUT SPRITE 0,(A,B),15,0
-310 PUT SPRITE 1,(A,B),9,1
-```
-
-**3. Game skeleton** — a minimal main loop (illustrative).
-
-Structured BASIC:
-
-```basic
-FUNCTION UPDATE()
-    GLOBAL SCORE
-    SCORE = SCORE + 1
-    LOCATE 0, 0 : PRINT "SCORE"; SCORE
-END FUNCTION
-
-SCREEN 1
-SCORE = 0
-WHILE 1
-    UPDATE()
-    IF STRIG(0) THEN BREAK
-WEND
-PRINT "GAME OVER"
-```
-
-**More** — a full MSX2 `SCREEN 5` graphics + BGM/SE demo (custom palette, `LINE …,BF` / `CIRCLE` / `PAINT`, `SET PAGE` double-buffering, `COPY … TO …`, `PLAY`, `SOUND` — all MSX2 forms preserved verbatim) lives in [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb), and a recursion showcase (factorial / Fibonacci / mutual) in [`examples/recursion.msxb`](examples/recursion.msxb). Browse [`examples/`](examples/) and the per-feature [`examples/cookbook/`](examples/cookbook/).
+More, all convert-tested: a **multicolour sprite** trick (two hardware sprites stacked at the same spot for two colours — a self-bouncing cat) in [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb); a **game-loop skeleton** (`WHILE 1 … WEND` with `BREAK` on fire); an MSX2 **`SCREEN 5` graphics + BGM/SE** demo (custom palette, `LINE …,BF` / `CIRCLE` / `PAINT`, `SET PAGE` double-buffering, `COPY`, `PLAY`, `SOUND`) in [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb); and a **recursion** showcase (factorial / Fibonacci / mutual) in [`examples/recursion.msxb`](examples/recursion.msxb). Browse [`examples/`](examples/) and the per-feature [`examples/cookbook/`](examples/cookbook/).
 
 ---
 
@@ -332,53 +320,46 @@ PRINT "GAME OVER"
 
 Structured BASIC is meant to be written *with* an AI. The reliable workflow:
 
-1. **Give the AI the diff guide as context.** Paste or attach
-   [`docs/00-msx-basic-diff.en.md`](docs/00-msx-basic-diff.en.md) (Japanese:
-   [`docs/00-msx-basic-diff.md`](docs/00-msx-basic-diff.md)). It's a self-contained cheat-sheet of
-   exactly how Structured BASIC differs from MSX-BASIC — the rules, the gotchas and the error
-   codes — so the model generates valid `.msxb` instead of guessing plain MSX-BASIC.
-2. **Describe what you want** in plain language ("a side-scrolling runner where you jump over
-   gaps", "print the first 20 primes") and ask for a complete `.msxb` file.
-3. **Paste the result into FunctionBASIC and convert.** On a mistake the transpiler reports a
-   specific error code (`E_SYNTAX`, `E_NAME_IS_BUILTIN`, `E_STRICT_UNTYPED`, …) and a line — hand
-   that back to the AI ("fix this: &lt;error&gt;") and it self-corrects, because the diff guide
-   lists what each code means. It never mis-converts silently.
+1. **Give the AI the diff guide as context.** Paste or attach [`docs/00-msx-basic-diff.en.md`](docs/00-msx-basic-diff.en.md) (Japanese: [`docs/00-msx-basic-diff.md`](docs/00-msx-basic-diff.md)). It's a self-contained cheat-sheet of exactly how Structured BASIC differs from MSX-BASIC — the rules, the gotchas and the error codes — so the model generates valid `.msxb` instead of guessing plain MSX-BASIC.
+2. **Describe what you want** in plain language ("a side-scrolling runner where you jump over gaps", "print the first 20 primes") and ask for a complete `.msxb` file.
+3. **Paste the result into FunctionBASIC and convert.** On a mistake the transpiler reports a specific error code (`E_SYNTAX`, `E_NAME_IS_BUILTIN`, `E_STRICT_UNTYPED`, …) and a line — hand that back to the AI ("fix this: &lt;error&gt;") and it self-corrects, because the diff guide lists what each code means. It never mis-converts silently.
 4. **Run it** with ▶ WebMSX (or Save Disk for large programs) and iterate.
 
-Tip: for larger programs, tell the AI to keep game state in `GLOBAL`s with descriptive names, put
-each concern in its own `FUNCTION`, and use `STRICT` with `%` integers for game logic — the two
-featured examples above were built exactly this way.
+Tip: for larger programs, tell the AI to keep game state in `GLOBAL`s with descriptive names, put each concern in its own `FUNCTION`, and use `STRICT` with `%` integers for game logic — the two featured examples above were built exactly this way.
 
 ---
 
 ## Roadmap
 
-FunctionBASIC is early and developing. **`[x]` = done, `[ ]` = not yet** (no fixed dates):
+FunctionBASIC is early and developing. Shipped features are described in the sections above; what's **not yet done** (no fixed dates):
 
-- [x] **Built-in command coverage by generation** — the MSX / MSX2 / MSX2+ / turbo R command set transpiles correctly: text / printing / file I/O (`PRINT USING`, `LPRINT`, `LINE INPUT`, `OPEN/CLOSE/FIELD … AS`, `GET/PUT #`, `KILL`, `NAME … AS`), type conversion (`CINT`/`CSNG`/`CDBL`, `CVI`/`MKI$` …), file/format functions (`EOF`, `LOC`, `LOF`, `DSKF`, `TAB`, `SPC`, `USR`), the `CALL <name>` / `_<name>` extension mechanism (incl. MSX-MUSIC and MSX-AUDIO), MSX2+ modes (`SCREEN 10`–`12`, `SET SCROLL`), turbo R (`_TURBO ON`/`OFF`, `CALL PCMPLAY`/`PCMREC`/`PAUSE`), and event traps (`ON SPRITE/KEY/INTERVAL … GOSUB <fn>`, `ON ERROR GOTO`, computed `ON <x> GOTO/GOSUB`). A category cookbook in [`examples/cookbook/`](examples/cookbook/) exercises every built-in at least once, checked by `test/cookbook-coverage.test.ts`. See also [`examples/`](examples/).
-- [x] **Settings screen (initial version)** — in-app Settings dialog (app menu → Settings…) for language, font size, and the webMSX run machine / `PRESETS` / URL. *Still to do:* editing the built-in command/function table (with reset to defaults) and native-player / emulator paths.
-- [x] **MSX2 helper library (initial)** — `INCLUDE "lib/msx2.msxb"` for high-level `M2_*` helpers: SCREEN 5 + 16×16 sprite setup, palette (`M2_PAL`), sprite define/show (`M2_DEFSPR`/`M2_SPR`), **flicker-free double buffering** (`M2_FRAME`/`M2_SHOW`, correct `SET PAGE` order), frame timing (`M2_WAIT`), and a channel-C sound effect (`M2_SE`). Browser-editor `INCLUDE` resolves bundled libraries. See [`examples/lib/msx2.msxb`](examples/lib/msx2.msxb) and [`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb). More helpers (graphics primitives, tiles, scrolling) can follow.
-- [x] **Modern editor UX** — project file tree (multi-file, browser-persisted), find / replace and project-wide "Find in Files" (JetBrains keymap, regex), undo/redo, editing aids (auto-indent, bracket/quote auto-close, current-line highlight, line duplicate/move), closable tabs, **structured⇔MSX-BASIC line-correspondence highlighting** (caret in either pane highlights the mapped line(s) in the other), and a read-only **conversion table** (how long names compress to 2-char MSX names, plus each function's entry line / params / locals and control-flow targets) — all in the lightweight zero-dependency editor.
-- [x] **Machine-code disassembly annotation** — detect machine code embedded in `DATA` and annotate it with Z80 mnemonics (BIOS names resolved, control-flow-aware code/data separation) using the `'@` comment marker, stripped on transpile. (Edit → Disassemble machine-code DATA.)
-- [x] **Plain MSX-BASIC import (decompiler)** — map-free reverse from any line-numbered MSX-BASIC: structure recovery (`FOR`/`WHILE`/`IF`, `GOSUB`→`FUNCTION`, `GOTO`→loops, `DEF FN`, event traps) + variable-name inference, best-effort with warnings. Round-trip harness (`scripts/eval-reverse.ts`) measures accuracy on a real-world corpus (kept local / not committed): **~95% of real `.bas` listings re-transpile cleanly (essentially all within MSX-BASIC scope)**. Wired into the editor (*File → Import plain MSX-BASIC…*). The residual gaps are non-MSX dialects (`PRINT @`, `THEN`-less `IF`) and corrupted/binary listings.
-- [x] **MSXPLAYer `.sav` export** — write a `.sav` virtual floppy for the official MSX emulator (MSXPLAYer) by repacking the `.dsk` FAT12 image (all 1440 sectors); overwrite-safe (the existing file is auto-backed-up first). A data hand-off — place it on the work drive, then `FILES` / `RUN` — not a boot disk. (*File → Save for MSXPLAYer (.sav)…*) Format per SAVList / MakeBlankSav (MIT).
-- [ ] **Sound helpers** — BGM/SE helper layer (PSG, and where available FM/SCC), likely surfacing as the structured `SOUNDBLOCK` below. (`PLAY` statement+function and `SOUND` already transpile.)
-- [ ] **Native MSX playback (auto-launch)** — beyond the embedded webMSX and the `.sav` hand-off above: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script, and/or auto-launch MSXPLAYer. (Would also make FM/MSX-AUDIO audible — see the FM limitation under *Usage*.)
-- [ ] **Editor — code folding & large-file performance** — likely a CodeMirror-based editor, beyond today's lightweight zero-dependency one.
-- [ ] **Higher-level structured game-BASIC** (design stage) — syntax that compiles to authentic MSX-BASIC, aimed at making game code read like what it *does*. Structural features lower at zero runtime cost; runtime-heavy ones lean on the inline-Z80 path. Planned:
-  - **`SELECT CASE`** ✅ *shipped* (list / `TO` range / `IS` relational / `ELSE`) → a selector-evaluated-once `IF` chain. (There is no `ELSEIF`, so this is the readable multi-way branch. Dense-integer `ON … GOTO` jump-table is a possible future optimization.)
-  - **`DATASET name … END DATASET` + `READ name INTO …` / `RESTORE name`** ✅ *v1 shipped* — named data blocks that replace the opaque global `READ`/`DATA`/`RESTORE` pointer. v1 uses the memory-optimal **strategy A** (zero extra RAM; auto-`RESTORE` on block switch; read each block to completion before the next). A future opt-in **strategy B** (array-backed) would add random/interleaved access at a RAM cost.
-  - **`STRUCT`** ✅ *shipped* — `STRUCT … END STRUCT` + `DIM foe(N) AS Enemy` / `foe(i).HP`; lowered to struct-of-arrays (parallel per-field MSX arrays). **Zero runtime cost** vs hand-written parallel arrays; `GLOBAL foe` shares all fields across functions. (v1: flat fields; no whole-record pass.)
-  - **Graphics API** (`DrawLine` / `DrawRect` / `PutSprite` / `ClearScreen`) — SCREEN-mode-aware wrappers over `LINE` / `PSET` / `PUT SPRITE` / `COPY`, building on the `M2_*` helpers (a library layer; which ops exist depends on the mode).
-  - **`VRAMBLOCK` / `SOUNDBLOCK`** — declarative VRAM transfers (tiles/patterns → the appropriate transfer routine; large ones use the ASM path) and PSG/FM tone/SFX/BGM definitions (→ `PLAY` / `SOUND`; FM needs the MSX-MUSIC ROM; BGM needs an interrupt-driven player).
-  - **`EVENT TIMER`** ✅ *shipped* (→ `ON INTERVAL=n GOSUB` + `INTERVAL ON`; one timer, top-level; the handler shares MAIN's variables). Note it's a *cooperative* interrupt — it fires at BASIC statement boundaries, not preemptively. **`EVENT VBLANK`** is intentionally **not** supported: a true VBLANK hook can't safely re-enter the BASIC interpreter — use `HALT`-based frame sync (as the shooter does) or an ASM hook that sets a flag BASIC polls.
-
-  Structural features (`SELECT CASE`, `DATASET`, `STRUCT`) land first; the runtime/library ones follow. Also planned: more string helpers and local arrays. *(`CONST` named constants done.)*
-- [x] **Windows support (build & test)** — the Tauri desktop app builds and runs on Windows (x64); `.msi` and `.exe` installers are published in [Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest). ⚠️ **Not code-signed yet** — Windows SmartScreen warns on first run (*More info → Run anyway*). Code-signing and CI packaging are still to do.
-- [ ] **AI integration** — tighter "describe it, generate it, convert it, run it" flow with Claude.
-- [ ] **Tooling / CI** — expand GitHub Actions (core tests already run) to full desktop (Tauri) builds, signed / notarized binaries, and release packaging.
+- **Native MSX playback (auto-launch)** — beyond the embedded webMSX and the `.sav` hand-off: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script, and/or auto-launch MSXPLAYer. (Would also make FM/MSX-AUDIO audible — see the FM limitation under [Run & export](#run--export).)
+- **Editor — code folding & large-file performance** — likely a CodeMirror-based editor, beyond today's lightweight zero-dependency one.
+- **More language growth** — `DATASET` strategy B (array-backed random/interleaved access, at a RAM cost), `SELECT CASE` v3 (dense-integer `ON … GOTO` jump table), more string helpers, and local arrays.
+- **Graphics API** (`DrawLine` / `DrawRect` / `PutSprite` / `ClearScreen`) — SCREEN-mode-aware wrappers over `LINE` / `PSET` / `PUT SPRITE` / `COPY`, building on the `M2_*` helpers.
+- **`VRAMBLOCK`** — declarative VRAM transfers (tiles/patterns → the appropriate transfer routine; large ones use the ASM path).
+- **`SOUNDBLOCK` / sound helpers** — declarative PSG/FM tone/SFX/BGM definitions (→ `PLAY` / `SOUND`), PSG first, with FM (needs the MSX-MUSIC ROM) and interrupt-driven BGM later. (`PLAY` and `SOUND` already transpile.)
+- **AI integration** — a tighter "describe it, generate it, convert it, run it" flow with Claude.
+- **Tooling / CI** — expand GitHub Actions (core tests already run) to full desktop (Tauri) builds, signed / notarized binaries, and release packaging.
 
 Tracked work and ideas live in the issue tracker. Suggestions are welcome.
+
+---
+
+## Building from source
+
+**Prerequisites:** [Node.js](https://nodejs.org/) ≥ 22.6 (for the zero-dependency core and the browser editor). For the desktop app you also need the [Rust toolchain](https://www.rust-lang.org/tools/install) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS (on macOS, the Xcode Command Line Tools).
+
+The core has **no npm dependencies**, so there is nothing to `npm install`.
+
+- **Run the core tests:** `npm test` — type-stripped TypeScript tests via Node's built-in test runner.
+- **Browser editor (no build tools):** `npm run serve`, then open `http://localhost:8123`. This type-strips the core into `editor/core/` and serves the editor.
+- **Desktop app (development):** `npm run app:dev` — builds the core and launches the Tauri dev window (Rust + system WebView).
+- **Desktop app (release build):** `npm run app:build` — produces a bundled application under `src-tauri/target/release/bundle/` for your platform. On macOS this is `FunctionBASIC.app` (in `bundle/macos/`) and a `FunctionBASIC_<version>_<arch>.dmg` installer (in `bundle/dmg/`).
+
+The desktop scripts use `npx @tauri-apps/cli`, so the Tauri CLI is fetched on demand (still no committed dependencies).
+
+> **macOS — opening an unsigned build.** The app is not yet code-signed/notarized (that needs an Apple Developer ID). The first launch is blocked by Gatekeeper; **right-click the app → Open → Open** (once), or run `xattr -dr com.apple.quarantine FunctionBASIC.app`. The default build is Apple-Silicon (arm64); building an Intel/universal binary needs the extra Rust target.
 
 ---
 
@@ -416,6 +397,8 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 モダンなブロック構造の構造化BASICを書き、本物のMSX-BASICへ変換し、そのまま webMSX で即実行 — すべて1つのエディタの中で。
 
+**[English](#functionbasic)** · **[⬇ デスクトップ版をダウンロード](https://github.com/suzuki-black/FunctionBASIC/releases/latest)**
+
 > ⚠️ **これは実験的かつ発展途上のツールです。** 言語・変換器・エディタはいずれも進化の途中で、粗削りな部分・破壊的変更・未実装機能があります。フィードバックと貢献を歓迎します。
 
 ![変換画面：左に構造化BASIC、右に生成されたMSX-BASIC](docs/images/convert-ja.png)
@@ -428,100 +411,37 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 ---
 
-## ダウンロード
+## これは何か
 
-ビルド済みデスクトップ版：**[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — **macOS**（Apple Silicon）：`.dmg`（Applicationsへドラッグ）/ `.zip`（`.app` を展開）、**Windows**（x64）：`.msi` または `.exe` インストーラ。
+**FunctionBASIC** は、**構造化BASIC**（本物の関数・ブロック構造・ローカル変数・参照引数を備えたモダンな方言）を書くための小さなエディタ兼トランスパイラです。あなたのコードを、8bit実機やエミュレータで動く**昔ながらのMSX-BASIC**（行番号・`GOSUB`/`GOTO`・2文字変数）へ変換し、その結果を内蔵の **webMSX** で即実行します。だから *書く→変換→実行* のループがワンクリックです。
 
-> ⚠️ **配布物は macOS（Apple Silicon / arm64）と Windows（x64）。** それ以外（macOS Intel・Linux 等）は[ソースからビルド](#ソースからのビルド)。**コード署名/公証していない**ため初回起動は止められます — **macOS** はアプリを右クリック → 開く → 開く（初回のみ）、または `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`。**Windows** は SmartScreen が警告したら **詳細情報 → 実行** をクリック。ブラウザ版（`npm run serve`）だけでも使えます。
+**構造化BASIC**は、いまの感覚で書けるBASICです。`GOSUB` の行ジャンプではなく名前付き `FUNCTION`、自由に入れ子にできる `IF/ELSE/END IF` や `FOR/NEXT`、既定でローカルな変数、共有したいときだけ使う `GLOBAL`、そして真の参照渡しを行う `REF` 引数。行番号も手作業の変数管理も不要です。
 
----
-
-## 概要
-
-**FunctionBASIC** は、**構造化BASIC**（本物の関数・ブロック構造・ローカル変数・参照引数を備えたモダンな方言）を書き、それを**昔ながらのMSX-BASIC**（行番号・`GOSUB`/`GOTO`・2文字変数）へ変換する小さなエディタ兼トランスパイラです。変換結果はエディタから離れることなく **webMSX** で即実行できます。
-
-**構造化BASICとは？** いまの感覚で書けるBASICです。`GOSUB` の行ジャンプではなく名前付き `FUNCTION`、自由に入れ子にできる `IF / ELSE / END IF` や `FOR / NEXT`、既定でローカルな変数、共有したいときだけ使う `GLOBAL`、そして真の参照渡しを行う `REF` 引数。行番号も手作業の変数管理も不要です。
-
-**なぜMSX-BASICへ変換するのか？** 実機のMSX（やエミュレータ）はトークン化されたMSX-BASICで動きます。変換することで、構造化された書き味のまま、8bit実機やエミュレータで動く——行番号・2文字変数・`GOSUB`ベースの——MSXが直接理解できるプログラムを得られます。
-
-**逆方向にも変換できます。** FunctionBASIC は素の行番号付きMSX-BASICを構造化BASICへ*逆変換（デコンパイル）*できます——マップ不要。昔の打ち込みリストを入れると、入れ子ブロック・名前付き `FUNCTION`・復元されたループ・推測された変数名が得られます。出力は実在プログラムの大多数でそのまま再トランスパイル可能です（下の取込/デコンパイラ項目を参照）。
-
-**なぜwebMSXか？** webMSX は優れたブラウザ向けMSXエミュレータです。FunctionBASIC は（外部サービスとして iframe 経由で）これを埋め込み、変換結果を直接流し込むので、*書く→変換→実行* のループがワンクリックになります。ディスクの差し替えも手動 `RUN` も不要です。
-
-**AI（Claude）との相性。** 構造化BASICは普通の構造化コードのように読めます。これはまさに Claude のような大規模言語モデルが得意とする形で、手作業で行番号を振ったスパゲッティBASICより遥かに安定して生成できます。関数をAIに頼んで貼り付け、変換して実行——本プロジェクト自体も Claude と反復的に作られました。
+逆方向にも変換できます。FunctionBASIC は素の行番号付きMSX-BASICを、マップ不要で構造化BASICへ*逆変換（デコンパイル）*できます（[逆方向ツール](#逆方向ツール)参照）。また構造化BASICは普通の構造化コードのように読めるため、Claude のようなAIアシスタントと非常に相性が良く（[AIとのバイブコーディング](#aiとのバイブコーディング)参照）、本プロジェクト自体も Claude と反復的に作られました。
 
 ---
 
-## 特徴
+## クイックスタート
 
-**言語**
-- **構造化BASIC** — `FUNCTION`、自由に入れ子可能な `IF/FOR/WHILE`、既定ローカル変数、`GLOBAL`、`REF` 参照引数、`BREAK`/`CONTINUE`、`RETURN`、配列（参照渡し含む）、`CONST` 名前付き定数（コンパイル時に畳み込み＆インライン）。
-- **再帰** — 自己・相互再帰の関数が動く。再帰 `GOSUB` の前後でフレームをソフトウェアスタックへ自動退避／復元（深さ可変。再帰関数内の `REF` 引数は誤変換せずエラー報告）。
+1. **構造化BASICを書く** — 関数・ブロック・ローカル変数。行番号は不要。
+2. **変換** — *MSX-BASIC変換後* タブに、入力に追従して行番号付きBASICがライブ表示されます。**変換して保存** で Shift-JIS として書き出します。
+3. **実行** — **▶ WebMSX**（または Ctrl/Cmd+Enter）。プログラムが梱包されて内蔵 webMSX に読み込まれ、自動で起動・`RUN` します。実機や openMSX 向けには **ディスク(.dsk)を保存** を使います。
+
+ビルド済みアプリが欲しい方は **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** から（[実行・書き出し](#実行書き出し)、[ソースからのビルド](#ソースからのビルド)参照）。ブラウザ版（`npm run serve`）だけでも使えます。
+
+---
+
+## 言語
+
+### 構造化された制御フロー
+
+- **`FUNCTION`** — トップレベルの名前付き関数。独自のローカル変数を持ち、呼び出しは自動で `GOSUB` になります。引数の前の `REF` で真の参照渡し（配列・文字列配列も可）。
+- **入れ子にできる `IF/FOR/WHILE`** — 自由に入れ子できるブロック形式。`BREAK` / `CONTINUE` と `RETURN [値]` 対応。
+- **既定ローカル、共有は `GLOBAL`** — 変数は `GLOBAL` 宣言しない限りローカルなので、関数どうしが壊し合いません。
 - **長く読みやすい変数名** — `PLAYER_SCORE` / `ENEMY_X` のような説明的な名前を書け、変換器が一意な2文字MSX名へ自動割り当て（MSXは先頭2文字しか区別しない）。
-- **インライン Z80 アセンブリ** — `ASM … END ASM` を機械語にアセンブルして自動で埋め込む：コードは `HIMEM` 直下に予約したバッファへ配置（実行時に HIMEM を読むので機種非依存・255バイトの文字列上限に縛られない）、`(NAME)` は `VARPTR` で `%`整数BASIC変数のアドレスに1回だけパッチ、ループ/分岐用のラベル＋相対ジャンプ（`JR`/`DJNZ`）、`DEFUSR`/`USR` で実行。[スペースシューター](#目玉サンプル--スペースシューターturbo-r)の滑らかな艦隊再描画に使用。（`%`整数変数のみ・ラベルへの絶対 `CALL`/`JP` は未対応）
-
-**MSX-BASICへの変換**
-- **自動変換** — 行番号付与、2文字変数の割り当て、`FUNCTION`→`GOSUB` 展開、戻り値処理、255バイト行の自動分割。
-- **複数ファイル対応** — `INCLUDE` でコードを分割。ビルド/実行は単一の**エントリ（main）ファイル**を起点にする。自動判定（トップレベルに実行コードがあり、他からINCLUDEされていないファイル）か、プロジェクトツリーで明示指定。関数だけのライブラリファイルは単体実行されない。MSX-BASICにリンカは無いので全て1本のプログラムへ統合される（古典の `$INCLUDE`/メインモジュール方式と同じ）。
-- **オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去、**ホット関数の低行番号配置**（よく呼ぶ関数を低い行番号へ＝MSXの `GOSUB` 行番号探索を短縮）。いずれも既定OFFで、実行結果を変えないようガード。
-- **安全な診断** — 黙って誤変換しない。エラーはコード＋行・列付きでガターに表示。出力は Shift-JIS（表現不能文字は壊さず報告）。
-- **対象機種** — MSX1 / MSX2 / MSX2+ / turboR（既定 turboR）。組み込み命令表は編集可能。
-
-**実行・書き出し**
-- **即時実行** — 埋め込み webMSX に流し込み、自動でロード＆`RUN`。ワンクリック。
-- **実ディスク書き出し** — openMSX・実機用に 720&nbsp;KB FAT12 の `.dsk` を生成。
-- **MSXPLAYer書き出し（`.sav`）** — 公式MSXエミュレータ **MSXPLAYer** 用の `.sav` 仮想フロッピーを生成（中身は同じ FAT12 イメージの詰め替え）。**上書き前に既存ファイルを自動バックアップ**。起動ディスクではなくデータ受け渡し用途で、MSXPLAYer のワークドライブに置いて `FILES` / `RUN"NAME.BAS"`。
-
-**逆方向ツール**
-- **デコンパイラ** — *任意の*行番号付きMSX-BASICを構造化BASICへ逆変換：ブロック再構築、`GOSUB`→`FUNCTION`、`GOTO`ループ復元、イベントトラップ、変数名推測。実コーパスの約95%がエラーなく再変換可能。*ファイル → 素のMSX-BASICを取込…*
-- **逆変換** — FunctionBASIC 自身の出力を、生成マップで構造化BASICへ戻す（元のファイル分割も可能な範囲で復元）。
-- **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語（`READ`→`POKE`→`USR`）を Z80 ニーモニックの注釈に（BIOS呼び出しは名前解決）。変換時に削除。
-
-**エディタ** — シンタックスハイライト、ライブプレビュー、エラー表示、**INCLUDE構造を反映したプロジェクトツリー**（エントリの下に取り込みを入れ子表示）。**行対応ハイライト** — 分割表示で、構造化・MSX-BASICどちらのペインでもキャレットを移動すると、対応する相手ペインの行が緑でハイライトされ表示位置までスクロールします。各ソース行がどの出力になるか一目で分かり、出力を生まない行（`GLOBAL` 宣言・コメント・空行）はヘッダにその旨を表示します。**変換テーブル** — 生成される対応表を読み取り専用で表示（プロジェクトツリーから開く）：各長い名前が2文字のMSX名にどう圧縮されるか（グローバル／関数ごとのローカル）、各関数の先頭行・引数（`REF`含む）・戻り値、`BREAK`/`CONTINUE` の飛び先。`.map.json` としてコピー可能。デスクトップ版では**プロジェクト＝フォルダ**：`Cmd+O` で開き、`Cmd+S` で編集中の `.msxb` をその場に無ダイアログ保存、*変換して保存*/実行は全保存してから変換、*ディスクから再読込*で読み直し。**Problemsパネル**がプロジェクト全体（各エントリの `INCLUDE` グラフ）をライブ検証し、他ファイルのエラー（例：ライブラリの重複関数）も由来 file:line 付きで常時表示＋ワンクリックでジャンプ。未解決 `INCLUDE` の「＋作成」クイックフィックスと未使用 `INCLUDE` 警告も。**クロスファイルの定義ジャンプ/使用箇所/リネーム（プレビュー付き）**、`INCLUDE` 行のジャンプ（`Cmd+B`/`Cmd`+クリック）と `INCLUDE` パス補完。さらに 検索・置換・全体検索（JetBrains風キーマップ・正規表現）、字句解析ベースの**安全な一括リネーム**（`Shift+F6`）、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製。各々ON/OFF）、閉じられる分割タブ、OSネイティブメニュー、日本語/英語UI。
-
----
-
-## 使い方
-
-1. **構造化BASICを書く**（関数・ブロック・ローカル変数。行番号は不要）。
-2. **変換** — 「MSX-BASIC変換後」タブに、入力に追従して行番号付きBASICがライブ表示されます。「変換して保存」で Shift-JIS として書き出します。
-3. **実行** — **▶ WebMSX**（または Ctrl/Cmd+Enter）。プログラムが梱包されて埋め込み webMSX に読み込まれ、自動で起動・実行します。実機や openMSX 向けには **ディスク(.dsk)を保存** を使います。
-
-### 埋め込み WebMSX 実行の現状の制限
-
-アプリ内プレイヤーは [webMSX](https://webmsx.org) を**別オリジンの iframe** として埋め込んでいるため、実行のたびに data-URL ディスクで**リブートする**方式に限られます。これにより以下の制限があります（**変換自体には影響なし**＝生成される MSX-BASIC は正しい）：
-
-- **FM（MSX-MUSIC）音は鳴りません。** `CALL MUSIC` / `PLAY #2` を使うプログラムは正しく変換され、MSXPen・openMSX・実機では鳴りますが、埋め込みプレイヤーでは無音です。FM は他環境で確認してください。
-- **MSX-AUDIO 非対応。** webMSX は MSX-AUDIO（Y8950）をエミュレートしません。`CALL AUDIO` 等は openMSX か実機が必要です。
-- **実行ごとにリブート。** 毎回マシンが再起動します（短いリードタイムがあり、実行間で状態は保持されません）。
-- **マシンは webMSX 既定。** turbo R 専用プログラム（`_TURBO …`、examples/turbo-r.msxb）は、webMSX の歯車（⚙）メニューでマシンを turbo R に切り替えてください。
-- **音はクリックで開始。** ブラウザの自動再生制限により、webMSX 画面を一度クリックするまで音が止まることがあります。
-- **非常に大きいプログラムは自動実行URLの上限を超えることがあります。** 実行のたびに変換後プログラムを ZIP 化してページURLに載せます。アプリは実行用ペイロードだけを自動で最小化します — **コメント除去・文の行パッキング（`:`連結）・コンパクトなURLエンコード**（ソース・保存ファイル・実行結果はすべて不変）。スペースシューター例よりかなり大きいプログラムだと、埋め込みWebViewが受け付けるURL長を超える場合があり、実行時に **「URI Too Long」** が出たら **ディスク(.dsk)を保存** して webMSX にドラッグ（`RUN"NAME.BAS"`）してください。（設定の「コメント除去」はこれとは別物で、**表示/保存する `.bas` にのみ効き、実行には影響しません**＝実行は常に内部で最適化されます。）
-
-音まで正確に、あるいは状態を保って試すには、**ディスク(.dsk)を保存** して openMSX か実機で実行してください。（将来の同一オリジン版プレイヤーで、リブート毎回と FM の制限は解消し得ます — `TODO.md` 参照。）
-
-> **ヒント — MSXPen に貼り付け。** *MSX-BASIC変換後* タブの **📋 コピー** ボタンで変換後プログラムをコピーし、[MSXPen](https://msxpen.com) に貼り付けて実行すると、同じプログラムが FM 付きで鳴ります。本アプリの埋め込みプレイヤーで **FM が鳴らない理由は現状不明**です（実行のたびにリブートしてディスクから自動実行するため、FM 音源チップの初期化前に走っている可能性がありますが未確認）。当面は MSXPen に貼り付けるのが確実に FM を聴ける方法です。
-
----
-
-## ソースからのビルド
-
-**前提:** [Node.js](https://nodejs.org/) 22.6 以上（依存ゼロのコア＆ブラウザ版エディタ用）。デスクトップ版にはさらに [Rust ツールチェイン](https://www.rust-lang.org/tools/install) と、OSごとの [Tauri 前提条件](https://v2.tauri.app/start/prerequisites/)（macOS なら Xcode Command Line Tools）が必要です。
-
-コアは **npm依存ゼロ**なので `npm install` は不要です。
-
-- **コアのテスト:** `npm test` — Node 標準テストランナーで型ストリップした TypeScript を実行。
-- **ブラウザ版エディタ（ビルドツール不要）:** `npm run serve` 後、`http://localhost:8123` を開く。コアを `editor/core/` へ型ストリップしてエディタを配信します。
-- **デスクトップ版（開発）:** `npm run app:dev` — コアをビルドし Tauri 開発ウィンドウ（Rust＋システムWebView）を起動。
-- **デスクトップ版（リリースビルド）:** `npm run app:build` — `src-tauri/target/release/bundle/` にOS向けのアプリを生成。macOSでは `FunctionBASIC.app`（`bundle/macos/`）と `FunctionBASIC_<バージョン>_<アーキ>.dmg` インストーラ（`bundle/dmg/`）。
-
-デスクトップ用スクリプトは `npx @tauri-apps/cli` を使うため、Tauri CLI は必要時に取得されます（コミット対象の依存は増えません）。
-
-> **macOS — 未署名ビルドの開き方。** まだコード署名/公証していません（Apple Developer ID が必要）。初回は Gatekeeper に止められるので、**アプリを右クリック → 開く → 開く**（初回のみ）、または `xattr -dr com.apple.quarantine FunctionBASIC.app`。既定ビルドは Apple Silicon（arm64）。Intel/ユニバーサルにするには追加の Rust ターゲットが必要。
-
----
-
-## 文法ガイド
+- **`CONST`** — コンパイル時の名前付き定数。畳み込んでリテラルとしてインライン（再代入はエラー）。
+- **再帰** — 自己・相互再帰の関数が動く。`GOSUB` の前後でフレームをソフトウェアスタックへ自動退避／復元（深さ可変。再帰関数内の `REF` 引数は誤変換せずエラー報告）。
+- **`STRICT`** — オプトインの静的型付け（[後述](#厳格モード)）。
 
 | 構文 | 形 | 補足 |
 | --- | --- | --- |
@@ -532,19 +452,71 @@ You may use, copy, modify, and distribute this software freely, including for co
 | `GLOBAL` | `GLOBAL X` | 共有（グローバル）変数を使う宣言。なければローカル。 |
 | `CONST` | `CONST 名前[%!#$] = 定数式` | コンパイル時定数。畳み込んでリテラルとしてインライン。再代入はエラー。型サフィックスは任意で、付けると検証（`CONST N% = 3`、`%`は整数値のみ）。**`STRICT` では必須**。 |
 | `RETURN` | `RETURN [値]` | 関数から戻る。値を返せる。 |
-| `ASM` | `ASM` … `END ASM` | インライン Z80 アセンブリ。`HIMEM` 直下のバッファへアセンブルし `DEFUSR`/`USR` で実行。`(NAME)` は `%`整数BASIC変数を参照（`VARPTR` で1回パッチ）。ラベル＋相対ジャンプ（`JR`/`DJNZ`）対応・`%`整数のみ。 |
+| `SELECT CASE` | `SELECT CASE x … CASE … CASE ELSE … END SELECT` | 多分岐（後述）。 |
+| `STRUCT` | `STRUCT … END STRUCT` ／ `DIM a(n) AS T` | struct-of-arrays（後述）。 |
+| `DATASET` | `DATASET 名前 … END DATASET` | 名前付きデータブロック（後述）。 |
+| `EVENT TIMER` | `EVENT TIMER n … END EVENT` | 周期ハンドラ（後述）。 |
+| `ASM` | `ASM` … `END ASM` | インライン Z80 アセンブリ（後述）。 |
 | 配列 | `DIM A(n)` ／ `REF A` で渡す | 配列は参照渡し可。文字列配列も可。 |
 
----
+### ゲームBASIC構文
 
-## 変換ルール
+これらが最新の目玉機能です — 本物のMSX-BASICへ（多くは）実行コストゼロで lower される、高水準の構文。
 
-- **行番号の付与** — `MAIN`（トップレベルのコード）は 100 から。各関数は 1000 刻みの専用セグメント（1000, 2000, …）。各セグメントはコメントで明示。
-- **変数名の変換（長さ拡張）** — MSXは名前の**先頭2文字しか区別せず**（`COUNT` と `COUNTER` は衝突）、`_` も不可。FunctionBASICはこれを撤廃し、長い説明的な名前を書くと各変数へ**一意な2文字MSX名**を自動割り当て。プールは型別（`%`/`!`/`#`/`$` 各約960個・予約語除外）で、生存区間が重ならないローカルは名前を再利用。使い切ると `E_VAR_NAMES_EXHAUSTED`。
-- **関数の展開（GOSUB化）** — すべての `FUNCTION` は `GOSUB` ブロックに。呼び出しは `GOSUB <行>` になり、直後に結果変数を読み取ります。
-- **戻り値の扱い** — 戻り値は専用の内部変数へ代入し、呼び出し側が `GOSUB` 直後にコピーします。
-- **内部変数の命名規則** — ローカル・ループ変数・戻り値変数は固定の2文字プールから割り当て、衝突しません。再帰はソフトウェアスタックでフレームを退避して対応します。
-- **配列の参照渡し** — 常に同じ配列ならブロック1個を共有（ゼロコピー）。異なる配列で呼ぶと配列ごとにブロックを複製（モノモーフィック化）し、呼び出しごとの配列コピーは発生しません。
+- **`SELECT CASE`** — 読みやすい多分岐（構造化BASICに `ELSEIF` はありません）。値／リスト（`CASE 6,7,8`）、`TO` 範囲（`CASE lo TO hi`）、`IS` 関係（`CASE IS < 0`）、`CASE ELSE` に対応。文字列も可。セレクタは**一度だけ**評価し、セレクタキャッシュ付きの `IF` チェーンへ lower。
+
+  ```basic
+  SELECT CASE STATE%
+      CASE 6, 7, 8        ' リスト
+          MOVE_LEFT()
+      CASE 10 TO 20       ' 範囲
+          SPEED_UP()
+      CASE IS < 0         ' 関係
+          RESET()
+      CASE ELSE
+          IDLE()
+  END SELECT
+  ```
+
+- **`STRUCT`** — レコードを宣言し、その配列を `DIM` して、ドット記法でフィールドにアクセス：
+
+  ```basic
+  STRUCT Enemy
+      HP%
+      X%
+      Y%
+  END STRUCT
+  DIM foe(20) AS Enemy
+  foe(3).HP% = 100
+  ```
+
+  **struct-of-arrays**（フィールドごとの並行MSX配列）へ lower されるので、手書きの並行配列とまったく同じ——**実行時コストはゼロ**。`GLOBAL foe` で全フィールドを関数跨ぎで共有します。（v1: 平坦フィールド。1レコード丸ごとの受け渡しは未対応）
+
+- **`DATASET`** — 分かりにくい大域 `READ`/`DATA`/`RESTORE` を置き換える名前付きデータブロック：
+
+  ```basic
+  DATASET ALIEN_A
+      DATA 8, 28, 62, 127
+  END DATASET
+  ' …
+  READ ALIEN_A INTO A%, B%, C%, D%
+  ```
+
+  ブロック本体は `DATA` 行のみ（値は数値・文字列を混在可）。v1 はメモリ最小の**方式A**：追加RAMゼロ・ブロック切替時に自動 `RESTORE`——各ブロックを読み切ってから次へ進みます。`RESTORE 名前` でそのブロックを巻き戻します。
+
+- **`EVENT TIMER`** — `ON INTERVAL=n GOSUB` ＋ `INTERVAL ON` へ lower される周期ハンドラ：
+
+  ```basic
+  EVENT TIMER 60          ' 60割り込み(≒1秒)ごとに実行
+      TICK()
+  END EVENT
+  ```
+
+  タイマーは1つだけ・トップレベル（MAIN）専用で、ハンドラはMAINの変数を共有します。これは**協調的**割り込み——文の切れ目で発火し、プリエンプティブではありません。**`EVENT VBLANK` は意図的に非対応**：本物のVBLANKフックはBASICインタプリタに安全に再入できないため。`HALT` フレーム同期（シューターがそうしています）か、ASMフックがフラグを立ててBASICがポーリングする形で。
+
+### インライン Z80 アセンブリ
+
+`ASM … END ASM` を機械語にアセンブルして自動で埋め込みます。コードは `HIMEM` 直下に予約したバッファへ配置（実行時に HIMEM を読むので機種非依存・255バイトの文字列上限に縛られない）、`(NAME)` は `VARPTR` で `%`整数BASIC変数のアドレスに1回だけパッチ、ループ/分岐用のラベル＋相対ジャンプ（`JR`/`DJNZ`）、`DEFUSR`/`USR` で実行。[スペースシューター](#目玉サンプル--スペースシューターturbo-r)の滑らかな艦隊再描画に使用。（`%`整数変数のみ・ラベルへの絶対 `CALL`/`JP` は未対応）
 
 ### 構造化BASICで使えない命令
 
@@ -556,7 +528,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 | `ON x GOTO/GOSUB <行番号>`（`E_ON_LINE_TARGET`） | `ON x GOTO/GOSUB <関数名>`（ハンドラは無引数） |
 | `ON ERROR GOTO <行番号>` | `ON ERROR GOTO <関数>`、無効化は `ON ERROR GOTO 0` |
 | `RESUME <行番号>`（`E_RESUME_LINE`） | `RESUME` / `RESUME NEXT` / `RESUME 0` |
-| `RESTORE <行番号>`（`E_RESTORE_LINE`） | 引数なし `RESTORE`（先頭の `DATA` へ） |
+| `RESTORE <行番号>`（`E_RESTORE_LINE`） | 引数なし `RESTORE`（先頭の `DATA` へ）、または `DATASET` は `RESTORE 名前` |
 | `DEFINT`/`DEFSNG`/`DEFDBL`/`DEFSTR`（`E_DEF_UNSUPPORTED`） | 名前サフィックス：`%`整数 `!`単精度 `#`倍精度 `$`文字列（例 `COUNT%`・`LABEL$`） |
 | `DEF FN` / `DEF USR` | `FUNCTION`（機械語が要るなら USR ベクタを `POKE`） |
 | 直接モード命令：`RUN` `LIST` `AUTO` `RENUM` `NEW` `CONT` `DELETE` `EDIT` | プログラム文ではない（対話専用） |
@@ -564,11 +536,9 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 （`ON … GOSUB <関数>` のハンドラや `ON x GOTO/GOSUB <関数>` の飛び先関数は**無引数**でなければなりません — `E_HANDLER_PARAMS`。）
 
-### 厳格モード（任意の静的型付け）
+### 厳格モード
 
-プログラム先頭に `STRICT` と書くと、**オプトインの静的型チェック**（rust方式＝暗黙変換なし）が有効になります。既定はオフで、既存コードに影響はありません（非strictでは従来どおりMSXの暗黙数値変換のまま）。
-
-`STRICT` では：
+プログラム先頭に `STRICT` と書くと、**オプトインの静的型チェック**（rust方式＝暗黙変換なし）が有効になります。既定はオフで、既存コードに影響はありません（非strictでは従来どおりMSXの暗黙数値変換のまま）。`STRICT` では：
 
 - **全ての変数・配列・引数・`FOR`変数・`CONST`に型サフィックス必須** — `%`整数 `!`単精度 `#`倍精度 `$`文字列。無いとエラー（`E_STRICT_UNTYPED`）。
 - **代入・引数・戻り値は型が完全一致**。暗黙変換なし：`A% = B#`・`A% = 1.5`・文字列/数値の混在はエラー（`E_TYPE_MISMATCH`）。変換は `CINT` / `CSNG` / `CDBL` / `INT` / `FIX` / `ASC` / `STR$` / `VAL` … で明示。
@@ -588,6 +558,73 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 ```
 
 例：[`examples/strict-demo.msxb`](examples/strict-demo.msxb)。
+
+---
+
+## 変換と出力
+
+**自動変換。** トランスパイラは黙って誤変換せず、構造化コードを行番号付きMSX-BASICへ決定論的に対応づけます：
+
+- **行番号の付与** — `MAIN`（トップレベルのコード）は 100 から。各関数は 1000 刻みの専用セグメント（1000, 2000, …）で、各セグメントはコメントで明示。
+- **変数名の変換（長さ拡張）** — MSXは名前の**先頭2文字しか区別せず**（`COUNT` と `COUNTER` は衝突）、`_` も不可。FunctionBASICはこれを撤廃し、長い説明的な名前を書くと各変数へ**一意な2文字MSX名**を自動割り当て。プールは型別（`%`/`!`/`#`/`$` 各約960個・予約語除外）で、生存区間が重ならないローカルは名前を再利用。使い切ると `E_VAR_NAMES_EXHAUSTED`。
+- **関数の展開（GOSUB化）** — すべての `FUNCTION` は `GOSUB` ブロックに。呼び出しは `GOSUB <行>` になり、直後に結果変数を読み取ります。戻り値は専用の内部変数を経由して `GOSUB` 直後にコピー。再帰はソフトウェアスタックでフレームを退避して対応します。
+- **配列の参照渡し** — 常に同じ配列ならブロック1個を共有（ゼロコピー）。異なる配列で呼ぶと配列ごとにブロックを複製（モノモーフィック化）し、呼び出しごとの配列コピーは発生しません。
+- **255バイト行の自動分割** — 生成された長い行は安全に分割されます。
+
+**複数ファイル対応。** `INCLUDE` でコードを分割。ビルド/実行は単一の**エントリ（main）ファイル**を起点にする。自動判定（トップレベルに実行コードがあり、他からINCLUDEされていないファイル）か、プロジェクトツリーで明示指定。関数だけのライブラリファイルは単体実行されない。MSX-BASICにリンカは無いので全て1本のプログラムへ統合される（古典の `$INCLUDE`/メインモジュール方式と同じ）。MSX2ヘルパライブラリも同梱：`INCLUDE "lib/msx2.msxb"` で高レベルな `M2_*` 関数（SCREEN 5＋16×16スプライト初期化、パレット `M2_PAL`、スプライト定義/表示、ちらつかないダブルバッファ `M2_FRAME`/`M2_SHOW`、フレーム待ち `M2_WAIT`、チャンネルCのSE `M2_SE`）が使え、ブラウザ版でも解決します。例：[`examples/lib/msx2.msxb`](examples/lib/msx2.msxb)・[`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb)。
+
+**オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去、**ホット関数の低行番号配置**（よく呼ぶ関数を低い行番号へ＝MSXの `GOSUB` 行番号探索を短縮）。いずれも既定OFFで、実行結果を変えないようガード。
+
+**安全な診断** — エラーはコード＋行・列付きでガターに表示。出力は Shift-JIS（表現不能文字は壊さず報告）。
+
+**対象機種** — MSX1 / MSX2 / MSX2+ / turboR（既定 turboR）。組み込み命令表は設定で編集可能。世代別の命令一式が正しく変換されます：テキスト/印字/ファイル入出力（`PRINT USING`・`LPRINT`・`LINE INPUT`・`OPEN/CLOSE/FIELD … AS`・`GET/PUT #`・`KILL`・`NAME … AS`）、型変換（`CINT`/`CSNG`/`CDBL`、`CVI`/`MKI$` 等）、ファイル/書式関数（`EOF`・`LOC`・`LOF`・`DSKF`・`TAB`・`SPC`・`USR`）、`CALL <名>`/`_<名>` 拡張機構（MSX-MUSIC・MSX-AUDIO 含む）、MSX2+（`SCREEN 10`–`12`・`SET SCROLL`）、turbo R（`_TURBO ON`/`OFF`・`CALL PCMPLAY`/`PCMREC`/`PAUSE`）、イベントトラップ（`ON SPRITE/KEY/INTERVAL … GOSUB <fn>`・`ON ERROR GOTO`・計算分岐 `ON <x> GOTO/GOSUB`）。各カテゴリの全組み込みを1回ずつ使う網羅サンプルが [`examples/cookbook/`](examples/cookbook/)（`test/cookbook-coverage.test.ts` で自動検証）。
+
+---
+
+## エディタ
+
+- **INCLUDE構造を反映したプロジェクトツリー** — エントリの下に取り込みを入れ子表示。デスクトップ版では**プロジェクト＝フォルダ**（`Cmd+O` で開き、`Cmd+S` で編集中の `.msxb` をその場に無ダイアログ保存、*変換して保存*/実行は全保存してから変換、*ディスクから再読込*で読み直し）。ツリーの項目にホバーすると**ファイルパスのツールチップ**を表示。
+- **構造化⇔MSX-BASIC の行対応ハイライト** — 分割表示で、どちらのペインでもキャレットを移動すると、対応する相手ペインの行がハイライトされ表示位置までスクロール。出力を生まない行（`GLOBAL` 宣言・コメント・空行）はヘッダにその旨を表示。
+- **変換テーブル（読み取り専用）** — プロジェクトツリーから開くと、生成される対応表を表示：各長い名前が2文字MSX名にどう圧縮されるか（グローバル／関数ごとのローカル）、各関数の先頭行・引数（`REF`含む）・戻り値、`BREAK`/`CONTINUE` の飛び先。`.map.json` としてコピー可能。
+- **Problemsパネル** — プロジェクト全体（各エントリの `INCLUDE` グラフ）をライブ検証し、他ファイルのエラー（例：ライブラリの重複関数）も由来 file:line 付きで表示＋ワンクリックでジャンプ。未解決 `INCLUDE` の「＋作成」クイックフィックスと未使用 `INCLUDE` 警告も。
+- **クロスファイルのナビゲーション** — 定義ジャンプ/使用箇所/リネーム（プレビュー付き）、`INCLUDE` 行のジャンプ（`Cmd+B`/`Cmd`+クリック）と `INCLUDE` パス補完。
+- **検索・置換** — 全体検索「Find in Files」（JetBrains風キーマップ・正規表現）と字句解析ベースの**安全な一括リネーム**（`Shift+F6`）も。
+- **編集支援** — 自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製（各々ON/OFF）、元に戻す/やり直し、閉じられる分割タブ。
+- **アプリ内設定** — 言語・フォントサイズ・WebMSX 実行機種／`PRESETS`／URL。
+- **OSネイティブメニュー**と**日本語/英語UI**。すべて軽量・依存ゼロのエディタで実現。
+
+---
+
+## 実行・書き出し
+
+- **即時実行** — 埋め込み webMSX に流し込み、自動でロード＆`RUN`。ワンクリック。
+- **実ディスク書き出し** — openMSX・実機用に 720&nbsp;KB FAT12 の `.dsk` を生成。
+- **MSXPLAYer書き出し（`.sav`）** — 公式MSXエミュレータ **MSXPLAYer** 用の `.sav` 仮想フロッピーを生成（中身は同じ FAT12 イメージ・全1440セクタの詰め替え）。**上書き前に既存ファイルを自動バックアップ**。起動ディスクではなくデータ受け渡し用途で、MSXPLAYer のワークドライブに置いて `FILES` / `RUN"NAME.BAS"`。（*ファイル → MSXPLAYer用(.sav)を保存…*）形式は SAVList / MakeBlankSav（MIT）準拠。
+
+ビルド済みデスクトップ版：**[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — **macOS**（Apple Silicon）：`.dmg`（Applicationsへドラッグ）/ `.zip`（`.app` を展開）、**Windows**（x64）：`.msi` または `.exe` インストーラ。それ以外（macOS Intel・Linux 等）は[ソースからビルド](#ソースからのビルド)。**コード署名/公証していない**ため初回起動は止められます — **macOS** はアプリを右クリック → 開く → 開く（初回のみ）、または `xattr -dr com.apple.quarantine /Applications/FunctionBASIC.app`。**Windows** は SmartScreen が警告したら **詳細情報 → 実行** をクリック。ブラウザ版（`npm run serve`）だけでも使えます。
+
+### 埋め込み WebMSX 実行の現状の制限
+
+アプリ内プレイヤーは [webMSX](https://webmsx.org) を**別オリジンの iframe** として埋め込んでいるため、実行のたびに data-URL ディスクで**リブートする**方式に限られます。これにより以下の制限があります（**変換自体には影響なし**＝生成される MSX-BASIC は正しい）：
+
+- **FM（MSX-MUSIC）音は鳴りません。** `CALL MUSIC` / `PLAY #2` を使うプログラムは正しく変換され、MSXPen・openMSX・実機では鳴りますが、埋め込みプレイヤーでは無音です。FM は他環境で確認してください。
+- **MSX-AUDIO 非対応。** webMSX は MSX-AUDIO（Y8950）をエミュレートしません。`CALL AUDIO` 等は openMSX か実機が必要です。
+- **実行ごとにリブート。** 毎回マシンが再起動します（短いリードタイムがあり、実行間で状態は保持されません）。
+- **マシンは webMSX 既定。** turbo R 専用プログラム（`_TURBO …`、examples/turbo-r.msxb）は、webMSX の歯車（⚙）メニューでマシンを turbo R に切り替えてください。
+- **音はクリックで開始。** ブラウザの自動再生制限により、webMSX 画面を一度クリックするまで音が止まることがあります。
+- **非常に大きいプログラムは自動実行URLの上限を超えることがあります。** 実行のたびに変換後プログラムを ZIP 化してページURLに載せます。アプリは実行用ペイロードだけを自動で最小化します — **コメント除去・文の行パッキング（`:`連結）・コンパクトなURLエンコード**（ソース・保存ファイル・実行結果はすべて不変）。スペースシューター例よりかなり大きいプログラムだと、埋め込みWebViewが受け付けるURL長を超える場合があり、実行時に **「URI Too Long」** が出たら **ディスク(.dsk)を保存** して webMSX にドラッグ（`RUN"NAME.BAS"`）してください。（設定の「コメント除去」はこれとは別物で、**表示/保存する `.bas` にのみ効き、実行には影響しません**＝実行は常に内部で最適化されます。）
+
+音まで正確に、あるいは状態を保って試すには、**ディスク(.dsk)を保存** して openMSX か実機で実行してください。（将来の同一オリジン版プレイヤーで、リブート毎回と FM の制限は解消し得ます — `TODO.md` 参照。）
+
+> **ヒント — MSXPen に貼り付け。** *MSX-BASIC変換後* タブの **📋 コピー** ボタンで変換後プログラムをコピーし、[MSXPen](https://msxpen.com) に貼り付けて実行すると、同じプログラムが FM 付きで鳴ります。本アプリの埋め込みプレイヤーで **FM が鳴らない理由は現状不明**です（実行のたびにリブートしてディスクから自動実行するため、FM 音源チップの初期化前に走っている可能性がありますが未確認）。当面は MSXPen に貼り付けるのが確実に FM を聴ける方法です。
+
+---
+
+## 逆方向ツール
+
+- **デコンパイラ** — *任意の*行番号付きMSX-BASICを構造化BASICへ逆変換：ブロック再構築、`GOSUB`→`FUNCTION`、`GOTO`ループ復元、`DEF FN`、イベントトラップ、変数名推測（best-effort・還元不能は警告）。ラウンドトリップ評価（`scripts/eval-reverse.ts`）で実コーパス（ローカル限定・非コミット）に対し精度計測：**実 `.bas` の約95%がエラーなく再トランスパイル可能**（MSX-BASIC範囲ではほぼ全て。残る穴は非MSX方言＝`PRINT @`・`THEN` 無し `IF` 等、または破損/バイナリ listing）。*ファイル → 素のMSX-BASICを取込…*
+- **逆変換** — FunctionBASIC 自身の出力を、生成マップで構造化BASICへ戻す（元のファイル分割も可能な範囲で復元）。
+- **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語（`READ`→`POKE`→`USR`）を Z80 ニーモニックの注釈に（BIOS呼び出しは名前解決）。変換時に削除。
 
 ### 機械語の逆アセンブル注釈
 
@@ -616,117 +653,49 @@ DATA 62, 42, 205, 162, 0, ...
 
 遊べる**固定画面シューター**を丸ごと収録 — 減るほど加速する艦隊マーチ、2枚重ねのハードウェアスプライト、行ごとの色、脚アニメ、効果音、残機、タイトル画面まで、**すべて構造化BASICだけ**で書いて本物のMSX-BASICへ変換し、実機の turbo R で動きます。全ソース：[`examples/space-shooter-turbor.msxb`](examples/space-shooter-turbor.msxb)。
 
+いまはゲームBASIC構文のショーケースも兼ねています：弾と敵弾に **`STRUCT`**（`Projectile { X%, Y%, ACTIVE% }`）、ジョイスティック方向と勝敗の終了画面に **`SELECT CASE`**、各スプライトのアートに名前を付ける **`DATASET`** ブロック（`ALIEN_A`・`PLAYER_BODY` …）。フレーム同期はあえて `EVENT TIMER` でなく `HALT`/`WAIT_FRAME` のまま——決定論的な毎フレームループが欲しいためです。
+
 **遊び方** — webMSXで **turbo R** マシンを選び、**▶ WebMSX** を押したら**しばらく待ってください**：webMSXの turbo R 起動は遅く、タイトルが出るまで **30〜40秒ほど** かかることがあります。タイトルで **SPACE** を押すと開始。**← / →** で移動、**SPACE** で発射。（turbo R 未満では動かないようにしてあります。）
 
-**なぜ構造化BASICで書くのか？** 同じゲームを手書きの行番号MSX-BASICで書くと `GOSUB` と2文字変数の壁になります。ここでは読みやすいまま：
+なぜ構造化BASICで書くのか？ 同じゲームを手書きの行番号MSX-BASICで書くと `GOSUB` と2文字変数の壁になります。ここでは読みやすいまま：
 
 - **`GOSUB` の行ジャンプでなく本物の関数** — `MARCH()` / `FIRE()` / `CHECK_HIT()` / `DRAW_ALIEN()` / `HIT_PLAYER()` … それぞれローカル変数を持つ名前付き `FUNCTION`。行番号・`GOSUB`/`RETURN` の配線・2文字変数名は変換器が割り当てます。
-- **共有は `GLOBAL`、既定はローカル** — 永続する状態（艦隊位置 `FLEET_COL%`・スコア `SCORE%`・残機 `LIVES%` …）は明示的に `GLOBAL`、ループ変数や一時変数は自動でローカルなので関数どうしが壊し合いません。（名前は説明的に付けてOK — 変換器が各々を一意な2文字MSX名へ圧縮するので実行コストはゼロです。）
-- **STRICT 静的型付け** — すべての変数・定数が型サフィックス付きの `%`（16bit整数）で、ゲーム全体をMSX-BASICの高速な整数パスに保ちます。
+- **共有は `GLOBAL`、既定はローカル** — 永続する状態（艦隊位置 `FLEET_COL%`・スコア `SCORE%`・残機 `LIVES%` …）は `GLOBAL`、ループ変数や一時変数は自動でローカル。説明的な名前を各々一意な2文字MSX名へ圧縮するので実行コストはゼロです。
+- **STRICT 静的型付け** — すべての変数・定数が `%`（16bit整数）で、ゲーム全体をMSX-BASICの高速な整数パスに保ちます。
 - **読める絵** — 自機・弾・エイリアンのタイルは `DATA` の中にASCIIの絵（`"......####......"`）として描き、起動時にバイト列へ。編集するのは16進でなく**絵**です。
-- **要所はインラインZ80** — 艦隊再描画まるごとを `ASM … END ASM` ブロックで記述。変換器がアセンブルし、`HIMEM` 直下に機械語バッファを予約し、変数参照をパッチして `USR` で呼びます（`DATA`/`READ`/`POKE` の定型不要）。この一手で艦隊マーチが**カクつく約10fps**から turbo R で**滑らかな約27fps**へ：アーケード級の動きを、読みやすい1つのBASICソースのまま実現。
+- **要所はインラインZ80** — 艦隊再描画まるごとを `ASM … END ASM` ブロックで記述。変換器がアセンブルし、`HIMEM` 直下に機械語バッファを予約し、変数参照をパッチして `USR` で呼びます（`DATA`/`READ`/`POKE` の定型不要）。この一手で艦隊マーチが**カクつく約10fps**から turbo R で**滑らかな約27fps**へ。
 
 モダンな構造化コードのように読めて、本物の8bit MSXで動きます。
-
----
 
 ### 目玉サンプル第2弾 — スクロールランナー（turbo R）
 
 ![webMSXで動作中の横スクロールランナー：青空の下、緑のテラス状ブロックの上を走る白い自機。前方に平地・穴・数段の段差](docs/images/runner-play.png)
 
-**強制スクロールのオートランナー**を丸ごと収録 — 地面は V9958 の**ハードウェア横スムーススクロール**で流れ、手続き生成のテラス地形（平地＋数段の段差＋穴＋障害物）が右から迫り、プレイヤーはジャンプのタイミングで丘を越え、崖を落ち、穴を跳び、岩をかわします。**すべて構造化BASICだけ — インラインアセンブリは一切なし** — で書いて、実機の turbo R で遊べます。全ソース：[`examples/runner-turbor.msxb`](examples/runner-turbor.msxb)。
+**強制スクロールのオートランナー**を丸ごと収録 — 地面は V9958 の**ハードウェア横スムーススクロール**で流れ、手続き生成のテラス地形（平地・段差・穴・障害物）が右から迫り、プレイヤーはジャンプのタイミングで丘を越え、崖を落ち、穴を跳びます。**すべて構造化BASICだけ — インラインアセンブリは一切なし** — で書いて、実機の turbo R で遊べます。全ソース：[`examples/runner-turbor.msxb`](examples/runner-turbor.msxb)。
 
-**遊び方** — **turbo R** マシンを選び **▶ WebMSX**、（遅い）起動を待ってタイトルで **SPACE**。**← / →** で移動、**SPACE** でジャンプ — *長押しで高く・遠く跳べます*。テラスを走り、段差を落ち、穴を跳ぶ。高い壁を越え損ねると強制スクロールに押されて左端からはみ出し＝ゲームオーバー。進むほど加速します。（turbo R 専用）
+**遊び方** — **turbo R** マシンを選び **▶ WebMSX**、（遅い）起動を待ってタイトルで **SPACE**。**← / →** で移動、**SPACE** でジャンプ — *長押しで高く・遠く跳べます*。高い壁を越え損ねると強制スクロールに押されて左端からはみ出し＝ゲームオーバー。進むほど加速します。
 
-**見どころ：*純粋な*BASICで滑らかスクロール。** 上のシューターは要所でインラインZ80に落としますが、こちらは**あえて一切使いません** — それでも滑らかにスクロールします。重い処理をCPUでなくハードウェアに任せているからです：
-
-- **画面を描き直さず、ハードウェアスクロール** — 毎フレーム V9958 のスクロールレジスタを進め（`SET SCROLL`＝累積した1ピクセル単位オフセット）、右端から入る**1列だけ**タイルを書きます。CPUは画面全体を動かさないので、8bitのBASICでも1ピクセル単位の動きに追いつけます。
-- **それ以外は読める構造化BASIC** — 地形生成、明示的な「接地／空中」物理ステートマシン（重力・可変高ジャンプ・崖落ち・着地）、ピクセル単位の当たり判定、壁の押し出し、効果音 — すべて `GLOBAL` 状態と STRICT 整数演算の名前付き `FUNCTION`。
-- **ルールのある手続き地形** — ランダム長の平地を、上る段差（跳び乗る）／下る段差（落ちる）でつなぎ、穴・障害物も配置。安全な助走区間を保証するので、毎回違うが常にフェア。
-- **速度のための turbo R** — 純BASICの毎フレーム処理は重く、遊べるフレームレートを保つのは高速な R800。それ未満では動きません。
+見どころは、これが**純粋な**BASICで滑らかにスクロールすること：毎フレーム V9958 のスクロールレジスタを進め（`SET SCROLL`）、右端から入る**1列だけ**タイルを書くので、CPUは画面全体を描き直しません。それ以外——地形生成、明示的な「接地／空中」物理ステートマシン、ピクセル単位の当たり判定、壁の押し出し、効果音——はすべて `GLOBAL` 状態と STRICT 整数演算の読める名前付き `FUNCTION`。純BASICの毎フレーム処理を遊べるフレームレートに保つのは高速な R800（turbo R）です。
 
 2つの目玉、2つの哲学：**シューター**はアーケード速度が要る所でインラインZ80に落とす方法を、**ランナー**はMSXハードウェアに重い処理を任せれば*純粋な*構造化BASICでどこまで行けるかを示します。
 
----
+### 小さなサンプル
 
-**1. 簡単な関数** — 配列の中から最初の 0 を見つける。
-
-構造化BASIC:
+代表的なスニペット — `REF` 引数と早期 `RETURN` を持つ関数で、配列から最初の 0 を探す：
 
 ```basic
-' 配列の中から最初に 0 を見つけて返す
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
-        IF A(I) = 0 THEN
-            IDX = I
-            RETURN 1
-        END IF
+        IF A(I) = 0 THEN IDX = I : RETURN 1
     NEXT I
     RETURN 0
 END FUNCTION
-
-DIM A(10)
-A(3) = 0
-RESULT = FIND_ZERO(WHERE)
-PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
-変換後 MSX-BASIC:
+各 `FUNCTION` は `GOSUB` ルーチンになり、長い名前はそれぞれ一意の2文字MSX変数へ割り当てられます。
 
-```basic
-100 ' === MAIN ===
-110 ' 配列の中から最初に 0 を見つけて返す
-120 DIM A(10)
-130 A(3)=0
-140 GOSUB 1000: B=E
-150 PRINT "FOUND=";B;" AT ";C
-160 END
-1000 ' === FUNCTION FIND_ZERO (IDX->C) ===
-1010 FOR D=1 TO 10
-1020 IF A(D)=0 THEN C=D: E=1: RETURN
-1030 NEXT
-1040 E=0: RETURN
-```
-
-**2. 2枚重ねスプライトの多色猫（MSX2）** — MSXのハードウェアスプライトは1枚＝1色なので、同じ位置に2枚重ねて多色にするのが定番技です。白い顔スプライトをオレンジの体スプライトに重ねた猫が、画面内を自分で跳ね回ります。変換確認済みの全ソース：[`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)。
-
-肝は「1匹の猫＝同じ位置に2枚のスプライト」を描いて動かすこと：
-
-```basic
-' 1匹の猫＝同じ位置に2枚のスプライト（2色）
-PUT SPRITE 0, (CATX, CATY), 15, 0  ' 前面：白い顔
-PUT SPRITE 1, (CATX, CATY), 9, 1   ' 背面：オレンジの体
-```
-
-…これを変換器が本物のMSX-BASICにします（変数割当・座標は保持）：
-
-```basic
-300 PUT SPRITE 0,(A,B),15,0
-310 PUT SPRITE 1,(A,B),9,1
-```
-
-**3. ゲームの雛形** — 最小のメインループ（説明用）。
-
-構造化BASIC:
-
-```basic
-FUNCTION UPDATE()
-    GLOBAL SCORE
-    SCORE = SCORE + 1
-    LOCATE 0, 0 : PRINT "SCORE"; SCORE
-END FUNCTION
-
-SCREEN 1
-SCORE = 0
-WHILE 1
-    UPDATE()
-    IF STRIG(0) THEN BREAK
-WEND
-PRINT "GAME OVER"
-```
-
-**その他** — MSX2 `SCREEN 5` のグラフィック＋BGM/SEデモ（独自パレット、`LINE …,BF` / `CIRCLE` / `PAINT`、`SET PAGE` ダブルバッファ、`COPY … TO …`、`PLAY`、`SOUND` などMSX2固有書式をそのまま保持）は [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)、再帰のショーケース（階乗／フィボナッチ／相互再帰）は [`examples/recursion.msxb`](examples/recursion.msxb)。[`examples/`](examples/) と機能別の [`examples/cookbook/`](examples/cookbook/) もどうぞ。
+その他（すべて変換確認済み）：**多色スプライト技**（同じ位置に2枚のハードウェアスプライトを重ねて2色に＝自分で跳ね回る猫）は [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)；**ゲームループの雛形**（`WHILE 1 … WEND` ＋ 発射で `BREAK`）；MSX2 の **`SCREEN 5` グラフィック＋BGM/SE** デモ（独自パレット、`LINE …,BF` / `CIRCLE` / `PAINT`、`SET PAGE` ダブルバッファ、`COPY`、`PLAY`、`SOUND`）は [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)；**再帰**のショーケース（階乗／フィボナッチ／相互再帰）は [`examples/recursion.msxb`](examples/recursion.msxb)。[`examples/`](examples/) と機能別の [`examples/cookbook/`](examples/cookbook/) もどうぞ。
 
 ---
 
@@ -745,32 +714,35 @@ PRINT "GAME OVER"
 
 ## ロードマップ
 
-FunctionBASIC はまだ初期段階で、発展途上です。**`[x]`＝対応済 / `[ ]`＝未対応**（時期は未定）：
+FunctionBASIC はまだ初期段階で、発展途上です。対応済みの機能は上の各セクションに記載しています。**未対応**（時期未定）：
 
-- [x] **世代別の組み込み命令網羅** — MSX / MSX2 / MSX2+ / turbo R の命令一式が正しく変換されます：テキスト/印字/ファイル入出力（`PRINT USING`・`LPRINT`・`LINE INPUT`・`OPEN/CLOSE/FIELD … AS`・`GET/PUT #`・`KILL`・`NAME … AS`）、型変換（`CINT`/`CSNG`/`CDBL`、`CVI`/`MKI$` 等）、ファイル/書式関数（`EOF`・`LOC`・`LOF`・`DSKF`・`TAB`・`SPC`・`USR`）、`CALL <名>`/`_<名>` 拡張機構（MSX-MUSIC・MSX-AUDIO 含む）、MSX2+（`SCREEN 10`–`12`・`SET SCROLL`）、turbo R（`_TURBO ON`/`OFF`・`CALL PCMPLAY`/`PCMREC`/`PAUSE`）、イベントトラップ（`ON SPRITE/KEY/INTERVAL … GOSUB <fn>`・`ON ERROR GOTO`・計算分岐 `ON <x> GOTO/GOSUB`）。各カテゴリの全組み込みを1回ずつ使う網羅サンプルが [`examples/cookbook/`](examples/cookbook/)（`test/cookbook-coverage.test.ts` で網羅を自動検証）。例：[`examples/`](examples/)。
-- [x] **設定画面（初版）** — アプリ内設定ダイアログ（アプリメニュー →「設定…」）で、言語・フォントサイズ・WebMSX 実行機種／`PRESETS`／URL を変更可能。*今後：*組み込み命令・関数表の編集（既定へのリセット付き）とネイティブプレイヤー／エミュレータのパス。
-- [x] **MSX2 ヘルパライブラリ（初版）** — `INCLUDE "lib/msx2.msxb"` で高レベルな `M2_*` 関数：SCREEN 5＋16×16スプライト初期化、パレット（`M2_PAL`）、スプライト定義/表示（`M2_DEFSPR`/`M2_SPR`）、**ちらつかないダブルバッファ**（`M2_FRAME`/`M2_SHOW`、`SET PAGE` の正しい順）、フレーム待ち（`M2_WAIT`）、空きチャンネルCのSE（`M2_SE`）。ブラウザ版エディタでも組み込みライブラリの `INCLUDE` を解決します。例：[`examples/lib/msx2.msxb`](examples/lib/msx2.msxb)・[`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb)。今後：図形プリミティブ・タイル・スクロール等を追加予定。
-- [x] **モダンなエディタ体験** — プロジェクトツリー（複数ファイル・ブラウザ永続）、検索/置換と全体検索（Find in Files、JetBrains風キーマップ・正規表現）、元に戻す/やり直し、編集支援（自動インデント・括弧/引用符補完・現在行ハイライト・行複製/移動）、閉じられるタブ、**構造化⇔MSX-BASIC の行対応ハイライト**（どちらのペインのキャレットでも対応行を相手側で緑ハイライト）、**変換テーブル（読み取り専用）**（長い名前→2文字MSX名の圧縮、各関数の先頭行/引数/ローカル、制御フローの飛び先）。軽量・依存ゼロのまま実現。
-- [x] **機械語の逆アセンブル注釈** — `DATA` に埋め込まれた機械語を検出し、Z80 ニーモニックで注釈（BIOS名解決・制御フロー追跡でコード/データ分離）。`'@` マーカーのコメントで、変換時に削除。（編集 →「機械語DATAを逆アセンブル注釈」）
-- [x] **素のMSX-BASIC取込（デコンパイラ）** — マップ不要で任意の行番号付きMSX-BASICを逆変換：構造復元（`FOR`/`WHILE`/`IF`・`GOSUB`→`FUNCTION`・`GOTO`→ループ・`DEF FN`・イベントトラップ）＋変数名推測、best-effort（還元不能は警告）。ラウンドトリップ評価（`scripts/eval-reverse.ts`）で実コーパス（ローカル限定・非コミット）に対し精度計測：**実 `.bas` の約95%（MSX-BASIC範囲ではほぼ全て）がエラーなく再トランスパイル可能**。エディタに統合済み（*ファイル → 素のMSX-BASICを取込…*）。残る穴は非MSX方言（`PRINT @`・`THEN` 無し `IF`）か破損/バイナリ listing。
-- [x] **MSXPLAYer `.sav` 書き出し** — 公式MSXエミュレータ（MSXPLAYer）用の `.sav` 仮想フロッピーを、`.dsk` の FAT12 イメージ（全1440セクタ）を詰め替えて生成。**上書き前に既存ファイルを自動バックアップ**。起動ディスクではなくデータ受け渡し（ワークドライブに置いて `FILES` / `RUN`）。（*ファイル → MSXPLAYer用(.sav)を保存…*）形式は SAVList / MakeBlankSav（MIT）準拠。
-- [ ] **サウンドのヘルパ** — BGM/SE ヘルパ層（PSG、可能なら FM/SCC）。下記の構造化 `SOUNDBLOCK` として表面化する見込み。（文・関数の `PLAY` と `SOUND` は変換済み）
-- [ ] **ネイティブMSXプレイヤー対応（自動起動）** — 埋め込み webMSX と上記 `.sav` 受け渡しに加え、生成した `.dsk` を openMSX に自動マウントして Tcl で `RUN`、および/または MSXPLAYer の自動起動。（FM/MSX-AUDIO を実音で鳴らせるようになる ―《使い方》の FM 制限を参照）
-- [ ] **エディタ：コード折りたたみ・大規模ファイル性能** — CodeMirror ベース想定。現状の軽量・依存ゼロエディタを発展。
-- [ ] **高水準の構造化ゲームBASIC**（設計段階）— 本物のMSX-BASICへ落ちる構文で、ゲームコードが「何をしているか」そのまま読めることを狙う。構造的な機能はゼロコストで lower、実行負荷の高いものはインラインZ80経路に依存。予定：
-  - **`SELECT CASE`** ✅ *実装済み*（リスト / `TO` 範囲 / `IS` 関係 / `ELSE`）→ セレクタを一度だけ評価する `IF` チェーン。（`ELSEIF` が無いため、これが読みやすい多分岐。密整数の `ON … GOTO` ジャンプテーブルは将来の最適化余地）
-  - **`DATASET 名前 … END DATASET` ＋ `READ 名前 INTO …` / `RESTORE 名前`** ✅ *v1 実装済み* — 分かりにくい大域 `READ`/`DATA`/`RESTORE` を置き換える名前付きデータブロック。v1 はメモリ最小の**方式A**（追加RAMゼロ・ブロック切替時に自動 `RESTORE`・各ブロックを読み切ってから次へ）。将来、ランダム/交互アクセス用に配列バッキングの**方式B**を opt-in で追加する余地あり。
-  - **`STRUCT`** ✅ *実装済み* — `STRUCT … END STRUCT` ＋ `DIM foe(N) AS Enemy` / `foe(i).HP`。struct-of-arrays（フィールドごとにMSX配列）へ lower。**手書き並行配列と実行時コスト同一（追加ゼロ）**、`GLOBAL foe` で全フィールドを関数跨ぎ共有。（v1: 平坦フィールド・1レコード丸ごと受け渡し不可）
-  - **グラフィックAPI**（`DrawLine` / `DrawRect` / `PutSprite` / `ClearScreen`）— SCREENモードを意識した `LINE` / `PSET` / `PUT SPRITE` / `COPY` のラッパ。`M2_*` ヘルパの上に構築（ライブラリ層。使える命令はモード依存）。
-  - **`VRAMBLOCK` / `SOUNDBLOCK`** — VRAM転送（タイル/パターン→適切な転送ルーチン。大きいものはASM経路）と、PSG/FM の音色・SFX・BGM 定義（→ `PLAY` / `SOUND`。FMはMSX-MUSIC ROMが必要、BGMは割り込み駆動プレイヤが必要）を宣言的に。
-  - **`EVENT TIMER`** ✅ *実装済み*（→ `ON INTERVAL=n GOSUB` ＋ `INTERVAL ON`。タイマーは1つ・トップレベル専用・ハンドラはMAINの変数を共有）。ただし**協調的**割り込み（文の切れ目で発火＝プリエンプティブではない）。**`EVENT VBLANK` は意図的に非対応**：本物のVBLANKフックはBASICインタプリタに安全に再入できないため。`HALT` フレーム同期（シューター参照）か、ASMフックがフラグを立ててBASICがポーリングする形で。
-
-  構造的機能（`SELECT CASE`・`DATASET`・`STRUCT`）を先行、実行/ライブラリ系は後続。ほか、文字列ヘルパやローカル配列も予定。*（`CONST` 名前付き定数は対応済み。）*
-- [x] **Windows対応（ビルド・動作確認）** — Tauri デスクトップ版が Windows（x64）でビルド・起動でき、`.msi`/`.exe` を [Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest) で公開。⚠️ **コード署名は未**（初回起動時に Windows SmartScreen が警告 → 詳細情報→実行）。コード署名と CI パッケージングは今後。
-- [ ] **AI生成との統合** — Claude との「説明→生成→変換→実行」をより緊密に。
-- [ ] **ツール整備 / CI** — GitHub Actions（コアテストは導入済み）をデスクトップ(Tauri)フルビルド・署名/公証バイナリ・リリースパッケージングへ拡張。
+- **ネイティブMSXプレイヤー対応（自動起動）** — 埋め込み webMSX と `.sav` 受け渡しに加え、生成した `.dsk` を openMSX に自動マウントして Tcl で `RUN`、および/または MSXPLAYer の自動起動。（FM/MSX-AUDIO を実音で鳴らせるようになる — [実行・書き出し](#実行書き出し)の FM 制限を参照）
+- **エディタ：コード折りたたみ・大規模ファイル性能** — CodeMirror ベース想定。現状の軽量・依存ゼロエディタを発展。
+- **言語のさらなる拡張** — `DATASET` 方式B（配列バッキングでランダム/交互アクセス。RAMコストあり）、`SELECT CASE` v3（密整数の `ON … GOTO` ジャンプテーブル）、文字列ヘルパの追加、ローカル配列。
+- **グラフィックAPI**（`DrawLine` / `DrawRect` / `PutSprite` / `ClearScreen`）— SCREENモードを意識した `LINE` / `PSET` / `PUT SPRITE` / `COPY` のラッパ。`M2_*` ヘルパの上に構築。
+- **`VRAMBLOCK`** — VRAM転送（タイル/パターン→適切な転送ルーチン。大きいものはASM経路）を宣言的に。
+- **`SOUNDBLOCK` / サウンドヘルパ** — PSG/FM の音色・SFX・BGM を宣言的に（→ `PLAY` / `SOUND`）。PSG を先行、FM（MSX-MUSIC ROM が必要）と割り込み駆動BGMは後続。（文・関数の `PLAY` と `SOUND` は変換済み）
+- **AI生成との統合** — Claude との「説明→生成→変換→実行」をより緊密に。
+- **ツール整備 / CI** — GitHub Actions（コアテストは導入済み）をデスクトップ(Tauri)フルビルド・署名/公証バイナリ・リリースパッケージングへ拡張。
 
 作業項目やアイデアは Issue で管理しています。提案を歓迎します。
+
+---
+
+## ソースからのビルド
+
+**前提:** [Node.js](https://nodejs.org/) 22.6 以上（依存ゼロのコア＆ブラウザ版エディタ用）。デスクトップ版にはさらに [Rust ツールチェイン](https://www.rust-lang.org/tools/install) と、OSごとの [Tauri 前提条件](https://v2.tauri.app/start/prerequisites/)（macOS なら Xcode Command Line Tools）が必要です。
+
+コアは **npm依存ゼロ**なので `npm install` は不要です。
+
+- **コアのテスト:** `npm test` — Node 標準テストランナーで型ストリップした TypeScript を実行。
+- **ブラウザ版エディタ（ビルドツール不要）:** `npm run serve` 後、`http://localhost:8123` を開く。コアを `editor/core/` へ型ストリップしてエディタを配信します。
+- **デスクトップ版（開発）:** `npm run app:dev` — コアをビルドし Tauri 開発ウィンドウ（Rust＋システムWebView）を起動。
+- **デスクトップ版（リリースビルド）:** `npm run app:build` — `src-tauri/target/release/bundle/` にOS向けのアプリを生成。macOSでは `FunctionBASIC.app`（`bundle/macos/`）と `FunctionBASIC_<バージョン>_<アーキ>.dmg` インストーラ（`bundle/dmg/`）。
+
+デスクトップ用スクリプトは `npx @tauri-apps/cli` を使うため、Tauri CLI は必要時に取得されます（コミット対象の依存は増えません）。
+
+> **macOS — 未署名ビルドの開き方。** まだコード署名/公証していません（Apple Developer ID が必要）。初回は Gatekeeper に止められるので、**アプリを右クリック → 開く → 開く**（初回のみ）、または `xattr -dr com.apple.quarantine FunctionBASIC.app`。既定ビルドは Apple Silicon（arm64）。Intel/ユニバーサルにするには追加の Rust ターゲットが必要。
 
 ---
 

@@ -25,7 +25,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.21";
+const APP_VERSION = "0.1.23";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -527,28 +527,30 @@ function highlightHtml(src) {
   for (let i = 0; i < src.length; i++) if (src[i] === "\n") lineStarts.push(i + 1);
   const off = (p) => lineStarts[p.line - 1] + (p.column - 1);
   const cls = { KEYWORD: "t-kw", NUMBER: "t-num", STRING: "t-str", COMMENT: "t-com", OP: "t-op" };
+  // 色付けはソースを「次トークンの開始位置」で切り出して行う。t.raw の長さには頼らない。
+  // ASM ブロック等は t.pos が 'ASM' を指すのに t.raw が本体だけ（先頭 "ASM\n" を含まない）で、
+  // 旧実装は esc(t.raw)+pos加算方式のため ASM 行と直後の改行を落としていた。すると overlay が
+  // ソースより 1 行短くなり、その行以降 textarea(ネイティブ・キャレット) と色付き表示/行番号/
+  // 現在行帯が 1 行ずれ、DATASET 等の行で矢印を押すとキャレットが隣行へ飛んだ（行高は無関係）。
+  // 境界方式なら全文字を過不足なく一度だけ出力＝改行を絶対に落とさず、行数がソースと必ず一致する。
+  const real = tokens.filter((t) => t.kind !== "EOF");
   let html = "";
   let pos = 0;
-  for (const t of tokens) {
-    if (t.kind === "EOF") break;
+  for (let i = 0; i < real.length; i++) {
+    const t = real[i];
     const s = off(t.pos);
-    if (s > pos) {
-      html += esc(src.slice(pos, s));
-      pos = s;
-    }
-    if (t.kind === "NEWLINE") {
-      html += esc(t.raw);
-      pos += t.raw.length;
-      continue;
-    }
-    let klass = cls[t.kind] ?? null;
+    const e = i + 1 < real.length ? off(real[i + 1].pos) : src.length;
+    if (s > pos) { html += esc(src.slice(pos, s)); pos = s; } // 先頭/想定外の隙間は素で
+    if (e <= s) continue;                                     // 0 幅・逆順ガード
+    let klass = t.kind === "NEWLINE" ? null : (cls[t.kind] ?? null);
     if (t.kind === "COMMENT" && /^'@/.test(t.raw)) klass = "t-mnem"; // ニーモニック注釈は別色
     if (t.kind === "IDENT" && isBuiltin(t.value)) klass = "t-builtin";
-    html += klass ? `<span class="${klass}">${esc(t.raw)}</span>` : esc(t.raw);
-    pos = s + t.raw.length;
+    const text = src.slice(s, e); // 実ソースを切り出す＝改行を落とさない
+    html += klass ? `<span class="${klass}">${esc(text)}</span>` : esc(text);
+    pos = e;
   }
   if (pos < src.length) html += esc(src.slice(pos));
-  return html + "\n"; // 末尾行ぶんの余白
+  return html; // 全文字を出力済み（末尾 +"\n" は付けない：付けると overlay が 1 行多くなる）
 }
 
 // ---- コンパイル ----
@@ -941,7 +943,7 @@ function applyHistory(st) {
   undoPrev = st.v; undoSel = [st.s, st.e];
   render();
   undoBusy = false;
-  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  const lh = lineH();
   srcEl.scrollTop = Math.max(0, lineIndexAt(st.s) * lh - srcEl.clientHeight / 2);
   srcEl.focus();
   updateCurLine();
@@ -1613,24 +1615,53 @@ function applyFontSize(px) {
   document.documentElement.style.setProperty("--line", Math.round(v * 1.5) + "px");
   calibrateLineHeight();
 }
-// WKWebView は <textarea> をフォント固有の自然行高で描画する一方、重ねた <div>
-// (#highlight/#gutter) は line-height を整数に丸める。両者が ~0.05px/行 ずれ、下の
-// 行ほどキャレット（textarea）が色付きテキスト・ガター（div）からズレる（900行付近で
-// 約2行）。対策: textarea の実測行高より確実に大きい整数へ --line を引き上げると、
-// div も textarea も同じ整数を厳密に honor して一致する（丸めの影響を受けない）。
-function calibrateLineHeight() {
-  const n = (srcEl.value.split("\n").length) || 1;
-  if (srcEl.scrollHeight <= srcEl.clientHeight + 4) return; // overflow していないと実測不可
+// WKWebView は <textarea>（キャレット）と、重ねた <pre>#highlight / ガター <div> の
+// 行box高を微妙に食い違わせる（片方だけ整数へ丸める等）。ズレの向きは環境依存で、下の行
+// ほどキャレットと「見える文字・行番号」がずれる（例: 919行で約1〜2行）。textarea の
+// line-height を highlight オーバーレイの実描画行高へ反復収束させ、両方向のズレを吸収する。
+// ブラウザ(Chromium)では両者が一致するので初回 break＝実質 no-op。
+let measuredLH = 0; // textarea の実描画行高（キャレット/現在行帯/行ジャンプの位置決めに使う）
+// textarea の実描画行高。ネイティブ・キャレットはこれに従う。較正後は measuredLH を使う。
+function lineH() { return measuredLH || parseFloat(getComputedStyle(srcEl).lineHeight) || 22; }
+// WKWebView では <textarea>(#src) と <div>(#highlight/#gutter) が同じ line-height でも実描画
+// 行高が僅かに異なり、行数に比例して累積する。数百行下ではキャレットの論理位置と、色付き
+// オーバーレイ・行番号・現在行帯がずれ、DATASET 等の行で矢印移動するとキャレットが隣の行へ
+// 飛ぶ（実測: 939 行で約 1 行分）。textarea 側は小数 line-height を丸めるため寄せられない。
+// よって「見た目レイヤ(div) を textarea の実測行高へ寄せる」。ファイルサイズに依存しないよう、
+// 画面外の隠しプローブ(textarea/div)を差分法で実測する（定数オフセットを相殺）。
+function measureRenderedLH() {
   const cs = getComputedStyle(srcEl);
-  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  const realLH = (srcEl.scrollHeight - pad) / n;           // textarea の実描画行高
-  if (!(realLH > 6 && realLH < 80)) return;
-  const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--line")) || realLH;
-  const want = Math.max(cur, Math.ceil(realLH - 0.02));     // 自然行高より上の整数へ
-  if (want !== cur) {
-    document.documentElement.style.setProperty("--line", want + "px");
-    updateCurLine();
+  const base = "position:absolute;left:-9999px;top:0;visibility:hidden;margin:0;padding:0;border:0;"
+    + "white-space:pre;overflow:hidden;width:600px;box-sizing:content-box;"
+    + `font-family:${cs.fontFamily};font-size:${cs.fontSize};line-height:${cs.lineHeight};`;
+  const ta = document.createElement("textarea"); ta.style.cssText = base; ta.setAttribute("wrap", "off");
+  const dv = document.createElement("div"); dv.style.cssText = base;
+  document.body.appendChild(ta); document.body.appendChild(dv);
+  const set = (el, n) => {
+    const s = Array.from({ length: n }, () => "X").join("\n");
+    if (el.tagName === "TEXTAREA") el.value = s; else el.textContent = s;
+    return el.scrollHeight;
+  };
+  const N1 = 20, N2 = 220, D = N2 - N1;
+  const taLH = (set(ta, N2) - set(ta, N1)) / D; // 差分で枠/初期行などの定数を相殺
+  const dvLH = (set(dv, N2) - set(dv, N1)) / D;
+  ta.remove(); dv.remove();
+  return { taLH, dvLH };
+}
+function calibrateLineHeight() {
+  measuredLH = 0;
+  hlEl.style.lineHeight = ""; gutterEl.style.lineHeight = ""; // 前回の較正をリセット
+  srcEl.style.lineHeight = "";                                // textarea は自然行高のまま（丸め対策）
+  const { taLH, dvLH } = measureRenderedLH();
+  if (!(taLH > 6 && taLH < 80 && dvLH > 6 && dvLH < 80)) { updateCurLine(); return; }
+  if (Math.abs(taLH - dvLH) >= 0.005) {
+    // div(#highlight/#gutter) を textarea の実描画行高へ寄せる（div は小数 line-height を honor）
+    const curCss = parseFloat(getComputedStyle(hlEl).lineHeight) || dvLH;
+    const lh = (curCss * taLH / dvLH).toFixed(4) + "px";
+    hlEl.style.lineHeight = lh; gutterEl.style.lineHeight = lh;
   }
+  measuredLH = taLH; // キャレット/帯/行ジャンプは textarea の実測行高を基準にする
+  updateCurLine();
 }
 function setFont(delta) {
   applyFontSize((settings.fontSize || 15) + delta);
@@ -1692,7 +1723,7 @@ function openLib(path, line) {
     const off = (lineStartsOf(srcEl.value)[line] ?? 0);
     srcEl.focus();
     srcEl.setSelectionRange(off, off);
-    const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+    const lh = lineH();
     srcEl.scrollTop = Math.max(0, line * lh - srcEl.clientHeight / 2);
     updateCurLine();
   }
@@ -1844,7 +1875,7 @@ function scrollToLine(line, col = 0) {
   const off = (ls[line - 1] ?? srcEl.value.length) + col;
   srcEl.focus();
   srcEl.selectionStart = srcEl.selectionEnd = off;
-  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  const lh = lineH();
   srcEl.scrollTop = Math.max(0, (line - 1) * lh - srcEl.clientHeight / 2);
   syncScroll();
 }
@@ -2285,7 +2316,8 @@ const curlineEl = $("curline");
 function updateCurLine() {
   if (!settings.curLine) { curlineEl.hidden = true; return; }
   curlineEl.hidden = false;
-  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  // 較正後は textarea の実描画行高(measuredLH)で位置決め＝キャレットと帯が一致する
+  const lh = measuredLH || parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
   const padTop = parseFloat(getComputedStyle(srcEl).paddingTop) || 0;
   const line = lineIndexAt(srcEl.selectionStart);
   curlineEl.style.height = lh + "px";
@@ -2466,7 +2498,7 @@ function selectMatch() {
   const m = findMatches[findIdx];
   srcEl.focus();
   srcEl.setSelectionRange(m.index, m.index + m.len);
-  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  const lh = lineH();
   srcEl.scrollTop = Math.max(0, lineIndexAt(m.index) * lh - srcEl.clientHeight / 2);
   updateCurLine();
   $("findInput").focus();
@@ -2629,7 +2661,7 @@ function acShow() {
   const items = acCandidates(ctx.prefix);
   if (!items.length) return acHide();
   ac = { open: true, items, sel: 0, prefixLen: ctx.prefix.length };
-  const lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+  const lh = lineH();
   const line = srcEl.value.slice(0, srcEl.selectionStart).split("\n").length;
   acEl.style.top = (line * lh - srcEl.scrollTop + 2) + "px";
   acEl.style.left = "48px";

@@ -722,3 +722,26 @@ DATA 1,2,3,4
 - **ハンドラ本体**は MAIN の `END` の後に「ラベル → 本体 → `RETURN`」で配置。**MAIN スコープで emit** するので本体の変数は MAIN と同じ 2 文字名を共有する。
 - MSX の INTERVAL は 1 系統 → **1 つだけ**（2 つ目は `E_EVENT_TIMER_DUP`）。
 - **`EVENT VBLANK` は非対応**（`E_EVENT_VBLANK`）：真の VBLANK 割り込みから BASIC インタプリタへ安全に再入できないため。`HALT` フレーム同期か ASM フック＋フラグポーリングで代替。
+
+## 5.19 DO … LOOP → While（desugar）
+
+`DO … LOOP`（[01 §1.4.6](01-language-spec.md#146-do--loop前判定--後判定--無限)）は最初の前処理パス `lowerDo` で `While` へ脱糖する（下流は `DoLoop` を見ない＝既存の While lowering・BREAK/CONTINUE ラベル・最適化・provenance を再利用）。
+
+- **前判定 / 無限**（ゼロコスト、素の While）:
+  - `DO WHILE c … LOOP` → `While(c)`
+  - `DO UNTIL c … LOOP` → `While(NOT c)`
+  - `DO … LOOP`（無条件） → `While(1)`（`BREAK` で脱出）
+- **後判定**（最低1回実行し、`CONTINUE` は LOOP 条件の再評価へ）: 一時フラグを1つ使う。
+  ```
+  DO … LOOP WHILE c   →   __doN%=0 : While((__doN%=0) OR c){ __doN%=1 ; body }
+  ```
+  初回は `__doN%=0` でガードが真になり必ず1回入る。以後 `__doN%=1` なので LOOP 条件だけで判定。`CONTINUE` は While の continue ラベル（本体末尾）へ飛び、先頭で条件を再評価する。`UNTIL` は `c` を `NOT c` に。
+- `DO` と `LOOP` の双方に条件 → `E_DO_BOTH_COND`。`ELSEIF` はパーサが入れ子 IF へ脱糖するだけなので変換器の追加処理は無い。
+
+## 5.20 MACRO → 式のインライン展開（expand-macros）
+
+`MACRO name(params)=式`（[01 §1.4.7](01-language-spec.md#147-macroコンパイル時インライン展開)）は `expand-macros` パスで処理する。`lowerSelect` の後・`lowerStruct` の前に走らせるので、SELECT/DO 由来の式も対象になり、本体・引数中の STRUCT フィールドは後段 `lowerStruct` で処理される。
+
+- 呼び出し `name(args)`（式中は `CallExpr`）を、本体式に仮引数→実引数を代入したもので置換。**実引数と展開結果は `Group`（括弧）で包む**ので優先順位事故が起きない。
+- **再展開**：本体が別マクロを含めば再帰的に展開。**現在展開中のマクロ名集合**を持ち、呼び出し名が集合内なら自己/相互再帰＝`E_MACRO_RECURSION` で打ち切り。引数数不一致 `E_MACRO_ARITY`、名前重複（MACRO/FUNCTION 衝突）`E_MACRO_DUP`。
+- 展開後 `program.macros` はクリア。**MSX 変数も行も生成しない**（ゼロコスト）。`FUNCTION`（GOSUB）と使い分ける：小さな式の再利用は MACRO、文を含む処理は FUNCTION。

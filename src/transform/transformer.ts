@@ -26,7 +26,10 @@ import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
 import { checkNameCollisions } from "./check-names.ts";
 import { foldProgram } from "./fold-expr.ts";
+import { lowerDo } from "./lower-do.ts";
 import { lowerSelect } from "./lower-select.ts";
+import { expandMacros } from "./expand-macros.ts";
+import { checkExplicit } from "./check-explicit.ts";
 import { lowerStruct } from "./lower-struct.ts";
 import { reduceStrengthProgram } from "./strength-reduce.ts";
 import { stripComments } from "./strip-comments.ts";
@@ -348,9 +351,17 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   const fail = (key: string, params: DiagParams = {}, pos: Position = ORIGIN) =>
     diagnostics.push(error(key, pos, params));
 
-  // SELECT CASE を「一時Let + ネストIfBlock連鎖」へ desugar（最初に実行。以降のパスは
-  // SelectBlock を見ない＝既存の IF lowering・provenance・最適化・型検査を丸ごと再利用）。
+  // DO … LOOP を While へ desugar（最初に実行。DoLoop 内の SELECT/DO も再帰的に処理するので
+  // 以降のパスは DoLoop を一切見ない）。
+  lowerDo(program);
+  // SELECT CASE を「一時Let + ネストIfBlock連鎖」へ desugar（以降のパスは SelectBlock を見ない
+  // ＝既存の IF lowering・provenance・最適化・型検査を丸ごと再利用）。
   lowerSelect(program);
+  // MACRO 呼び出しを本体式へインライン展開（lowerStruct より前。展開結果の STRUCT フィールドも
+  // 後段で処理される）。展開後は関数/配列呼び出しだけが残る。
+  diagnostics.push(...expandMacros(program));
+  // OPTION EXPLICIT: 未宣言スカラ変数の読取を検査（マクロ展開後・struct lowering 前の元名で）。
+  diagnostics.push(...checkExplicit(program));
   // STRUCT を struct-of-arrays へ desugar（フィールド→合成配列/変数。以降は通常の変数のみ）。
   diagnostics.push(...lowerStruct(program));
 

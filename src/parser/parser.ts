@@ -30,6 +30,8 @@ import type {
   EventBlock,
   ForBlock,
   WhileBlock,
+  DoLoop,
+  MacroDef,
   OnTarget,
 } from "../ast/nodes.ts";
 
@@ -47,6 +49,7 @@ export function parse(tokens: Token[]): ParseResult {
   let funcDepth = 0;
   let loopId = 0;
   let strict = false; // STRICT ディレクティブ
+  let optionExplicit = false; // OPTION EXPLICIT ディレクティブ
 
   const cur = (): Token => tokens[p];
   const peek = (o = 1): Token => tokens[p + o] ?? tokens[tokens.length - 1];
@@ -450,11 +453,25 @@ export function parse(tokens: Token[]): ParseResult {
 
   const parseIf = (pos: Position): IfBlock => {
     advance(); // IF
+    return parseIfTail(pos);
+  };
+  // 「<cond> THEN <本体> [ELSEIF…|ELSE…] END IF」を解析（IF/ELSEIF キーワードは消費済み前提）。
+  // ELSEIF は入れ子 IF へ desugar する：IF c1 THEN a ELSEIF c2 THEN b ELSE c END IF
+  //   → IF c1 THEN a ELSE (IF c2 THEN b ELSE c) END IF。下流（変換/最適化/出力）は素の
+  //   ネスト IfBlock だけを見る（SELECT CASE と同じ方針）。END IF は最内の呼び出しが消費する。
+  const parseIfTail = (pos: Position): IfBlock => {
     const cond = parseExpr();
     expectKw("THEN", "IF");
     // ブロックIFのみ対応（1行IFはネスト許可後は不要、ただし将来拡張余地）
     if (checkKind("NEWLINE")) advance();
-    const thenBody = parseBlockBody(["ELSE", "END"]);
+    const thenBody = parseBlockBody(["ELSEIF", "ELSE", "END"]);
+    if (checkKw("ELSEIF")) {
+      const eiPos = cur().pos;
+      advance(); // ELSEIF
+      // 入れ子 IF を else に据える。この再帰呼び出しが共有の END IF を消費するので、
+      // ここでは END IF を消費せずに返す。
+      return { type: "If", cond, then: thenBody, else: [parseIfTail(eiPos)], pos };
+    }
     let elseBody: Stmt[] | undefined;
     if (checkKw("ELSE")) {
       advance();
@@ -646,6 +663,27 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "While", cond, body, loopId: id, pos };
   };
 
+  // DO [WHILE|UNTIL cond] … LOOP [WHILE|UNTIL cond]
+  //   前判定/後判定/無限（BREAK 脱出）。条件は DO 側か LOOP 側の一方のみ（両方は E_DO_BOTH_COND）。
+  const parseDo = (pos: Position): DoLoop => {
+    advance(); // DO
+    const readCond = (at: "pre" | "post"): DoLoop["test"] | undefined => {
+      if (checkKw("WHILE")) { advance(); return { at, kind: "while", cond: parseExpr() }; }
+      if (checkKw("UNTIL")) { advance(); return { at, kind: "until", cond: parseExpr() }; }
+      return undefined;
+    };
+    const pre = readCond("pre");
+    eatLineEnd(); // DO 行末のコメント→改行を許容
+    const id = newLoopId();
+    loopStack.push(id);
+    const body = parseBlockBody(["LOOP"]);
+    loopStack.pop();
+    expectKw("LOOP", "DO");
+    const post = readCond("post");
+    if (pre && post) report("E_DO_BOTH_COND", pos);
+    return { type: "DoLoop", test: pre ?? post, body, loopId: id, pos };
+  };
+
   // ON SPRITE GOSUB fn / ON INTERVAL=n GOSUB fn / ON KEY GOSUB f1,f2 /
   // ON ERROR GOTO fn / ON <式> GOTO|GOSUB f1,f2…（飛び先は原則ユーザ関数名）
   const ON_EVENTS = new Set(["SPRITE", "KEY", "STRIG", "STOP", "INTERVAL", "ERROR"]);
@@ -714,6 +752,20 @@ export function parse(tokens: Token[]): ParseResult {
           endOfStmt("STRICT");
           return null;
         }
+        case "OPTION": {
+          // OPTION EXPLICIT（宣言強制ディレクティブ）。EXPLICIT は文脈依存の識別子。
+          advance(); // OPTION
+          if (cur().kind === "IDENT" && cur().value.toUpperCase() === "EXPLICIT") {
+            advance();
+            optionExplicit = true;
+            endOfStmt("OPTION");
+            return null;
+          }
+          report("E_OPTION_UNKNOWN", cur().pos, { name: cur().value ?? "" });
+          while (!checkKind("NEWLINE") && !atEof()) advance(); // 不明語を読み飛ばす
+          endOfStmt("OPTION");
+          return null;
+        }
         case "IF":
           return parseIf(pos);
         case "SELECT":
@@ -728,6 +780,8 @@ export function parse(tokens: Token[]): ParseResult {
           return parseFor(pos);
         case "WHILE":
           return parseWhile(pos);
+        case "DO":
+          return parseDo(pos);
         case "END": {
           // 裸の END（プログラム終了）。END IF / END FUNCTION は parseBlockBody が
           // 終端として先に止めるため、ここに来る END は単独文。
@@ -903,17 +957,41 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "FunctionDef", name, retSuffix, params, body, pos };
   };
 
+  // MACRO name[(p1, p2, …)] = <式>。呼び出し name(args) をコンパイル時に本体式へ展開する。
+  // name は型サフィックス込みで保持（呼び名と一致させる）。0 引数でも呼び出しは name() と書く。
+  const parseMacroDef = (): MacroDef => {
+    const pos = cur().pos;
+    advance(); // MACRO
+    const name = expectIdent("MACRO");
+    const params: string[] = [];
+    if (checkOp("(")) {
+      advance();
+      if (!checkOp(")")) {
+        params.push(expectIdent("MACRO 引数"));
+        while (checkOp(",")) { advance(); params.push(expectIdent("MACRO 引数")); }
+      }
+      expectOp(")", "MACRO");
+    }
+    expectOp("=", "MACRO");
+    const body = parseExpr();
+    endOfStmt("MACRO");
+    return { type: "MacroDef", name, params, body, pos };
+  };
+
   // ---- プログラム ----
   const program: Program = {
     type: "Program",
     functions: [],
     toplevel: [],
     includes: [],
+    macros: [],
   };
   skipNewlines();
   while (!atEof()) {
     if (checkKw("FUNCTION")) {
       program.functions.push(parseFunctionDef());
+    } else if (checkKw("MACRO")) {
+      program.macros!.push(parseMacroDef());
     } else {
       const before = p;
       const s = parseStatement();
@@ -925,6 +1003,7 @@ export function parse(tokens: Token[]): ParseResult {
     skipNewlines();
   }
   program.strict = strict;
+  program.optionExplicit = optionExplicit;
 
   return { program, diagnostics };
 }

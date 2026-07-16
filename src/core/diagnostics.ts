@@ -137,6 +137,36 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `DATASET 名が重複しています: ${p.name}`,
     en: (p) => `Duplicate DATASET name: ${p.name}`,
   },
+  E_DO_BOTH_COND: {
+    code: "E_DO_BOTH_COND",
+    ja: () => "DO と LOOP の両方に条件は付けられません（どちらか一方に WHILE/UNTIL を書いてください）",
+    en: () => "A condition may appear on either DO or LOOP, not both (put WHILE/UNTIL on just one)",
+  },
+  E_MACRO_DUP: {
+    code: "E_MACRO_DUP",
+    ja: (p) => `MACRO 名が重複しています（他の MACRO/FUNCTION と衝突）: ${p.name}`,
+    en: (p) => `Duplicate MACRO name (collides with another MACRO/FUNCTION): ${p.name}`,
+  },
+  E_MACRO_ARITY: {
+    code: "E_MACRO_ARITY",
+    ja: (p) => `MACRO ${p.name} の引数の数が違います（${p.expected} 個必要、${p.got} 個指定）`,
+    en: (p) => `MACRO ${p.name} expects ${p.expected} argument(s), got ${p.got}`,
+  },
+  E_MACRO_RECURSION: {
+    code: "E_MACRO_RECURSION",
+    ja: (p) => `MACRO ${p.name} が自己/相互再帰しています（マクロは再帰できません）`,
+    en: (p) => `MACRO ${p.name} is recursive (macros cannot recurse)`,
+  },
+  E_UNDECLARED_VAR: {
+    code: "E_UNDECLARED_VAR",
+    ja: (p) => `OPTION EXPLICIT: 変数 ${p.name} は一度も代入・宣言されていません（タイプミスの可能性）`,
+    en: (p) => `OPTION EXPLICIT: variable ${p.name} is never assigned or declared (possible typo)`,
+  },
+  E_OPTION_UNKNOWN: {
+    code: "E_OPTION_UNKNOWN",
+    ja: (p) => `未知の OPTION です: ${p.name}（対応: OPTION EXPLICIT）`,
+    en: (p) => `Unknown OPTION: ${p.name} (supported: OPTION EXPLICIT)`,
+  },
   E_STRUCT_FIELD: {
     code: "E_STRUCT_FIELD",
     ja: (p) => (p.field ? `STRUCT ${p.struct} にフィールド ${p.field} はありません` : "STRUCT の本体には型付きフィールド名のみ置けます"),

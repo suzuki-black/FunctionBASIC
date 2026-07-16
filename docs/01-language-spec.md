@@ -259,6 +259,65 @@ END EVENT
 - **v1 の制限**：INTERVAL は MSX に1系統なので **`EVENT TIMER` は1つだけ**（2つ目 → `E_EVENT_TIMER_DUP`）。**トップレベル（MAIN）専用**（関数内 → `E_EVENT_NOT_TOPLEVEL`）。
 - **`EVENT VBLANK` は非対応**（`E_EVENT_VBLANK`）：真の VBLANK 割り込みから **BASIC インタプリタへ安全に再入できない**ため。毎フレーム処理は `HALT`/`WAIT_FRAME` によるメインループ同期（シューター参照）か、ASM フックがフラグを立てて BASIC がポーリングする形で。変換方式は [05 §5.18](05-transformer.md)。
 
+### 1.4.5 ELSEIF（多段分岐）
+
+`IF … ELSEIF cond THEN … ELSE … END IF`。`ELSEIF` は何段でも書ける（FunctionBASIC には従来 `ELSEIF` が無く、多段分岐は深いネスト IF が必要だった）。
+
+```basic
+IF N% = 1 THEN
+    PRINT "ONE"
+ELSEIF N% = 2 THEN
+    PRINT "TWO"
+ELSEIF N% >= 3 THEN
+    PRINT "MANY"
+ELSE
+    PRINT "OTHER"
+END IF
+```
+
+- **意味**：上から順に判定し、**最初に真になった枝だけ**を実行して `END IF` へ抜ける（フォールスルー無し）。`ELSE` は省略可。
+- **変換**：パース時に **入れ子 IF へ脱糖**（`IF c1 … ELSE (IF c2 … ELSE …)`）。以降は通常のブロック IF と同じ＝実行時コストは素の IF チェーンと同じ（ゼロコスト）。値の等価比較を並べたいだけなら [`SELECT CASE`](#141-select-case多分岐) も検討。
+
+### 1.4.6 DO … LOOP（前判定 / 後判定 / 無限）
+
+`WHILE … WEND` は前判定のみ。`DO … LOOP` は**後判定**（最低1回実行）や**無限ループ**も書ける。
+
+```basic
+DO WHILE I% < 3      ' 前判定（WHILE と同じ）
+    I% = I% + 1
+LOOP
+
+DO                   ' 後判定（本体を必ず1回実行してから判定）
+    LINE INPUT K$
+LOOP UNTIL K$ = "Y"
+
+DO                   ' 無限ループ（BREAK で脱出）
+    IF DONE% THEN BREAK
+LOOP
+```
+
+- 条件は **`DO` 側（前判定）か `LOOP` 側（後判定）のどちらか一方**に付ける（両方は `E_DO_BOTH_COND`）。`WHILE`=真の間くり返す／`UNTIL`=真になるまでくり返す。
+- `BREAK` はループ脱出、`CONTINUE` は次の反復（後判定では **`LOOP` 条件の再評価**）へ。
+- **変換**：前判定・無限は素の `While` へ脱糖（ゼロコスト）。後判定のみ「最低1回実行」と CONTINUE 意味論を保つため**一時フラグ変数を1つ**使う。詳細は [05 §5.19](05-transformer.md)。
+
+### 1.4.7 MACRO（コンパイル時インライン展開）
+
+`MACRO name(params) = 式`。呼び出し `name(args)` を**コンパイル時に本体式へ展開**する。`FUNCTION` と違い GOSUB/関数呼び出しを生成しない＝**実行時コストゼロ**の小関数。
+
+```basic
+MACRO SQ(X)      = X * X
+MACRO LERP(A,B,T)= A + (B - A) * T
+MACRO HI(V)      = (V \ 256)
+
+GLOBAL D%
+D% = SQ(DX%) + SQ(DY%)        ' → (DX%*DX%)+(DY%*DY%) に展開
+```
+
+- **意味**：実引数は**式のまま**代入（call-by-name）。優先順位事故を防ぐため各実引数と展開結果は括弧で包まれる（例：`SQ(A+B)` → `((A+B)*(A+B))`）。
+- 本体は別マクロを呼んでよい（入れ子展開）。**再帰は不可**（自己・相互とも `E_MACRO_RECURSION`）。引数の数不一致は `E_MACRO_ARITY`、名前重複（他 MACRO/FUNCTION と衝突）は `E_MACRO_DUP`。
+- 0 引数でも呼び出しは `name()` と書く（定数だけなら [`CONST`](#) の方が適切）。定義は使用より後でもよい。
+- **変換**：`expand-macros` パスで全式を走査して置換。展開後は MSX 変数も行も生成しない。詳細は [05 §5.20](05-transformer.md)。
+
 ---
 
 ## 1.5 BREAK / CONTINUE（仕様1-5）
@@ -603,3 +662,19 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! は明示変換
 例：[`examples/strict-demo.msxb`](../examples/strict-demo.msxb)。
 
 > ⚠ **1文1行の原則は STRICT でも同じ**：`FOR I% = 1 TO 10 : ... : NEXT`（`:`複文）は STRICT でも非strictでも `E_SYNTAX`。上例のように改行で分ける（[§1.2](#12-ソース構造)）。
+
+## 1.16 OPTION EXPLICIT（未宣言変数の検出）
+
+ソース先頭に `OPTION EXPLICIT` と書くと、**一度も代入・宣言されていないスカラ変数を読んだ箇所をコンパイルエラー**にする（`E_UNDECLARED_VAR`）。既定はオフ。
+
+```basic
+OPTION EXPLICIT
+INPUT RADIUS
+CIRCUMFERENCE = RADUIS * 2 * 3.14   ' ← RADUIS は綴り違い → E_UNDECLARED_VAR
+PRINT "circumference="; CIRCUMFERENCE
+```
+
+- **なぜ必要か**：BASIC（MSX-BASIC も FunctionBASIC も）は未宣言の変数を使うと自動生成し、数値なら **0** になる。上の `RADUIS`（`RADIUS` のタイプミス）は黙って 0 になり、結果が 0 になっても気づけない。`OPTION EXPLICIT` はこれを静的に捕まえる。
+- **STRICT とは別軸**：`STRICT` は*型*（全部16bit整数など）を厳格化する。`OPTION EXPLICIT` は*宣言*（未代入の読取＝タイポ）を検出する。併用できる。
+- **「宣言済み」とみなすもの**：代入（`X = …`）、`GLOBAL` / `DIM` / `CONST` 宣言、`FUNCTION` の引数、`FOR` 変数、`INPUT`/`READ` などの書込み対象。FunctionBASIC はスカラを代入で暗黙生成するため、これらのどれかで**書かれていれば宣言済み**とみなす（＝どこでも一度も書かれない読取だけがエラー）。
+- **対象はスカラ変数のみ**：配列名・関数名のタイプミスは呼び出し解決（`E_UNKNOWN_FUNCTION` 等）で既に捕まるため、ここでは黙って 0 になるスカラだけを見る。`MACRO` 展開後の読取も検査対象。

@@ -9,6 +9,7 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "IF",
   "THEN",
   "ELSE",
+  "ELSEIF", // IF … ELSEIF cond THEN … ELSE … END IF（構造化。入れ子 IF へ desugar）
   "SELECT", // SELECT CASE 多分岐（構造化。IF チェーンへ desugar）
   "CASE",   // SELECT CASE の分岐。IS は文脈依存で予約しない（変数名に使える）
   "FOR",
@@ -22,6 +23,9 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "OFF", // 末尾修飾: _TURBO OFF / SPRITE OFF 等
   "WHILE",
   "WEND",
+  "DO", // DO … LOOP（前判定/後判定/無限）。lower-do で While へ desugar
+  "LOOP",
+  "UNTIL", // DO/LOOP の否定条件（WHILE の逆）
   "RETURN",
   "BREAK",
   "CONTINUE",
@@ -36,7 +40,9 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "DATASET", // 名前付きデータブロック（DATASET name … END DATASET）
   "INTO", // READ <dataset> INTO <変数>
   "INCLUDE",
+  "MACRO", // MACRO name(params)=式（コンパイル時インライン展開。ゼロコスト）
   "STRICT", // 厳格モード宣言（構造化専用ディレクティブ。MSX出力なし）
+  "OPTION", // OPTION EXPLICIT（宣言強制。EXPLICIT は文脈依存＝予約しない）
   // 語演算子（docs/01 §1.11.2）
   "AND",
   "OR",

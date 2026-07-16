@@ -8,7 +8,20 @@ export interface Program {
   functions: FunctionDef[];
   toplevel: Stmt[];
   includes: IncludeStmt[];
+  macros?: MacroDef[]; // MACRO 定義（expand-macros パスで消費・展開。MSX 変数/関数は生成しない）
   strict?: boolean; // STRICT ディレクティブで有効化＝静的型チェック（型サフィックス必須・完全一致）
+  optionExplicit?: boolean; // OPTION EXPLICIT＝一度も代入/宣言されないスカラ変数の読取をエラーに
+}
+
+// MACRO name(params) = expr。コンパイル時に呼び出し name(args) を本体式（実引数を代入）へ
+// インライン展開する＝GOSUB/関数呼び出しのオーバーヘッドが無い（ゼロコスト）。expand-macros
+// パスで消費され、下流は MacroDef を見ない。name は型サフィックス込み（呼び名と一致させる）。
+export interface MacroDef {
+  type: "MacroDef";
+  name: string;
+  params: string[]; // 仮引数名（本体式中で置換される）
+  body: Expr;
+  pos: Position;
 }
 
 export interface Param {
@@ -40,6 +53,7 @@ export type Stmt =
   | SelectBlock
   | ForBlock
   | WhileBlock
+  | DoLoop
   | OnStmt
   | IncludeStmt
   | AsmStmt
@@ -222,6 +236,16 @@ export interface ForBlock {
 export interface WhileBlock {
   type: "While";
   cond: Expr;
+  body: Stmt[];
+  loopId?: string;
+  pos: Position;
+}
+// DO … LOOP。条件は DO 側(pre)・LOOP 側(post)のいずれか一方に付けられる（両方は不可）。
+// 条件無し=無限ループ（BREAK で脱出）。lower-do パスで WhileBlock（＋post は一時フラグ）へ
+// desugar するため、下流は DoLoop を見ない。
+export interface DoLoop {
+  type: "DoLoop";
+  test?: { at: "pre" | "post"; kind: "while" | "until"; cond: Expr };
   body: Stmt[];
   loopId?: string;
   pos: Position;

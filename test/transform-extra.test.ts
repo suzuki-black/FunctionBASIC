@@ -268,7 +268,8 @@ NAME "A.TXT" AS "B.TXT"`);
 test("型変換/ファイル関数: CVI/MKI$/EOF/LOC/USR/DSKF は改名されない", () => {
   const { msx, diagnostics } = compile(`A = CVI(R$) + CVS(S$) + CVD(T$)
 B$ = MKI$(1) + MKS$(2) + MKD$(3)
-IF EOF(1) THEN C = LOC(1) + LOF(1) + DSKF(0) + USR0(5)
+IF EOF(1) THEN
+    C = LOC(1) + LOF(1) + DSKF(0) + USR0(5)
 END IF`);
   assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
   for (const re of [/CVI\(/, /MKI\$\(/, /EOF\(1\)/, /LOC\(1\)/, /LOF\(1\)/, /DSKF\(0\)/, /USR0\(5\)/])

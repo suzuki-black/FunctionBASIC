@@ -22,7 +22,9 @@
     <div class="menu" data-menu="file">
       <span class="mtitle" data-i18n="m.file">ファイル</span>
       <div class="dropdown">
+        <div class="mi" data-act="newproject"><span data-i18n="newproject">新規プロジェクト…</span></div>
         <div class="mi" data-act="openfolder"><span data-i18n="openfolder">フォルダを開く…</span><span class="sc">Ctrl/Cmd+O</span></div>
+        <div class="mi" data-act="recentprojects"><span data-i18n="recentprojects">最近のプロジェクト…</span></div>
         <div class="mi" data-act="reloadfolder"><span data-i18n="reloadfolder">ディスクから再読込</span></div>
         <div class="sep"></div>
         <div class="mi" data-act="savesrc"><span data-i18n="savesrc">保存（ソース）</span><span class="sc">Ctrl/Cmd+S</span></div>
@@ -214,6 +216,8 @@
       <label class="set-check"><input id="setAutoIndent" type="checkbox" /><span data-i18n="set.autoindent">自動インデント（Enter）</span></label>
       <label class="set-check"><input id="setAutoPair" type="checkbox" /><span data-i18n="set.autopair">括弧・引用符の自動補完</span></label>
       <label class="set-check"><input id="setCurLine" type="checkbox" /><span data-i18n="set.curline">現在行をハイライト</span></label>
+      <label class="set-check"><input id="setWatchExternal" type="checkbox" /><span data-i18n="set.watchexternal">外部ファイル変更を検出して整合（デスクトップ）</span></label>
+      <label class="set-check"><input id="setAutoReload" type="checkbox" /><span data-i18n="set.autoreload">競合が無ければ自動で再読込（OFF=毎回確認）</span></label>
 
       <div class="set-section" data-i18n="set.transpile">変換（最適化）</div>
       <label class="set-check"><input id="setOptimize" type="checkbox" /><span data-i18n="set.optimize">定数畳み込み（リテラル同士の演算を事前計算）</span></label>

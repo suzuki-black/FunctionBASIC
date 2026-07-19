@@ -462,7 +462,16 @@ export function parse(tokens: Token[]): ParseResult {
   const parseIfTail = (pos: Position): IfBlock => {
     const cond = parseExpr();
     expectKw("THEN", "IF");
-    // ブロックIFのみ対応（1行IFはネスト許可後は不要、ただし将来拡張余地）
+    // FunctionBASIC はブロックIFのみ対応。THEN の直後に（改行でなく）文が続くと 1行IF＝
+    // MSX-BASIC の書き方。そのまま進めると END IF が見つからず WEND 等でエラーになり、初心者に
+    // 原因が伝わらない。ここで IF 自身の位置に明快なエラーを出し、その行を読み飛ばして回復する
+    // （下流へカスケードさせない）。
+    if (!checkKind("NEWLINE") && !atEof()) {
+      report("E_IF_SINGLE_LINE", pos);
+      while (!checkKind("NEWLINE") && !atEof()) advance(); // 1行IFの残りを読み飛ばす
+      if (checkKind("NEWLINE")) advance();
+      return { type: "If", cond, then: [], pos };
+    }
     if (checkKind("NEWLINE")) advance();
     const thenBody = parseBlockBody(["ELSEIF", "ELSE", "END"]);
     if (checkKw("ELSEIF")) {

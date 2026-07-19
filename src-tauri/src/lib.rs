@@ -64,6 +64,8 @@ fn decode_text(bytes: &[u8]) -> String {
 struct FileEntry {
     name: String,
     content: String,
+    mtime: u64, // 最終更新（UNIX epoch ミリ秒）。外部変更検出の baseline に使う
+    size: u64,  // バイト数
 }
 
 #[derive(serde::Serialize)]
@@ -72,30 +74,58 @@ struct OpenResult {
     files: Vec<FileEntry>,
 }
 
+// メタデータから最終更新を UNIX epoch ミリ秒で取り出す（取れなければ 0）。
+fn mtime_ms(meta: &std::fs::Metadata) -> u64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+// 指定パスが .msxb ファイルか。
+fn is_msxb_path(path: &std::path::Path) -> bool {
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("msxb"))
+            .unwrap_or(false)
+}
+
+#[derive(serde::Serialize)]
+struct FileStat {
+    name: String,
+    mtime: u64,
+    size: u64,
+}
+
+#[derive(serde::Serialize)]
+struct FileRead {
+    content: String,
+    mtime: u64,
+    size: u64,
+}
+
 // dir 直下の *.msxb を名前順に読み込む（サブフォルダは辿らない）。
 fn read_msxb_dir(dir: &std::path::Path) -> Result<Vec<FileEntry>, String> {
     let mut out: Vec<FileEntry> = Vec::new();
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let is_msxb = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.eq_ignore_ascii_case("msxb"))
-            .unwrap_or(false);
-        if !is_msxb {
+        if !is_msxb_path(&path) {
             continue;
         }
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
         out.push(FileEntry {
             name: name.to_string(),
             content: decode_text(&bytes),
+            mtime: mtime_ms(&meta),
+            size: meta.len(),
         });
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -130,6 +160,72 @@ async fn open_folder(app: tauri::AppHandle) -> Result<Option<OpenResult>, String
 #[tauri::command]
 fn read_folder(dir: String) -> Result<Vec<FileEntry>, String> {
     read_msxb_dir(std::path::Path::new(&dir))
+}
+
+// dir 直下の *.msxb の軽量メタ（name/mtime/size のみ、内容は読まない）。
+// 外部変更のポーリング・保存/実行前チェック用（read_folder より安価）。
+#[tauri::command]
+fn stat_files(dir: String) -> Result<Vec<FileStat>, String> {
+    let d = std::path::Path::new(&dir);
+    let mut out: Vec<FileStat> = Vec::new();
+    for entry in std::fs::read_dir(d).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !is_msxb_path(&path) {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        out.push(FileStat {
+            name: name.to_string(),
+            mtime: mtime_ms(&meta),
+            size: meta.len(),
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+// 単一ファイルを内容＋メタ付きで読む（部分再読込・整合確認用）。
+#[tauri::command]
+fn read_file(dir: String, name: String) -> Result<FileRead, String> {
+    let path = std::path::Path::new(&dir).join(&name);
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    Ok(FileRead {
+        content: decode_text(&bytes),
+        mtime: mtime_ms(&meta),
+        size: meta.len(),
+    })
+}
+
+// フォルダを監視して、変更時に "files-changed" イベントを front へ emit する。
+// notify のイベントは細かく多発するので、整合（再 stat）は front 側でデバウンスする。
+// watcher は Tauri の管理状態に保持して生存させる（フォルダ切替時は置き換え）。
+struct WatcherState(std::sync::Mutex<Option<notify::RecommendedWatcher>>);
+
+#[tauri::command]
+fn watch_folder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WatcherState>,
+    dir: String,
+) -> Result<(), String> {
+    use notify::Watcher;
+    use tauri::Emitter;
+    let app2 = app.clone();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if res.is_ok() {
+            let _ = app2.emit("files-changed", ());
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    watcher
+        .watch(std::path::Path::new(&dir), notify::RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
+    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
+    Ok(())
 }
 
 // 1 ソースファイルを dir/name へ Shift-JIS 保存（ダイアログ無し）。name は .msxb 込み。
@@ -528,7 +624,9 @@ fn build_native_menu<R: tauri::Runtime>(
         l("ファイル", "File"),
         true,
         &[
+            &mi("newproject", "新規プロジェクト…", "New Project…")?,
             &mi("openfolder", "フォルダを開く…", "Open Folder…")?,
+            &mi("recentprojects", "最近のプロジェクト…", "Recent Projects…")?,
             &mi("reloadfolder", "ディスクから再読込", "Reload from Disk")?,
             &PredefinedMenuItem::separator(handle)?,
             &mi("savesrc", "保存（ソース）", "Save (source)")?,
@@ -615,11 +713,15 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let _ = app.emit("menu-action", event.id().0.as_str());
         })
+        .manage(WatcherState(std::sync::Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             save_project,
             pick_folder,
             open_folder,
             read_folder,
+            stat_files,
+            read_file,
+            watch_folder,
             save_source,
             save_build,
             set_clipboard,

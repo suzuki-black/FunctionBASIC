@@ -97,6 +97,41 @@ END IF`);
   assert.ok(/PRINT "TWO"[\s\S]*?GOTO/.test(text), "合致本体の後に合流 GOTO");
 });
 
+test("1行IF: THEN の後に文が続くと E_IF_SINGLE_LINE を IF の位置で（カスケードしない）", () => {
+  // 初心者が MSX-BASIC 風に 1行IF を書いたケース。エラーは IF の行に1件だけ出て、
+  // 後続の WEND 等へ波及しない（従来は WEND で複数エラーになり原因が伝わらなかった）。
+  const errs = errors(`GLOBAL X%
+X% = 0
+WHILE 1
+    X% = X% - 2
+    IF X% < -16 THEN X% = 255
+    PRINT X%
+WEND`);
+  assert.equal(errs.length, 1, "エラーは1件だけ");
+  assert.equal(errs[0].code, "E_IF_SINGLE_LINE");
+  assert.equal(errs[0].line, 5, "エラーは1行IFの行（WENDではない）");
+});
+
+test("1行IF: ブロックIFに直せば通る", () => {
+  assert.equal(
+    errors(`GLOBAL X%
+X% = 0
+IF X% < -16 THEN
+    X% = 255
+END IF`).length,
+    0,
+  );
+});
+
+test("1行IF: ELSEIF の1行形も検出", () => {
+  const errs = errors(`GLOBAL N%
+IF N% = 1 THEN
+    PRINT "A"
+ELSEIF N% = 2 THEN PRINT "B"
+END IF`);
+  assert.ok(errs.some((d) => d.code === "E_IF_SINGLE_LINE"), "ELSEIF の1行形も E_IF_SINGLE_LINE");
+});
+
 test("ELSEIF: ネストした通常 IF と併存しても壊れない", () => {
   const { diags } = compile(`GLOBAL A%
 GLOBAL B%

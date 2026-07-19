@@ -8,7 +8,7 @@
 '  collision are all Structured BASIC - no inline assembly.
 '
 '  Structured-BASIC showcase (every construct below is ZERO runtime cost):
-'   - STRUCT Column { Ground%, Obstacle% } + DIM col(31): the terrain ring
+'   - STRUCT COLUMN { GROUND%, OBSTACLE% } + DIM COL(31): the terrain ring
 '     buffer as struct-of-arrays (was two hand-kept parallel arrays).
 '   - SELECT CASE with ranges for the joystick (CASE 2 TO 4 / CASE 6 TO 8).
 '   - ELSEIF for the vertical land / fall / airborne resolve.
@@ -32,13 +32,13 @@ CONST OBSTACLE_TILE% = 215          ' obstacle tile (redefined solid)
 CONST NO_GROUND_ROW% = 24            ' ground-row value meaning "no ground" (a pit)
 
 ' Compile-time inline helpers (expand to expressions in place - no call cost):
-MACRO RND1(N)        = INT(RND(1) * (N))                     ' random 0..N-1
+MACRO RND1(N) = INT(RND(1) * (N))                     ' random 0..N-1
 MACRO SURFACE_Y(ROW) = (ROW) * 8 - 16                        ' sprite-top Y that stands on ground ROW
 MACRO SCREEN_COL(PX) = ((SCROLL_OFFSET% + (PX)) AND 255) \ 8 ' wrapped screen-X -> ring column (0..31)
 
 ' Terrain ring buffer: one entry per on-screen column, kept as struct-of-arrays.
-STRUCT Column
-    Ground%, Obstacle%             ' ground row, and obstacle-block height above it
+STRUCT COLUMN
+    GROUND%, OBSTACLE%             ' ground row, and obstacle-block height above it
 END STRUCT
 
 GLOBAL SCROLL_OFFSET%                  ' accumulated hardware-scroll offset (0..255)
@@ -183,7 +183,7 @@ FUNCTION RESET_GAME()
     GLOBAL HAZARD_KIND%
     GLOBAL HAZARD_COLUMNS_LEFT%
     GLOBAL HAZARD_OBSTACLE_HEIGHT%
-    GLOBAL col
+    GLOBAL COL
     CLS
     SCROLL_OFFSET% = 0
     SCROLL_CARRY% = 0
@@ -204,8 +204,8 @@ FUNCTION RESET_GAME()
     HAZARD_OBSTACLE_HEIGHT% = 1
     FOR C% = 0 TO 31
         WRITE_COL(C%, 19, 0)
-        col(C%).Ground = 19
-        col(C%).Obstacle = 0
+        COL(C%).GROUND = 19
+        COL(C%).OBSTACLE = 0
     NEXT C%
     SET SCROLL 0, 0, 1, 1
     PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, 0
@@ -237,7 +237,7 @@ FUNCTION RUNGAME()
     GLOBAL ON_GROUND%
     GLOBAL PREVIOUS_TRIGGER%
     GLOBAL GAME_OVER%
-    GLOBAL col
+    GLOBAL COL
     GLOBAL NEXT_GROUND_ROW%
     GLOBAL NEXT_OBSTACLE_HEIGHT%
     WASPUSH% = 0
@@ -258,8 +258,8 @@ FUNCTION RUNGAME()
                 WRITE_COLUMN% = WRITE_COLUMN% - 32
             END IF
             WRITE_COL(WRITE_COLUMN%, NEXT_GROUND_ROW%, NEXT_OBSTACLE_HEIGHT%)
-            col(WRITE_COLUMN%).Ground = NEXT_GROUND_ROW%
-            col(WRITE_COLUMN%).Obstacle = NEXT_OBSTACLE_HEIGHT%
+            COL(WRITE_COLUMN%).GROUND = NEXT_GROUND_ROW%
+            COL(WRITE_COLUMN%).OBSTACLE = NEXT_OBSTACLE_HEIGHT%
             DISTANCE% = DISTANCE% + 1
             ' forced scroll keeps accelerating: 2 -> 6 px/frame, every 48 dist
             IF (DISTANCE% MOD 48) = 0 AND SCROLL_SPEED% < 6 THEN
@@ -326,13 +326,13 @@ FUNCTION RUNGAME()
         ' Ejecting fully here keeps the centre column below from ever being a
         ' tall wall, so the vertical "stand" step can't teleport us up it.
         PREVX% = PLAYER_X%
-        WALLROW% = col(SCREEN_COL(PLAYER_X% + 15)).Ground
+        WALLROW% = COL(SCREEN_COL(PLAYER_X% + 15)).GROUND
         DO WHILE WALLROW% < NO_GROUND_ROW% AND WALLROW% * 8 <= PLAYER_Y% AND GAME_OVER% = 0
             PLAYER_X% = PLAYER_X% - 1
             IF PLAYER_X% < 0 THEN
                 GAME_OVER% = 1
             END IF
-            WALLROW% = col(SCREEN_COL(PLAYER_X% + 15)).Ground
+            WALLROW% = COL(SCREEN_COL(PLAYER_X% + 15)).GROUND
         LOOP
         ' danger rasp while a wall squeezes us leftward (edge-triggered once)
         IF PLAYER_X% < PREVX% THEN
@@ -349,8 +349,8 @@ FUNCTION RUNGAME()
         END IF
         ' ---- terrain under the sprite centre (after any push) ----
         CTRCOL% = SCREEN_COL(PLAYER_X% + 8)
-        CGND% = col(CTRCOL%).Ground
-        COBST% = col(CTRCOL%).Obstacle
+        CGND% = COL(CTRCOL%).GROUND
+        COBST% = COL(CTRCOL%).OBSTACLE
         ' obstacle hit? (feet reach the block AND head is still below its top)
         IF COBST% > 0 AND PLAYER_Y% + 15 >= (CGND% - COBST%) * 8 AND PLAYER_Y% < CGND% * 8 THEN
             GAME_OVER% = 1
@@ -419,7 +419,7 @@ END FUNCTION
 ' ---------------- MAIN ----------------
 GLOBAL GAME_OVER%
 GLOBAL DISTANCE%
-GLOBAL col
+GLOBAL COL
 GLOBAL SCROLL_OFFSET%
 
 IF PEEK(&H2D) < 3 THEN
@@ -433,7 +433,7 @@ SCREEN 1, 2
 WIDTH 32
 COLOR 15, 1, 1
 KEY OFF
-DIM col(31) AS Column
+DIM COL(31) AS COLUMN
 
 SETUP_TILES()
 

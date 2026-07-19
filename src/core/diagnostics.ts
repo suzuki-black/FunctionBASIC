@@ -142,6 +142,11 @@ const CATALOG: Record<string, Entry> = {
     ja: () => "DO と LOOP の両方に条件は付けられません（どちらか一方に WHILE/UNTIL を書いてください）",
     en: () => "A condition may appear on either DO or LOOP, not both (put WHILE/UNTIL on just one)",
   },
+  E_IF_SINGLE_LINE: {
+    code: "E_IF_SINGLE_LINE",
+    ja: () => "1行IF（IF 条件 THEN 文）は使えません。THEN の後は改行して、ブロック形式で書いてください： IF 条件 THEN → 文 → END IF",
+    en: () => "Single-line IF (IF cond THEN statement) isn't supported. Break after THEN and use the block form: IF cond THEN / statement / END IF",
+  },
   E_MACRO_DUP: {
     code: "E_MACRO_DUP",
     ja: (p) => `MACRO 名が重複しています（他の MACRO/FUNCTION と衝突）: ${p.name}`,

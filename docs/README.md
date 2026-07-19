@@ -141,6 +141,8 @@ PRINT "FOUND="; RESULT; " AT "; WHERE
 | 10 | [10-tech-stack.md](10-tech-stack.md) | 技術スタック・プラットフォーム構成（Tauri／再生3方式 A・B・C） | 実装方針 |
 | 11 | [11-editor-features.md](11-editor-features.md) | エディタ機能（ハイライト・分割・ナビゲーション・補完・Shift-JIS・フォント等） | 仕様5＋α |
 | 12 | [12-builtins.md](12-builtins.md) | MSX-BASIC組み込み命令・関数表（パススルー・機種フラグ・設定編集/リセット） | 言語/組み込み |
+| 13 | [13-style-guide.md](13-style-guide.md) | コーディングスタイル標準（全大文字・4スペース・1文1行・空白/コメント規則）。整形器がリファレンス実装 | スタイル規約 |
+| 14 | [14-external-file-sync.md](14-external-file-sync.md) | 外部ファイル変更の検出と整合（巻き戻し防止）。ランタイム非依存の設計パターン＋移植ガイド（他ツール横展開用） | 設計/横展開 |
 
 ---
 

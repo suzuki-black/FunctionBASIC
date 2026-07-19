@@ -357,7 +357,9 @@ table.mt td { padding: 1px 20px 1px 0; vertical-align: top; }
   font-family: var(--mono); font-size: 14px;
 }
 .modal-input[hidden] { display: none; }
-.modal-actions { margin-top: 16px; text-align: right; display: flex; gap: 8px; justify-content: flex-end; }
+.modal-actions { margin-top: 16px; text-align: right; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.modal-custom-btn { background: #3a3a3a; }
+.modal-custom-btn:hover { background: #4a4a4a; }
 .modal-actions button { padding: 6px 18px; }
 .modal-actions button[hidden] { display: none; }
 #modalCancel { background: #444; }

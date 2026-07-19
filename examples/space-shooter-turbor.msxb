@@ -35,7 +35,7 @@
 '  to run on older, slower machines. In WebMSX pick the turbo R machine.
 '
 '  STRUCTURED SYNTAX showcase (added after this game was first written):
-'   - STRUCT Projectile { X%, Y%, ACTIVE% } for the bullet and bomb
+'   - STRUCT PROJECTILE { X%, Y%, ACTIVE% } for the bullet and bomb
 '     (lowers to plain per-field variables = zero runtime cost).
 '   - SELECT CASE for the joystick direction (CASE 6,7,8 / 2,3,4) and the
 '     win/lose end screen.
@@ -71,11 +71,11 @@ GLOBAL PLAYER_X%                 ' player X in pixels (0..240)
 GLOBAL SCORE%                 ' score
 GLOBAL LIVES%                 ' lives
 GLOBAL GAME_STATE%               ' 0=running, 1=win, 2=lose
-STRUCT Projectile               ' bullet と bomb 共通の形
+STRUCT PROJECTILE               ' bullet と bomb 共通の形
     X%, Y%, ACTIVE%             ' 画面座標(px) と 有効フラグ(0/1)
 END STRUCT
-DIM bullet AS Projectile        ' スカラインスタンス（フィールドは通常変数へ展開＝追加コスト無し）
-DIM bomb AS Projectile
+DIM BULLET AS PROJECTILE        ' スカラインスタンス（フィールドは通常変数へ展開＝追加コスト無し）
+DIM BOMB AS PROJECTILE
 GLOBAL FLEET_COL%                ' fleet left char column / top char row / direction
 GLOBAL FLEET_ROW%
 GLOBAL FLEET_DIR%
@@ -551,12 +551,12 @@ FUNCTION CHECK_HIT()
     GLOBAL ALIVE%
     GLOBAL ALIENS_LEFT%
     GLOBAL SCORE%
-    GLOBAL bullet
+    GLOBAL BULLET
     GLOBAL STATUS_DIRTY%
     GLOBAL FLEET_ALIVE$
     GLOBAL FLEET_DATA_PTR%
-    CXC% = (bullet.X + 7) \ 8
-    CYC% = (bullet.Y + 4) \ 8
+    CXC% = (BULLET.X + 7) \ 8
+    CYC% = (BULLET.Y + 4) \ 8
     DC% = CXC% - FLEET_COL%
     DR% = CYC% - FLEET_ROW%
     IF DC% >= 0 THEN
@@ -575,10 +575,10 @@ FUNCTION CHECK_HIT()
                                 POKE FLEET_DATA_PTR% + R% * 8 + C%, 0
                                 ALIENS_LEFT% = ALIENS_LEFT% - 1
                                 SCORE% = SCORE% + (ALIEN_ROWS% - R%) * 10
-                                bullet.ACTIVE = 0
+                                BULLET.ACTIVE = 0
                                 STATUS_DIRTY% = 1
                                 DRAW_ALIEN(C%, R%, 1)
-                                PUT SPRITE 2, (bullet.X, PARK_Y%), COLOR_BULLET%, 2
+                                PUT SPRITE 2, (BULLET.X, PARK_Y%), COLOR_BULLET%, 2
                                 SFXNOISE(24, 12)   ' alien explosion
                             END IF
                         END IF
@@ -595,14 +595,14 @@ FUNCTION DROP_BOMB()
     GLOBAL FLEET_COL%
     GLOBAL FLEET_ROW%
     GLOBAL ALIVE%
-    GLOBAL bomb
+    GLOBAL BOMB
     C% = INT(RND(1) * ALIENS_PER_ROW%)
     FOR R% = ALIEN_ROWS% - 1 TO 0 STEP -1
         IF ALIVE%(C%, R%) = 1 THEN
-            IF bomb.ACTIVE = 0 THEN
-                bomb.X = (FLEET_COL% + C% * CELL_STEP_X%) * 8
-                bomb.Y = (FLEET_ROW% + R% * CELL_STEP_Y% + 2) * 8
-                bomb.ACTIVE = 1
+            IF BOMB.ACTIVE = 0 THEN
+                BOMB.X = (FLEET_COL% + C% * CELL_STEP_X%) * 8
+                BOMB.Y = (FLEET_ROW% + R% * CELL_STEP_Y% + 2) * 8
+                BOMB.ACTIVE = 1
             END IF
         END IF
     NEXT R%
@@ -638,13 +638,13 @@ END FUNCTION
 
 ' Fire a bullet if none is in flight.
 FUNCTION FIRE()
-    GLOBAL bullet
+    GLOBAL BULLET
     GLOBAL PLAYER_X%
     IF STRIG(0) THEN
-        IF bullet.ACTIVE = 0 THEN
-            bullet.ACTIVE = 1
-            bullet.X = PLAYER_X%
-            bullet.Y = PLAYER_SPRITE_Y% - 12
+        IF BULLET.ACTIVE = 0 THEN
+            BULLET.ACTIVE = 1
+            BULLET.X = PLAYER_X%
+            BULLET.Y = PLAYER_SPRITE_Y% - 12
             SFXTONE(150, 0, 8)   ' laser "pew" (high tone, quick decay)
         END IF
     END IF
@@ -653,19 +653,19 @@ END FUNCTION
 
 ' Advance the bullet several pixels; test for a hit; park it when spent.
 FUNCTION STEP_BULLET()
-    GLOBAL bullet
-    IF bullet.ACTIVE = 1 THEN
-        bullet.Y = bullet.Y - BULLET_SPEED%
-        IF bullet.Y < FLEET_TOP_ROW% * 8 - 8 THEN
-            bullet.ACTIVE = 0
+    GLOBAL BULLET
+    IF BULLET.ACTIVE = 1 THEN
+        BULLET.Y = BULLET.Y - BULLET_SPEED%
+        IF BULLET.Y < FLEET_TOP_ROW% * 8 - 8 THEN
+            BULLET.ACTIVE = 0
         END IF
-        IF bullet.ACTIVE = 1 THEN
+        IF BULLET.ACTIVE = 1 THEN
             CHECK_HIT()
         END IF
-        IF bullet.ACTIVE = 1 THEN
-            PUT SPRITE 2, (bullet.X, bullet.Y), COLOR_BULLET%, 2
+        IF BULLET.ACTIVE = 1 THEN
+            PUT SPRITE 2, (BULLET.X, BULLET.Y), COLOR_BULLET%, 2
         ELSE
-            PUT SPRITE 2, (bullet.X, PARK_Y%), COLOR_BULLET%, 2
+            PUT SPRITE 2, (BULLET.X, PARK_Y%), COLOR_BULLET%, 2
         END IF
     END IF
 END FUNCTION
@@ -696,24 +696,24 @@ END FUNCTION
 
 ' Maybe spawn, then advance the enemy bomb; hit-test the player.
 FUNCTION STEP_BOMB()
-    GLOBAL bomb
+    GLOBAL BOMB
     GLOBAL PLAYER_X%
-    IF bomb.ACTIVE = 0 THEN
+    IF BOMB.ACTIVE = 0 THEN
         IF RND(1) < 0.1 THEN
             DROP_BOMB()
         END IF
     END IF
-    IF bomb.ACTIVE = 1 THEN
-        bomb.Y = bomb.Y + BOMB_SPEED%
-        IF bomb.Y >= PLAYER_SPRITE_Y% THEN
-            bomb.ACTIVE = 0
-            PUT SPRITE 3, (bomb.X, PARK_Y%), COLOR_BOMB%, 3
-            IF ABS(bomb.X - PLAYER_X%) < 12 THEN
+    IF BOMB.ACTIVE = 1 THEN
+        BOMB.Y = BOMB.Y + BOMB_SPEED%
+        IF BOMB.Y >= PLAYER_SPRITE_Y% THEN
+            BOMB.ACTIVE = 0
+            PUT SPRITE 3, (BOMB.X, PARK_Y%), COLOR_BOMB%, 3
+            IF ABS(BOMB.X - PLAYER_X%) < 12 THEN
                 HIT_PLAYER()
             END IF
         END IF
-        IF bomb.ACTIVE = 1 THEN
-            PUT SPRITE 3, (bomb.X, bomb.Y), COLOR_BOMB%, 3
+        IF BOMB.ACTIVE = 1 THEN
+            PUT SPRITE 3, (BOMB.X, BOMB.Y), COLOR_BOMB%, 3
         END IF
     END IF
 END FUNCTION
@@ -793,8 +793,8 @@ GLOBAL PLAYER_X%
 GLOBAL SCORE%
 GLOBAL LIVES%
 GLOBAL GAME_STATE%
-GLOBAL bullet
-GLOBAL bomb
+GLOBAL BULLET
+GLOBAL BOMB
 GLOBAL ALIENS_LEFT%
 GLOBAL ANIM_FRAME%
 GLOBAL ALIVE%
@@ -874,8 +874,8 @@ PLAYER_X% = 120
 SCORE% = 0
 LIVES% = 3
 GAME_STATE% = 0
-bullet.ACTIVE = 0
-bomb.ACTIVE = 0
+BULLET.ACTIVE = 0
+BOMB.ACTIVE = 0
 ANIM_FRAME% = 0
 PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
 PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
@@ -919,140 +919,140 @@ END
 
 ' --- alien, frame A (arms up, legs out) ---
 DATASET ALIEN_A
-DATA "......####......"
-DATA ".....######....."
-DATA "....########...."
-DATA "...##.####.##..."
-DATA "..############.."
-DATA "..##.######.##.."
-DATA "..##.######.##.."
-DATA "..############.."
-DATA "....##....##...."
-DATA "...##..##..##..."
-DATA "..##..####..##.."
-DATA "..##.##..##.##.."
-DATA "....#......#...."
-DATA "...#........#..."
-DATA "................"
-DATA "................"
+    DATA "......####......"
+    DATA ".....######....."
+    DATA "....########...."
+    DATA "...##.####.##..."
+    DATA "..############.."
+    DATA "..##.######.##.."
+    DATA "..##.######.##.."
+    DATA "..############.."
+    DATA "....##....##...."
+    DATA "...##..##..##..."
+    DATA "..##..####..##.."
+    DATA "..##.##..##.##.."
+    DATA "....#......#...."
+    DATA "...#........#..."
+    DATA "................"
+    DATA "................"
 END DATASET
 
 ' --- alien, frame B (arms down, legs in) ---
 DATASET ALIEN_B
-DATA "......####......"
-DATA ".....######....."
-DATA "....########...."
-DATA "...##.####.##..."
-DATA "..############.."
-DATA "..##.######.##.."
-DATA "..##.######.##.."
-DATA "..############.."
-DATA "...###....###..."
-DATA "..#..######..#.."
-DATA ".#....####....#."
-DATA "......#..#......"
-DATA ".....#....#....."
-DATA "....#......#...."
-DATA "................"
-DATA "................"
+    DATA "......####......"
+    DATA ".....######....."
+    DATA "....########...."
+    DATA "...##.####.##..."
+    DATA "..############.."
+    DATA "..##.######.##.."
+    DATA "..##.######.##.."
+    DATA "..############.."
+    DATA "...###....###..."
+    DATA "..#..######..#.."
+    DATA ".#....####....#."
+    DATA "......#..#......"
+    DATA ".....#....#....."
+    DATA "....#......#...."
+    DATA "................"
+    DATA "................"
 END DATASET
 
 ' --- player body (cannon) ---
 DATASET PLAYER_BODY
-DATA ".......##......."
-DATA ".......##......."
-DATA "......####......"
-DATA "......####......"
-DATA ".....######....."
-DATA ".....######....."
-DATA "....########...."
-DATA "...##########..."
-DATA "..############.."
-DATA ".##############."
-DATA "################"
-DATA "################"
-DATA "################"
-DATA "##.##########.##"
-DATA "##.##########.##"
-DATA "#...########...#"
+    DATA ".......##......."
+    DATA ".......##......."
+    DATA "......####......"
+    DATA "......####......"
+    DATA ".....######....."
+    DATA ".....######....."
+    DATA "....########...."
+    DATA "...##########..."
+    DATA "..############.."
+    DATA ".##############."
+    DATA "################"
+    DATA "################"
+    DATA "################"
+    DATA "##.##########.##"
+    DATA "##.##########.##"
+    DATA "#...########...#"
 END DATASET
 
 ' --- player cockpit overlay (white) ---
 DATASET COCKPIT
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "......####......"
-DATA "......####......"
-DATA "......####......"
-DATA ".......##......."
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "......####......"
+    DATA "......####......"
+    DATA "......####......"
+    DATA ".......##......."
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
 END DATASET
 
 ' --- bullet (thin bolt) ---
 DATASET BULLET_ART
-DATA ".......##......."
-DATA ".......##......."
-DATA ".......##......."
-DATA ".......##......."
-DATA ".......##......."
-DATA ".......##......."
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
+    DATA ".......##......."
+    DATA ".......##......."
+    DATA ".......##......."
+    DATA ".......##......."
+    DATA ".......##......."
+    DATA ".......##......."
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
 END DATASET
 
 ' --- bomb (zig-zag) ---
 DATASET BOMB_ART
-DATA ".......##......."
-DATA "........##......"
-DATA ".......##......."
-DATA "......##........"
-DATA ".......##......."
-DATA "........##......"
-DATA ".......##......."
-DATA "......##........"
-DATA ".......##......."
-DATA "........##......"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
-DATA "................"
+    DATA ".......##......."
+    DATA "........##......"
+    DATA ".......##......."
+    DATA "......##........"
+    DATA ".......##......."
+    DATA "........##......"
+    DATA ".......##......."
+    DATA "......##........"
+    DATA ".......##......."
+    DATA "........##......"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
+    DATA "................"
 END DATASET
 
 ' --- explosion (starburst) ---
 DATASET EXPLOSION
-DATA "..#..........#.."
-DATA "...#........#..."
-DATA ".#..#..##..#..#."
-DATA "..#..#....#..#.."
-DATA "...#..#..#..#..."
-DATA "....#.#..#.#...."
-DATA "..#..#....#..#.."
-DATA ".....######....."
-DATA ".....######....."
-DATA "..#..#....#..#.."
-DATA "....#.#..#.#...."
-DATA "...#..#..#..#..."
-DATA "..#..#....#..#.."
-DATA ".#..#..##..#..#."
-DATA "...#........#..."
-DATA "..#..........#.."
+    DATA "..#..........#.."
+    DATA "...#........#..."
+    DATA ".#..#..##..#..#."
+    DATA "..#..#....#..#.."
+    DATA "...#..#..#..#..."
+    DATA "....#.#..#.#...."
+    DATA "..#..#....#..#.."
+    DATA ".....######....."
+    DATA ".....######....."
+    DATA "..#..#....#..#.."
+    DATA "....#.#..#.#...."
+    DATA "...#..#..#..#..."
+    DATA "..#..#....#..#.."
+    DATA ".#..#..##..#..#."
+    DATA "...#........#..."
+    DATA "..#..........#.."
 END DATASET

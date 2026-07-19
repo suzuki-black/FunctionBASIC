@@ -318,6 +318,42 @@ D% = SQ(DX%) + SQ(DY%)        ' → (DX%*DX%)+(DY%*DY%) に展開
 - 0 引数でも呼び出しは `name()` と書く（定数だけなら [`CONST`](#) の方が適切）。定義は使用より後でもよい。
 - **変換**：`expand-macros` パスで全式を走査して置換。展開後は MSX 変数も行も生成しない。詳細は [05 §5.20](05-transformer.md)。
 
+### 1.4.8 SPRITE（ドット絵パターン定義）
+
+MSX のスプライトは **`SPRITE$(n)` が実は VRAM 直結の疑似変数**で、`PUT SPRITE` は形状を「パターン番号 `n`」という細い糸だけで参照する——初心者には「`PUT SPRITE` に `SPRITE$` が出てこない」罠になる。`SPRITE name … END SPRITE` は形状に**名前**を与え、定義と使用を名前で目に見えて繋ぐ。生成物は**素の MSX-BASIC**（`SPRITE$` 代入＋そのままの `PUT SPRITE`）。
+
+```basic
+SCREEN 1,2                 ' スプライトサイズは SCREEN の第2引数（0/1=8×8, 2/3=16×16）
+SPRITE SHIP                ' 16行 → 16×16。8行なら 8×8
+    "......####......"      ' '#'/'*'=点灯、'.'/' '=消灯
+    ".....######....."
+    "....########...."
+    "...##########..."
+    "..############.."
+    ".##############."
+    "################"
+    "################"
+    "################"
+    "################"
+    ".##############."
+    "..############.."
+    "...##########..."
+    "....########...."
+    ".....######....."
+    "......####......"
+END SPRITE
+
+PUT SPRITE 0, (120, 90), 15, SHIP   ' パターン番号の代わりに名前 SHIP を使う
+```
+
+- **形状**：本体は `.`/`#` のドット絵行（文字列リテラル）。**8行×8桁＝8×8**、**16行×16桁＝16×16**（正方のみ）。点灯＝`#` `*`、消灯＝`.`（空白）。左端がビット最上位。
+- **名前 = パターン番号**：各 `SPRITE` は宣言順にパターン番号 0,1,2… を自動で割り当て、`CONST name = 番号` として全参照にインライン展開される。だから `PUT SPRITE`／`COLOR SPRITE` などで**番号の代わりに名前**を書ける（プレーン番号・色は MSX のまま明示）。
+- **16×16 の並び替え**：MSX VDP の 4象限レイアウト（左上→左下→右上→右下）への並べ替えはトランスパイラが吸収。ユーザは**見たまま正方の格子**を描く。
+- **出力**：宣言位置に `SPRITE$(番号)=CHR$(…)+…`（VRAM 書込）を生成。32バイトは MSX の1行255文字制限を越えないよう一時文字列へ分割連結。**`SCREEN` は書き換えない**——`SCREEN` の第2引数と定義サイズが食い違うと**警告** `W_SPRITE_SCREEN`（8×8 と 16×16 の混在は `W_SPRITE_MIXED`）。⇒ `SPRITE` ブロックは `SCREEN` の後に置く。
+- **`SPRITE ON`/`SPRITE OFF`/`SPRITE STOP`/`SPRITE$(n)=`/`PUT SPRITE`/`ON SPRITE GOSUB` は従来どおり**（`SPRITE` は予約語にしない。`SPRITE <名前><改行>` の形だけをブロックと解釈）。
+- エラー：行数が 8/16 でない・非正方 → `E_SPRITE_SIZE`／不正文字 → `E_SPRITE_CHAR`／空 → `E_SPRITE_EMPTY`／名前重複 → `E_SPRITE_DUP`。変換方式は [05](05-transformer.md)。
+- v1 の範囲は**パターン定義**まで。色名定数・衝突ブロック（`ON SPRITE COLLISION`）・座標当たり判定（`TOUCHES`）は今後。
+
 ---
 
 ## 1.5 BREAK / CONTINUE（仕様1-5）
@@ -431,6 +467,10 @@ field_access   = ident [ "(" expr { "," expr } ")" ] "." ident ;   (* lvalue/式
 event_block    = "EVENT" "TIMER" expr newline      (* v1 は TIMER のみ *)
                  { statement }
                  "END" "EVENT" newline ;
+
+sprite_def     = "SPRITE" ident newline            (* ident=STOP/ON/OFF 以外・SPRITE$ でない *)
+                 { string newline }                (* '.'/'#' のドット絵行。8行=8×8, 16行=16×16 *)
+                 "END" "SPRITE" newline ;
 
 (* ブロック本体は statement を再帰的に含む = 自由なネストを許可 *)
 if_block       = "IF" expr "THEN" newline

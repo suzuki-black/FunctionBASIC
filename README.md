@@ -75,6 +75,7 @@ Prefer a prebuilt app? Grab it from **[Releases](https://github.com/suzuki-black
 | `SELECT CASE` | `SELECT CASE x … CASE … CASE ELSE … END SELECT` | Multi-way branch (see below). |
 | `STRUCT` | `STRUCT … END STRUCT` ; `DIM a(n) AS T` | Struct-of-arrays (see below). |
 | `DATASET` | `DATASET name … END DATASET` | Named data block (see below). |
+| `SPRITE` | `SPRITE name … END SPRITE` | Draw a hardware sprite as `.`/`#` art → `SPRITE$` (see below). |
 | `EVENT TIMER` | `EVENT TIMER n … END EVENT` | Periodic handler (see below). |
 | `ASM` | `ASM` … `END ASM` | Inline Z80 assembly (see below). |
 | Arrays | `DIM A(n)` ; pass with `REF A` | Arrays may be passed by reference, including string arrays. |
@@ -123,6 +124,20 @@ These are the newest headline features — higher-level constructs that lower to
   ```
 
   A block body holds only `DATA` lines (values may mix numbers and strings). v1 uses the memory-optimal **strategy A**: zero extra RAM, auto-`RESTORE` on block switch, so read each block to completion before moving to the next. `RESTORE name` rewinds a block.
+
+- **`SPRITE`** — draw a hardware sprite as readable `.`/`#` art instead of hand-packing `SPRITE$` bytes. MSX's `SPRITE$(n)` is secretly a VRAM-backed variable and `PUT SPRITE` refers to a shape only by a bare pattern number — a beginner trap this removes:
+
+  ```basic
+  SPRITE PLAYER              ' 16 rows → 16×16 (8 rows → 8×8)
+      "......####......"      ' '#' = pixel on, '.' = off
+      ".....######....."
+      ' … 16 rows total …
+  END SPRITE
+
+  PUT SPRITE 0, (X%, Y%), 15, PLAYER   ' the name IS the pattern number
+  ```
+
+  Each block lowers at **compile time** to a `SPRITE$(n)=CHR$(…)` assignment (the 16×16 VDP four-quadrant reorder is handled for you), and the name becomes a pattern-number constant you use wherever a pattern number goes (`PUT SPRITE`, `COLOR SPRITE`). Sprite size follows `SCREEN`'s second argument — FunctionBASIC never rewrites `SCREEN`, but **warns** on a size mismatch. Put `SPRITE` blocks after `SCREEN` (they emit the VRAM write in place). Both featured examples use it.
 
 - **`EVENT TIMER`** — a periodic handler that lowers to `ON INTERVAL=n GOSUB` + `INTERVAL ON`:
 
@@ -287,7 +302,7 @@ DATA 62, 42, 205, 162, 0, ...
 
 A complete, playable **fixed shooter** — a colourful alien fleet that marches and speeds up as it thins, two-plane hardware sprites, per-row colours, leg animation, sound effects, lives, and a title screen — written **entirely in Structured BASIC** and transpiled to authentic MSX-BASIC that runs on a real turbo R. Full source: [`examples/space-shooter-turbor.msxb`](examples/space-shooter-turbor.msxb).
 
-It now doubles as a showcase for the game-BASIC constructs: **`STRUCT`** for the projectiles (`Projectile { X%, Y%, ACTIVE% }`), **`SELECT CASE`** for the joystick direction and the win/lose end screen, and **`DATASET`** blocks naming each sprite's artwork (`ALIEN_A`, `PLAYER_BODY`, …). Frame timing deliberately stays on `HALT`/`WAIT_FRAME` rather than `EVENT TIMER` — the game wants a deterministic per-frame loop.
+It now doubles as a showcase for the game-BASIC constructs: **`STRUCT`** for the projectiles (`Projectile { X%, Y%, ACTIVE% }`), **`SELECT CASE`** for the joystick direction and the win/lose end screen, **`SPRITE`** blocks drawing the hardware sprites (player, cockpit, bullet, bomb, explosion) as `.`/`#` art, and **`DATASET`** for the two alien frames (which become per-row colour tiles). Frame timing deliberately stays on `HALT`/`WAIT_FRAME` rather than `EVENT TIMER` — the game wants a deterministic per-frame loop.
 
 **How to play** — in webMSX pick the **turbo R** machine, press **▶ WebMSX**, then **be patient**: webMSX's turbo R boot is slow, so it can take **~30–40 seconds** before the title screen appears. At the title press **SPACE** to start. **← / →** move, **SPACE** fires. (The game deliberately refuses to run on anything older than a turbo R.)
 
@@ -321,7 +336,10 @@ A representative snippet — a function with a `REF` parameter and an early `RET
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
-        IF A(I) = 0 THEN IDX = I : RETURN 1
+        IF A(I) = 0 THEN
+            IDX = I
+            RETURN 1
+        END IF
     NEXT I
     RETURN 0
 END FUNCTION
@@ -475,6 +493,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 | `SELECT CASE` | `SELECT CASE x … CASE … CASE ELSE … END SELECT` | 多分岐（後述）。 |
 | `STRUCT` | `STRUCT … END STRUCT` ／ `DIM a(n) AS T` | struct-of-arrays（後述）。 |
 | `DATASET` | `DATASET 名前 … END DATASET` | 名前付きデータブロック（後述）。 |
+| `SPRITE` | `SPRITE 名前 … END SPRITE` | ハードウェアスプライトを `.`/`#` のドット絵で定義 → `SPRITE$`（後述）。 |
 | `EVENT TIMER` | `EVENT TIMER n … END EVENT` | 周期ハンドラ（後述）。 |
 | `ASM` | `ASM` … `END ASM` | インライン Z80 アセンブリ（後述）。 |
 | 配列 | `DIM A(n)` ／ `REF A` で渡す | 配列は参照渡し可。文字列配列も可。 |
@@ -523,6 +542,20 @@ You may use, copy, modify, and distribute this software freely, including for co
   ```
 
   ブロック本体は `DATA` 行のみ（値は数値・文字列を混在可）。v1 はメモリ最小の**方式A**：追加RAMゼロ・ブロック切替時に自動 `RESTORE`——各ブロックを読み切ってから次へ進みます。`RESTORE 名前` でそのブロックを巻き戻します。
+
+- **`SPRITE`** — `SPRITE$` のバイト列を手で組む代わりに、ハードウェアスプライトを読める `.`/`#` のドット絵で描く。MSX の `SPRITE$(n)` は実は VRAM 直結の変数で、`PUT SPRITE` は形状を「パターン番号」だけで参照する——その初心者の罠を解消します：
+
+  ```basic
+  SPRITE PLAYER              ' 16行 → 16×16（8行 → 8×8）
+      "......####......"      ' '#'=点灯、'.'=消灯
+      ".....######....."
+      ' … 全16行 …
+  END SPRITE
+
+  PUT SPRITE 0, (X%, Y%), 15, PLAYER   ' 名前がそのままパターン番号
+  ```
+
+  各ブロックは**コンパイル時**に `SPRITE$(n)=CHR$(…)` へ lower され（16×16 の VDP 4象限並べ替えは自動）、名前はパターン番号の定数になるので、パターン番号を書く所（`PUT SPRITE`・`COLOR SPRITE`）にそのまま書けます。スプライトサイズは `SCREEN` の第2引数に従います——FunctionBASIC は `SCREEN` を書き換えず、サイズ不一致は**警告**します。`SPRITE` ブロックは `SCREEN` の後ろに置いてください（宣言位置で VRAM 書込を出力）。両方の目玉サンプルで使用。
 
 - **`EVENT TIMER`** — `ON INTERVAL=n GOSUB` ＋ `INTERVAL ON` へ lower される周期ハンドラ：
 
@@ -687,7 +720,7 @@ DATA 62, 42, 205, 162, 0, ...
 
 遊べる**固定画面シューター**を丸ごと収録 — 減るほど加速する艦隊マーチ、2枚重ねのハードウェアスプライト、行ごとの色、脚アニメ、効果音、残機、タイトル画面まで、**すべて構造化BASICだけ**で書いて本物のMSX-BASICへ変換し、実機の turbo R で動きます。全ソース：[`examples/space-shooter-turbor.msxb`](examples/space-shooter-turbor.msxb)。
 
-いまはゲームBASIC構文のショーケースも兼ねています：弾と敵弾に **`STRUCT`**（`Projectile { X%, Y%, ACTIVE% }`）、ジョイスティック方向と勝敗の終了画面に **`SELECT CASE`**、各スプライトのアートに名前を付ける **`DATASET`** ブロック（`ALIEN_A`・`PLAYER_BODY` …）。フレーム同期はあえて `EVENT TIMER` でなく `HALT`/`WAIT_FRAME` のまま——決定論的な毎フレームループが欲しいためです。
+いまはゲームBASIC構文のショーケースも兼ねています：弾と敵弾に **`STRUCT`**（`Projectile { X%, Y%, ACTIVE% }`）、ジョイスティック方向と勝敗の終了画面に **`SELECT CASE`**、自機・コックピット・弾・爆弾・爆発のハードウェアスプライトを `.`/`#` のドット絵で描く **`SPRITE`** ブロック、そしてエイリアン2フレーム（行ごと色替えタイルになる）に **`DATASET`**。フレーム同期はあえて `EVENT TIMER` でなく `HALT`/`WAIT_FRAME` のまま——決定論的な毎フレームループが欲しいためです。
 
 **遊び方** — webMSXで **turbo R** マシンを選び、**▶ WebMSX** を押したら**しばらく待ってください**：webMSXの turbo R 起動は遅く、タイトルが出るまで **30〜40秒ほど** かかることがあります。タイトルで **SPACE** を押すと開始。**← / →** で移動、**SPACE** で発射。（turbo R 未満では動かないようにしてあります。）
 
@@ -721,7 +754,10 @@ DATA 62, 42, 205, 162, 0, ...
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
-        IF A(I) = 0 THEN IDX = I : RETURN 1
+        IF A(I) = 0 THEN
+            IDX = I
+            RETURN 1
+        END IF
     NEXT I
     RETURN 0
 END FUNCTION

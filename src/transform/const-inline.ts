@@ -10,7 +10,7 @@ import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 
 type ConstVal = { lit: Expr; suffix: string };
-type Decl = { name: string; expr: Expr; pos: { line: number; column: number } };
+type Decl = { name: string; expr: Expr; pos: { line: number; column: number }; strictExempt?: boolean };
 
 // 値を書き換える可能性のある組み込み命令（CONST へ向けるとエラー）。
 const WRITE_BUILTINS = new Set(["INPUT", "LINE INPUT", "LINEINPUT", "READ", "GET", "SWAP"]);
@@ -81,7 +81,7 @@ function collectConsts(stmts: Stmt[]): Decl[] {
   const out: Decl[] = [];
   const walk = (ss: Stmt[]) => {
     for (const s of ss) {
-      if (s.type === "Const") out.push({ name: s.name, expr: s.expr, pos: s.pos });
+      if (s.type === "Const") out.push({ name: s.name, expr: s.expr, pos: s.pos, strictExempt: s.strictExempt });
       else if (s.type === "If") { walk(s.then); if (s.else) walk(s.else); }
       else if (s.type === "For" || s.type === "While") walk(s.body);
     }
@@ -108,8 +108,9 @@ function buildEnv(decls: Decl[], base: Map<string, ConstVal>, diags: Diagnostic[
       const lit = fold(d.expr, env);
       if (lit) {
         const sfx = suffixOf(d.name);
-        // STRICT では CONST も型サフィックス必須（変数と一貫）。
-        if (strict && sfx === "") diags.push(error("E_STRICT_UNTYPED", d.pos, { name: d.name }));
+        // STRICT では CONST も型サフィックス必須（変数と一貫）。ただしコンパイラ生成の
+        // 整数ラベル定数（SPRITE パターン名など）は免除。
+        if (strict && sfx === "" && !d.strictExempt) diags.push(error("E_STRICT_UNTYPED", d.pos, { name: d.name }));
         if (!typeOk(sfx, lit)) diags.push(error("E_CONST_TYPE", d.pos, { name: d.name }));
         env.set(d.name, { lit, suffix: sfx });
         pending.splice(i, 1);

@@ -26,6 +26,7 @@ import type {
   ReadIntoStmt,
   RestoreDatasetStmt,
   StructDecl,
+  SpriteDef,
   FieldAccess,
   EventBlock,
   ForBlock,
@@ -640,6 +641,30 @@ export function parse(tokens: Token[]): ParseResult {
     return { type: "Struct", name, fields, pos };
   };
 
+  // SPRITE name … END SPRITE。本体は '.'/'#' のドット絵行（文字列リテラル）と注釈のみ。
+  // SPRITE は予約語ではない（SPRITE ON/OFF・SPRITE$(n)・PUT SPRITE を壊さないため）。
+  // 呼び出し側で「SPRITE <IDENT> <改行>」の形だけをこのブロックとして分岐する。
+  const parseSpriteDef = (pos: Position): SpriteDef => {
+    advance(); // SPRITE
+    const name = expectIdent("SPRITE");
+    eatLineEnd();
+    skipNewlines();
+    const rows: string[] = [];
+    // END（キーワード） SPRITE（IDENT）で閉じる。SPRITE は非予約語なので手動で終端判定する。
+    while (!atEof() && !(cur().kind === "KEYWORD" && cur().value === "END")) {
+      if (checkKind("STRING")) rows.push(advance().value);
+      else if (checkKind("COMMENT")) advance();
+      else if (checkKind("NEWLINE")) { advance(); continue; }
+      else { report("E_SPRITE_BODY", cur().pos); advance(); }
+      if (checkKind("NEWLINE")) advance();
+      skipNewlines();
+    }
+    expectKw("END", "SPRITE");
+    if (cur().kind === "IDENT" && cur().value === "SPRITE") advance();
+    else report("E_SPRITE_END", cur().pos);
+    return { type: "Sprite", name, rows, pos };
+  };
+
   const parseFor = (pos: Position): ForBlock => {
     advance(); // FOR
     const varName = expectIdent("FOR");
@@ -868,6 +893,13 @@ export function parse(tokens: Token[]): ParseResult {
         const s = parseRestoreDataset(pos);
         endOfStmt("RESTORE");
         return s;
+      }
+      // スプライトパターン定義ブロック: SPRITE <名前> <改行> … END SPRITE。
+      // SPRITE ON/OFF（ON/OFF は KEYWORD）・SPRITE STOP（STOP は IDENT 修飾語）・SPRITE$(n)=
+      // （value に $ を含む）とは曖昧にならないよう、修飾語 STOP を名前から除外する。
+      if (t.value === "SPRITE" && peek(1).kind === "IDENT" && peek(1).value !== "STOP" &&
+          (peek(2).kind === "NEWLINE" || peek(2).kind === "COMMENT" || peek(2).kind === "EOF")) {
+        return parseSpriteDef(pos);
       }
       // 組み込み文、または '_' 始まりの拡張ステートメント短縮形（_MUSIC = CALL MUSIC）。
       if (isBuiltinStatement(t.value) || t.value.startsWith("_")) {

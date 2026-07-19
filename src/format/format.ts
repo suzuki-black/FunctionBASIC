@@ -60,8 +60,10 @@ function reindent(src: string): string {
     if (trimmed === "") { outLines.push(""); continue; } // R4: 空行はインデント無し
     const w = firstWord(trimmed);
     if (w === "ASM" && /^ASM\s*$/i.test(trimmed)) { outLines.push(INDENT_UNIT.repeat(stack.length) + trimmed.toUpperCase()); inAsm = true; continue; } // R1: 区切り ASM も大文字化
+    // SPRITE ブロック開始（SPRITE <名前>、ただし SPRITE ON/OFF・SPRITE$(…) は除く）。
+    const isSpriteBlock = /^SPRITE\s+(?!ON\b|OFF\b|STOP\b)[A-Za-z_][A-Za-z0-9_]*\s*('.*)?$/i.test(trimmed);
     let indent = stack.length;
-    if (/^END\s+(IF|FUNCTION|SELECT|STRUCT|DATASET|EVENT)\b/i.test(trimmed)) {
+    if (/^END\s+(IF|FUNCTION|SELECT|STRUCT|DATASET|EVENT|SPRITE)\b/i.test(trimmed)) {
       if (stack[stack.length - 1] === "CASE") stack.pop(); // SELECT 内の最後の CASE 本体を閉じる
       stack.pop();
       indent = stack.length;
@@ -76,7 +78,8 @@ function reindent(src: string): string {
     }
     if (indent < 0) indent = 0;
     outLines.push(INDENT_UNIT.repeat(indent) + trimmed); // R5: コメント行も行頭のみ正規化（本文は trimmed に含まれ不変）
-    if (isOpener(w)) stack.push(w);
+    if (isSpriteBlock) stack.push("SPRITE");
+    else if (isOpener(w)) stack.push(w);
     else if (w === "SELECT") stack.push("SELECT");
     else if (w === "CASE") stack.push("CASE");
     else if (w === "IF" && /\bTHEN\s*('.*)?$/i.test(trimmed)) stack.push("IF"); // ブロック IF のみ（1行IF は開かない）

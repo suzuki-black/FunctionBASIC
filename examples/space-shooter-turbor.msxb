@@ -39,8 +39,8 @@
 '     (lowers to plain per-field variables = zero runtime cost).
 '   - SELECT CASE for the joystick direction (CASE 6,7,8 / 2,3,4) and the
 '     win/lose end screen.
-'   - DATASET blocks name each sprite's artwork (ALIEN_A, PLAYER_BODY, ...);
-'     the loader RESTOREs the first block and reads the rest in order.
+'   - SPRITE blocks draw the hardware sprites as '.'/'#' art (compile-time
+'     SPRITE$); the two alien frames stay in DATASET (they become colour tiles).
 '  (Frame timing stays on HALT/WAIT_FRAME, not EVENT TIMER: the game wants a
 '   deterministic per-frame loop, which is exactly the EVENT VBLANK use-case
 '   that BASIC can't do safely — see the EVENT notes in the language spec.)
@@ -118,29 +118,6 @@ FUNCTION READ16()
         ART_LEFT%(I%) = PIX8(RW$, 1)
         ART_RIGHT%(I%) = PIX8(RW$, 9)
     NEXT I%
-END FUNCTION
-
-
-' Build a 16x16 hardware sprite (pattern N) from the next 16-row shape.
-' MSX 16x16 sprite byte order is TL(0..7), BL(8..15), TR(0..7), BR(8..15).
-FUNCTION MAKE_SPRITE(N%)
-    GLOBAL ART_LEFT%
-    GLOBAL ART_RIGHT%
-    READ16()
-    S$ = ""
-    FOR I% = 0 TO 7
-        S$ = S$ + CHR$(ART_LEFT%(I%))
-    NEXT I%
-    FOR I% = 8 TO 15
-        S$ = S$ + CHR$(ART_LEFT%(I%))
-    NEXT I%
-    FOR I% = 0 TO 7
-        S$ = S$ + CHR$(ART_RIGHT%(I%))
-    NEXT I%
-    FOR I% = 8 TO 15
-        S$ = S$ + CHR$(ART_RIGHT%(I%))
-    NEXT I%
-    SPRITE$(N%) = S$
 END FUNCTION
 
 
@@ -578,7 +555,7 @@ FUNCTION CHECK_HIT()
                                 BULLET.ACTIVE = 0
                                 STATUS_DIRTY% = 1
                                 DRAW_ALIEN(C%, R%, 1)
-                                PUT SPRITE 2, (BULLET.X, PARK_Y%), COLOR_BULLET%, 2
+                                PUT SPRITE 2, (BULLET.X, PARK_Y%), COLOR_BULLET%, BULLET_ART
                                 SFXNOISE(24, 12)   ' alien explosion
                             END IF
                         END IF
@@ -630,8 +607,8 @@ FUNCTION MOVE_PLAYER()
             MV% = 1
     END SELECT
     IF MV% = 1 THEN
-        PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
-        PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
+        PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, PLAYER_BODY
+        PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, COCKPIT
     END IF
 END FUNCTION
 
@@ -663,9 +640,9 @@ FUNCTION STEP_BULLET()
             CHECK_HIT()
         END IF
         IF BULLET.ACTIVE = 1 THEN
-            PUT SPRITE 2, (BULLET.X, BULLET.Y), COLOR_BULLET%, 2
+            PUT SPRITE 2, (BULLET.X, BULLET.Y), COLOR_BULLET%, BULLET_ART
         ELSE
-            PUT SPRITE 2, (BULLET.X, PARK_Y%), COLOR_BULLET%, 2
+            PUT SPRITE 2, (BULLET.X, PARK_Y%), COLOR_BULLET%, BULLET_ART
         END IF
     END IF
 END FUNCTION
@@ -681,13 +658,13 @@ FUNCTION HIT_PLAYER()
     STATUS_DIRTY% = 1
     SFXNOISE(50, 48)         ' big player explosion (long noise tail)
     FOR K% = 1 TO 6
-        PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), 4 + K%, 4
-        PUT SPRITE 1, (PLAYER_X%, PARK_Y%), COLOR_COCKPIT%, 1
+        PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), 4 + K%, EXPLOSION
+        PUT SPRITE 1, (PLAYER_X%, PARK_Y%), COLOR_COCKPIT%, COCKPIT
         FOR T% = 1 TO 120
         NEXT T%
     NEXT K%
-    PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
-    PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
+    PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, PLAYER_BODY
+    PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, COCKPIT
     IF LIVES% <= 0 THEN
         GAME_STATE% = 2
     END IF
@@ -707,13 +684,13 @@ FUNCTION STEP_BOMB()
         BOMB.Y = BOMB.Y + BOMB_SPEED%
         IF BOMB.Y >= PLAYER_SPRITE_Y% THEN
             BOMB.ACTIVE = 0
-            PUT SPRITE 3, (BOMB.X, PARK_Y%), COLOR_BOMB%, 3
+            PUT SPRITE 3, (BOMB.X, PARK_Y%), COLOR_BOMB%, BOMB_ART
             IF ABS(BOMB.X - PLAYER_X%) < 12 THEN
                 HIT_PLAYER()
             END IF
         END IF
         IF BOMB.ACTIVE = 1 THEN
-            PUT SPRITE 3, (BOMB.X, BOMB.Y), COLOR_BOMB%, 3
+            PUT SPRITE 3, (BOMB.X, BOMB.Y), COLOR_BOMB%, BOMB_ART
         END IF
     END IF
 END FUNCTION
@@ -842,11 +819,102 @@ ROW_COLOR%(3) = 3
 
 RESTORE ALIEN_A
 LOAD_ALIENS()            ' reads the 2 alien frames (first in DATA)
-MAKE_SPRITE(0)           ' player body
-MAKE_SPRITE(1)           ' player cockpit
-MAKE_SPRITE(2)           ' bullet
-MAKE_SPRITE(3)           ' bomb
-MAKE_SPRITE(4)           ' explosion
+' --- hardware sprite patterns (16x16), drawn as they appear on screen.
+'     Each SPRITE block compiles to a SPRITE$() assignment (no runtime parse). ---
+SPRITE PLAYER_BODY
+    ".......##......."
+    ".......##......."
+    "......####......"
+    "......####......"
+    ".....######....."
+    ".....######....."
+    "....########...."
+    "...##########..."
+    "..############.."
+    ".##############."
+    "################"
+    "################"
+    "################"
+    "##.##########.##"
+    "##.##########.##"
+    "#...########...#"
+END SPRITE
+
+SPRITE COCKPIT
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "......####......"
+    "......####......"
+    "......####......"
+    ".......##......."
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+SPRITE BULLET_ART
+    ".......##......."
+    ".......##......."
+    ".......##......."
+    ".......##......."
+    ".......##......."
+    ".......##......."
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+SPRITE BOMB_ART
+    ".......##......."
+    "........##......"
+    ".......##......."
+    "......##........"
+    ".......##......."
+    "........##......"
+    ".......##......."
+    "......##........"
+    ".......##......."
+    "........##......"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+SPRITE EXPLOSION
+    "..#..........#.."
+    "...#........#..."
+    ".#..#..##..#..#."
+    "..#..#....#..#.."
+    "...#..#..#..#..."
+    "....#.#..#.#...."
+    "..#..#....#..#.."
+    ".....######....."
+    ".....######....."
+    "..#..#....#..#.."
+    "....#.#..#.#...."
+    "...#..#..#..#..."
+    "..#..#....#..#.."
+    ".#..#..##..#..#."
+    "...#........#..."
+    "..#..........#.."
+END SPRITE
 
 TITLE()
 
@@ -877,8 +945,8 @@ GAME_STATE% = 0
 BULLET.ACTIVE = 0
 BOMB.ACTIVE = 0
 ANIM_FRAME% = 0
-PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, 0
-PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, 1
+PUT SPRITE 0, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_BODY%, PLAYER_BODY
+PUT SPRITE 1, (PLAYER_X%, PLAYER_SPRITE_Y%), COLOR_COCKPIT%, COCKPIT
 
 RUNGAME()
 
@@ -909,12 +977,13 @@ WEND
 END
 
 ' ============================================================
-'  Artwork as ASCII pictures - each shape is 16 rows x 16 columns.
+'  Alien artwork as ASCII pictures - each frame is 16 rows x 16 columns.
 '  "#" = pixel on, "." = pixel off. READ16/PIX8 turn these strings into
-'  bytes at startup, so you EDIT THE PICTURE, not hex. Just keep every
-'  row exactly 16 characters. Each sprite is a named DATASET below; the loader
-'  RESTOREs the first (ALIEN_A) and READs them in declaration order: alien
-'  frame A, frame B, then player body, cockpit, bullet, bomb, explosion.
+'  bytes at startup (the aliens are drawn as colour-per-row TILES, not
+'  hardware sprites, so they stay in DATASET + a runtime loader).
+'  RESTORE ALIEN_A anchors the read; LOAD_ALIENS reads frame A then B.
+'  (The hardware sprites - player, cockpit, bullet, bomb, explosion - are
+'   SPRITE blocks up in the init section: compile-time SPRITE$, no loader.)
 ' ============================================================
 
 ' --- alien, frame A (arms up, legs out) ---
@@ -955,104 +1024,4 @@ DATASET ALIEN_B
     DATA "....#......#...."
     DATA "................"
     DATA "................"
-END DATASET
-
-' --- player body (cannon) ---
-DATASET PLAYER_BODY
-    DATA ".......##......."
-    DATA ".......##......."
-    DATA "......####......"
-    DATA "......####......"
-    DATA ".....######....."
-    DATA ".....######....."
-    DATA "....########...."
-    DATA "...##########..."
-    DATA "..############.."
-    DATA ".##############."
-    DATA "################"
-    DATA "################"
-    DATA "################"
-    DATA "##.##########.##"
-    DATA "##.##########.##"
-    DATA "#...########...#"
-END DATASET
-
-' --- player cockpit overlay (white) ---
-DATASET COCKPIT
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "......####......"
-    DATA "......####......"
-    DATA "......####......"
-    DATA ".......##......."
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-END DATASET
-
-' --- bullet (thin bolt) ---
-DATASET BULLET_ART
-    DATA ".......##......."
-    DATA ".......##......."
-    DATA ".......##......."
-    DATA ".......##......."
-    DATA ".......##......."
-    DATA ".......##......."
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-END DATASET
-
-' --- bomb (zig-zag) ---
-DATASET BOMB_ART
-    DATA ".......##......."
-    DATA "........##......"
-    DATA ".......##......."
-    DATA "......##........"
-    DATA ".......##......."
-    DATA "........##......"
-    DATA ".......##......."
-    DATA "......##........"
-    DATA ".......##......."
-    DATA "........##......"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-    DATA "................"
-END DATASET
-
-' --- explosion (starburst) ---
-DATASET EXPLOSION
-    DATA "..#..........#.."
-    DATA "...#........#..."
-    DATA ".#..#..##..#..#."
-    DATA "..#..#....#..#.."
-    DATA "...#..#..#..#..."
-    DATA "....#.#..#.#...."
-    DATA "..#..#....#..#.."
-    DATA ".....######....."
-    DATA ".....######....."
-    DATA "..#..#....#..#.."
-    DATA "....#.#..#.#...."
-    DATA "...#..#..#..#..."
-    DATA "..#..#....#..#.."
-    DATA ".#..#..##..#..#."
-    DATA "...#........#..."
-    DATA "..#..........#.."
 END DATASET

@@ -31,6 +31,7 @@ import { lowerSelect } from "./lower-select.ts";
 import { expandMacros } from "./expand-macros.ts";
 import { checkExplicit } from "./check-explicit.ts";
 import { lowerStruct } from "./lower-struct.ts";
+import { lowerSprite } from "./lower-sprite.ts";
 import { reduceStrengthProgram } from "./strength-reduce.ts";
 import { stripComments } from "./strip-comments.ts";
 import { KEYWORDS } from "../lexer/keywords.ts";
@@ -360,6 +361,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   // MACRO 呼び出しを本体式へインライン展開（lowerStruct より前。展開結果の STRUCT フィールドも
   // 後段で処理される）。展開後は関数/配列呼び出しだけが残る。
   diagnostics.push(...expandMacros(program));
+  // SPRITE ドット絵定義を CONST（パターン番号）＋ SPRITE$ 代入へ desugar。checkExplicit より前に
+  // 走らせ、注入した CONST でパターン名が「宣言済み」扱いになる（PUT SPRITE …, name が通る）。
+  diagnostics.push(...lowerSprite(program));
   // OPTION EXPLICIT: 未宣言スカラ変数の読取を検査（マクロ展開後・struct lowering 前の元名で）。
   diagnostics.push(...checkExplicit(program));
   // STRUCT を struct-of-arrays へ desugar（フィールド→合成配列/変数。以降は通常の変数のみ）。

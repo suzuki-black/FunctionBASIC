@@ -192,6 +192,46 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `STRUCT のフィールドには型サフィックス(% ! # $)が必要です: ${p.field}`,
     en: (p) => `STRUCT fields need a type suffix (% ! # $): ${p.field}`,
   },
+  E_SPRITE_BODY: {
+    code: "E_SPRITE_BODY",
+    ja: () => "SPRITE の本体には '.'/'#' のドット絵行（文字列）のみ置けます",
+    en: () => "A SPRITE body may only contain '.'/'#' dot-art rows (strings)",
+  },
+  E_SPRITE_END: {
+    code: "E_SPRITE_END",
+    ja: () => "SPRITE ブロックは END SPRITE で閉じてください",
+    en: () => "A SPRITE block must be closed with END SPRITE",
+  },
+  E_SPRITE_EMPTY: {
+    code: "E_SPRITE_EMPTY",
+    ja: (p) => `SPRITE ${p.name} にドット絵がありません（8×8 は8行、16×16 は16行）`,
+    en: (p) => `SPRITE ${p.name} has no dot-art rows (8 rows for 8×8, 16 for 16×16)`,
+  },
+  E_SPRITE_SIZE: {
+    code: "E_SPRITE_SIZE",
+    ja: (p) => `SPRITE ${p.name} は正方の 8×8 か 16×16 にしてください（現在 ${p.rows} 行。各行も同じ桁数に）`,
+    en: (p) => `SPRITE ${p.name} must be a square 8×8 or 16×16 (got ${p.rows} rows; every row needs the same width)`,
+  },
+  E_SPRITE_CHAR: {
+    code: "E_SPRITE_CHAR",
+    ja: (p) => `SPRITE ${p.name} に使えない文字があります: '${p.ch}'（点灯='#' '*'、消灯='.' ' '）`,
+    en: (p) => `SPRITE ${p.name} has an invalid character: '${p.ch}' (on='#' '*', off='.' ' ')`,
+  },
+  E_SPRITE_DUP: {
+    code: "E_SPRITE_DUP",
+    ja: (p) => `SPRITE 名が重複しています: ${p.name}`,
+    en: (p) => `Duplicate SPRITE name: ${p.name}`,
+  },
+  W_SPRITE_SCREEN: {
+    code: "W_SPRITE_SCREEN",
+    ja: (p) => `SCREEN のスプライトサイズ指定(${p.arg})が SPRITE 定義(${p.want})と一致しません。SCREEN ${p.mode},${p.fix} を推奨します`,
+    en: (p) => `SCREEN sprite-size argument (${p.arg}) doesn't match your SPRITE definitions (${p.want}); use SCREEN ${p.mode},${p.fix}`,
+  },
+  W_SPRITE_MIXED: {
+    code: "W_SPRITE_MIXED",
+    ja: () => "8×8 と 16×16 のスプライトが混在しています。MSX のスプライトサイズは SCREEN で画面全体に一つだけ選べます（どちらかに揃えてください）",
+    en: () => "You mix 8×8 and 16×16 sprites; MSX has one global sprite size per SCREEN (use a single size)",
+  },
   E_EVENT_KIND: {
     code: "E_EVENT_KIND",
     ja: (p) => `EVENT の種別が不明です: ${p.v}（EVENT TIMER n … END EVENT）`,

@@ -61,6 +61,7 @@ export type Stmt =
   | ReadIntoStmt
   | RestoreDatasetStmt
   | StructDecl
+  | SpriteDef
   | EventBlock;
 
 // インライン Z80 アセンブリ（ASM…END ASM）。lines=生ニーモニック行。
@@ -83,6 +84,8 @@ export interface ConstStmt {
   name: string; // 型サフィックス込み（例 "MAX", "PI#", "MSG$"）
   expr: Expr;
   pos: Position;
+  // コンパイラ生成の定数（例: SPRITE パターン名→番号）。STRICT の型サフィックス必須検査を免除する。
+  strictExempt?: boolean;
 }
 export interface ArrayDecl {
   name: string;
@@ -221,6 +224,16 @@ export interface EventBlock {
   kind: "TIMER";
   arg: Expr; // INTERVAL 値（割り込み数）
   body: Stmt[];
+  pos: Position;
+}
+// スプライトパターン定義（SPRITE name … END SPRITE）。本体は '.'/'#' のドット絵行。
+// lower-sprite パスで「CONST name=<パターン番号>」＋「SPRITE$(番号)=CHR$…（VRAM書込）」へ
+// desugar するため、下流は SpriteDef を見ない。8×8=8バイト / 16×16=32バイト（MSX の 4象限
+// レイアウトへの並べ替えはトランスパイラが吸収し、ユーザは見たまま正方の格子を描く）。
+export interface SpriteDef {
+  type: "Sprite";
+  name: string; // パターン名（型サフィックス無し。CONST 名になる）
+  rows: string[]; // ドット絵行（引用符除去済み。'.'=消灯 '#'=点灯）
   pos: Position;
 }
 export interface ForBlock {

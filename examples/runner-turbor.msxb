@@ -154,13 +154,6 @@ FUNCTION SETUP_TILES()
     NEXT I%
     VPOKE BASE(6) + 26, 8 * 16 + 1
     VPOKE BASE(6) + 4, 15 * 16 + 5
-    RESTORE PLAYER_SPRITE
-    SPRDAT$ = ""
-    FOR I% = 0 TO 31
-        READ BYTE%
-        SPRDAT$ = SPRDAT$ + CHR$(BYTE%)
-    NEXT I%
-    SPRITE$(0) = SPRDAT$
 END FUNCTION
 
 
@@ -208,7 +201,7 @@ FUNCTION RESET_GAME()
         COL(C%).OBSTACLE = 0
     NEXT C%
     SET SCROLL 0, 0, 1, 1
-    PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, 0
+    PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, PLAYER
 END FUNCTION
 
 
@@ -389,7 +382,7 @@ FUNCTION RUNGAME()
                 ON_GROUND% = 0
             END IF
         END IF
-        PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, 0
+        PUT SPRITE 0, (PLAYER_X%, PLAYER_Y%), 15, PLAYER
     LOOP UNTIL GAME_OVER% = 1
     SOUND 7, 183
     SOUND 8, 16
@@ -435,6 +428,26 @@ COLOR 15, 1, 1
 KEY OFF
 DIM COL(31) AS COLUMN
 
+' --- player sprite art (16x16), drawn as it appears on screen ---
+SPRITE PLAYER
+    "......####......"
+    ".....######....."
+    ".....######....."
+    "......####......"
+    "......####......"
+    ".....######....."
+    "....########...."
+    "...####..####..."
+    "..####....####.."
+    "...##......##..."
+    "..####....####.."
+    ".##..##..##..##."
+    "##....####....##"
+    "#..............#"
+    "................"
+    "................"
+END SPRITE
+
 SETUP_TILES()
 
 DO
@@ -456,11 +469,3 @@ DO
     DO UNTIL STRIG(0)
     LOOP
 LOOP
-
-' --- player sprite art (16x16): quads TL, BL, TR, BR ---
-DATASET PLAYER_SPRITE
-    DATA 3, 7, 7, 3, 3, 7, 15, 30
-    DATA 60, 24, 60, 102, 195, 128, 0, 0
-    DATA 192, 224, 224, 192, 192, 224, 240, 120
-    DATA 60, 24, 60, 102, 195, 1, 0, 0
-END DATASET

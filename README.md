@@ -53,7 +53,8 @@ Prefer a prebuilt app? Grab it from **[Releases](https://github.com/suzuki-black
 ### Structured control flow
 
 - **`FUNCTION`** — named, top-level functions with their own locals; calls become `GOSUB` for you. `REF` before a parameter gives true pass-by-reference (including arrays and string arrays).
-- **Nestable `IF/FOR/WHILE`** — block forms you can freely nest, with `BREAK` / `CONTINUE` and `RETURN [value]`.
+- **Nestable `IF/FOR/WHILE/DO`** — block forms you can freely nest, with `BREAK` / `CONTINUE` and `RETURN [value]`. `IF` supports **`ELSEIF`** for multi-way branches, and **`DO … LOOP`** adds pre-test / post-test / infinite loops alongside `WHILE`.
+- **`MACRO`** — compile-time inline macros: `MACRO NAME(args) = expr` expands to the expression in place, so a small helper has **no `GOSUB` overhead** (unlike a `FUNCTION`).
 - **Locals by default, `GLOBAL` to share** — variables are local unless declared `GLOBAL`, so functions don't clobber each other.
 - **Long, readable names** — write `PLAYER_SCORE` / `ENEMY_X`; the transpiler maps each to a unique 2-character MSX name (MSX distinguishes only the first two characters).
 - **`CONST`** — compile-time named constants, folded and inlined as literals (re-assignment is an error).
@@ -63,9 +64,11 @@ Prefer a prebuilt app? Grab it from **[Releases](https://github.com/suzuki-black
 | Construct | Form | Notes |
 | --- | --- | --- |
 | `FUNCTION` | `FUNCTION NAME(params) … END FUNCTION` | Top-level only. Use `REF` before a parameter for pass-by-reference. |
-| `IF / ELSE` | `IF cond THEN … ELSE … END IF` | Block form; freely nestable inside loops and other blocks. |
+| `IF / ELSEIF / ELSE` | `IF cond THEN … ELSEIF cond THEN … ELSE … END IF` | Block form; `ELSEIF` for multi-way. Freely nestable. Single-line `IF … THEN stmt` is **not** supported (use the block form). |
 | `FOR / NEXT` | `FOR I = a TO b [STEP s] … NEXT I` | Standard counted loop. |
-| `WHILE` | `WHILE cond … WEND` | Condition loop; `BREAK` / `CONTINUE` supported. |
+| `WHILE` | `WHILE cond … WEND` | Pre-test loop; `BREAK` / `CONTINUE` supported. |
+| `DO / LOOP` | `DO [WHILE\|UNTIL c] … LOOP [WHILE\|UNTIL c]` | Pre-test, post-test (runs ≥ 1) or infinite (`DO … LOOP`, exit with `BREAK`). |
+| `MACRO` | `MACRO NAME(args) = expr` | Compile-time inline macro; expands to an expression (no call overhead). |
 | `GLOBAL` | `GLOBAL X` | Opt in to a shared (global) variable; otherwise variables are local. |
 | `CONST` | `CONST NAME[%!#$] = const-expr` | Compile-time constant; folded and inlined as a literal. Re-assignment is an error. An optional type suffix is validated (`CONST N% = 3`; `%` requires an integer value) and is **required under `STRICT`**. |
 | `RETURN` | `RETURN [value]` | Returns from a function, optionally with a value. |
@@ -98,16 +101,16 @@ These are the newest headline features — higher-level constructs that lower to
 - **`STRUCT`** — declare a record and `DIM` an array of it, then access fields with dot notation:
 
   ```basic
-  STRUCT Enemy
+  STRUCT ENEMY
       HP%
       X%
       Y%
   END STRUCT
-  DIM foe(20) AS Enemy
-  foe(3).HP% = 100
+  DIM FOE(20) AS ENEMY
+  FOE(3).HP% = 100
   ```
 
-  It lowers to a **struct-of-arrays** (parallel per-field MSX arrays), so it costs exactly the same as hand-written parallel arrays — **zero runtime overhead**. `GLOBAL foe` shares every field across functions. (v1: flat fields; no whole-record pass yet.)
+  It lowers to a **struct-of-arrays** (parallel per-field MSX arrays), so it costs exactly the same as hand-written parallel arrays — **zero runtime overhead**. `GLOBAL FOE` shares every field across functions. (v1: flat fields; no whole-record pass yet.) Identifiers are case-insensitive and the house style is **all-uppercase** with `_` separators (see the [style guide](docs/13-style-guide.md)).
 
 - **`DATASET`** — named data blocks that replace the opaque global `READ`/`DATA`/`RESTORE` pointer:
 
@@ -130,6 +133,13 @@ These are the newest headline features — higher-level constructs that lower to
   ```
 
   One timer only, top-level (MAIN) only; the handler shares MAIN's variables. It is a **cooperative** interrupt — it fires at BASIC statement boundaries, not preemptively. **`EVENT VBLANK` is intentionally not supported**: a true VBLANK hook can't safely re-enter the BASIC interpreter — use `HALT`-based frame sync (as the shooter does) or an ASM hook that sets a flag BASIC polls.
+
+- **`MACRO`** — a compile-time inline helper. `MACRO NAME(args) = expr` expands to its expression at every call site, so it has **no `GOSUB` overhead** (unlike a `FUNCTION`). Arguments are parenthesized on expansion (no precedence surprises); self/mutual recursion, wrong arity and duplicate names are errors.
+
+  ```basic
+  MACRO SCREEN_COL(PX) = ((SCROLL% + (PX)) AND 255) \ 8
+  ' … SCREEN_COL(PLAYER_X% + 8) expands inline, no call
+  ```
 
 ### Inline Z80 assembly
 
@@ -176,6 +186,10 @@ AVG! = CSNG(TOTAL%) / 10        ' explicit % -> ! conversion
 
 See [`examples/strict-demo.msxb`](examples/strict-demo.msxb).
 
+### OPTION EXPLICIT
+
+Put `OPTION EXPLICIT` at the top to flag **reading a variable that is never assigned or declared** (`E_UNDECLARED_VAR`) — it catches the classic typo where a misspelled name (e.g. `RADUIS` for `RADIUS`) is silently read as `0`. Off by default. It is orthogonal to `STRICT`: `STRICT` is about *types*, `OPTION EXPLICIT` is about *undeclared reads*. "Declared" means assigned, or declared via `GLOBAL` / `DIM` / `CONST` / a parameter / a `FOR` variable / an `INPUT`/`READ` target (FunctionBASIC creates scalars on assignment). Scalars only — array/function typos are already caught by call resolution.
+
 ---
 
 ## Transpiler & output
@@ -200,12 +214,15 @@ See [`examples/strict-demo.msxb`](examples/strict-demo.msxb).
 
 ## Editor
 
-- **INCLUDE-aware project tree** — entries with their includes nested; on the desktop app a project is a **folder** (`Cmd+O` opens it, `Cmd+S` saves the current `.msxb` in place with no dialog, *Convert & Save* / Run write everything then transpile, *Reload from Disk* re-reads it). Hover a tree entry for a **file-path tooltip**.
+- **Project = a folder** (desktop, JetBrains-style) — the editor always works inside a bound project folder. First launch (or a project whose folder was moved/deleted) shows a **Welcome** dialog: *Open Folder* / *New Project* / **Recent Projects**, and a *Save current content & open (recover)* option if the folder went missing while you had work in it. Switching projects with unsaved changes asks first (*Save & Open / Open Without Saving / Cancel*). `Cmd+O` opens a folder, `Cmd+S` saves the current `.msxb` in place (no dialog), *Convert & Save* / Run write everything then transpile.
+- **External change detection & reconciliation** — if another process (an AI coding assistant, `git`, another editor) rewrites a file on disk, the editor detects it (native file watcher + on-focus/on-save/on-run checks) and **auto-reloads** with a toast when you have no unsaved edits, or shows a **conflict** dialog (*replace with disk / keep mine / view diff*) when both sides changed. A save-time guard re-checks the disk first, so a stale buffer can never silently overwrite newer content. (Design: [docs/14](docs/14-external-file-sync.md).)
+- **INCLUDE-aware project tree** — entries with their includes nested; *Reload from Disk* re-reads the folder. Hover a tree entry for a **file-path tooltip**.
 - **Structured⇔MSX-BASIC line-correspondence highlight** — in split view, moving the caret in either pane highlights the exact line(s) it maps to in the other and scrolls them into view; a source line that produces nothing (a `GLOBAL` declaration, comment, or blank line) says so in the header instead.
 - **Read-only conversion table** — open it from the project tree to see the generated map: how each long name compresses to its 2-char MSX name (globals and per-function locals), every function's entry line / parameters (incl. `REF`) / return variable, and `BREAK`/`CONTINUE` jump targets. Copy it as `.map.json`.
 - **Problems panel** — validates the whole project live (every entry's `INCLUDE` graph), so cross-file errors (e.g. a duplicate function in a library) surface with the right file:line and one-click jump, plus a quick-fix to create a missing `INCLUDE` and an unused-`INCLUDE` warning.
 - **Cross-file navigation** — go-to-definition / find-usages / rename (with a preview), `INCLUDE`-line jump (`Cmd+B` / `Cmd`-click) and `INCLUDE` path autocomplete.
 - **Find / replace** — plus project-wide "Find in Files" (JetBrains keymap, regex) and token-aware **safe rename** (`Shift+F6`).
+- **Reformat** (`Cmd+Alt+L`) — one canonical style (like gofmt): re-indents by block structure (4 spaces), uppercases all identifiers, collapses stray whitespace, and leaves strings / comments / inline `ASM` bodies untouched — without changing meaning. It is the reference implementation of the [style guide](docs/13-style-guide.md).
 - **Editing aids** — auto-indent, bracket/quote auto-close, current-line highlight, line move/duplicate (each toggleable), undo/redo, and closable split tabs.
 - **In-app Settings** — language, font size, and the webMSX run machine / `PRESETS` / URL.
 - **Native OS menu** and **Japanese / English UI**, all in the lightweight, zero-dependency editor.
@@ -436,7 +453,8 @@ You may use, copy, modify, and distribute this software freely, including for co
 ### 構造化された制御フロー
 
 - **`FUNCTION`** — トップレベルの名前付き関数。独自のローカル変数を持ち、呼び出しは自動で `GOSUB` になります。引数の前の `REF` で真の参照渡し（配列・文字列配列も可）。
-- **入れ子にできる `IF/FOR/WHILE`** — 自由に入れ子できるブロック形式。`BREAK` / `CONTINUE` と `RETURN [値]` 対応。
+- **入れ子にできる `IF/FOR/WHILE/DO`** — 自由に入れ子できるブロック形式。`BREAK` / `CONTINUE` と `RETURN [値]` 対応。`IF` は多分岐の **`ELSEIF`** に対応し、**`DO … LOOP`** が前判定/後判定/無限ループを `WHILE` に加えて提供します。
+- **`MACRO`** — コンパイル時インラインマクロ。`MACRO 名前(引数) = 式` は呼び出し位置に式を展開するので、小さなヘルパでも **`GOSUB` オーバーヘッドが無い**（`FUNCTION` と違い）。
 - **既定ローカル、共有は `GLOBAL`** — 変数は `GLOBAL` 宣言しない限りローカルなので、関数どうしが壊し合いません。
 - **長く読みやすい変数名** — `PLAYER_SCORE` / `ENEMY_X` のような説明的な名前を書け、変換器が一意な2文字MSX名へ自動割り当て（MSXは先頭2文字しか区別しない）。
 - **`CONST`** — コンパイル時の名前付き定数。畳み込んでリテラルとしてインライン（再代入はエラー）。
@@ -446,9 +464,11 @@ You may use, copy, modify, and distribute this software freely, including for co
 | 構文 | 形 | 補足 |
 | --- | --- | --- |
 | `FUNCTION` | `FUNCTION 名前(引数) … END FUNCTION` | トップレベルのみ。参照渡しは引数の前に `REF`。 |
-| `IF / ELSE` | `IF 条件 THEN … ELSE … END IF` | ブロック形式。ループ等の中に自由に入れ子可。 |
+| `IF / ELSEIF / ELSE` | `IF 条件 THEN … ELSEIF 条件 THEN … ELSE … END IF` | ブロック形式。`ELSEIF` で多分岐。自由に入れ子可。1行 `IF … THEN 文` は**非対応**（ブロック形式を使う）。 |
 | `FOR / NEXT` | `FOR I = a TO b [STEP s] … NEXT I` | 標準の数え上げループ。 |
-| `WHILE` | `WHILE 条件 … WEND` | 条件ループ。`BREAK` / `CONTINUE` 対応。 |
+| `WHILE` | `WHILE 条件 … WEND` | 前判定ループ。`BREAK` / `CONTINUE` 対応。 |
+| `DO / LOOP` | `DO [WHILE\|UNTIL 条件] … LOOP [WHILE\|UNTIL 条件]` | 前判定・後判定（1回以上実行）・無限（`DO … LOOP`、`BREAK` で脱出）。 |
+| `MACRO` | `MACRO 名前(引数) = 式` | コンパイル時インラインマクロ。式に展開（呼び出しコスト無し）。 |
 | `GLOBAL` | `GLOBAL X` | 共有（グローバル）変数を使う宣言。なければローカル。 |
 | `CONST` | `CONST 名前[%!#$] = 定数式` | コンパイル時定数。畳み込んでリテラルとしてインライン。再代入はエラー。型サフィックスは任意で、付けると検証（`CONST N% = 3`、`%`は整数値のみ）。**`STRICT` では必須**。 |
 | `RETURN` | `RETURN [値]` | 関数から戻る。値を返せる。 |
@@ -481,16 +501,16 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **`STRUCT`** — レコードを宣言し、その配列を `DIM` して、ドット記法でフィールドにアクセス：
 
   ```basic
-  STRUCT Enemy
+  STRUCT ENEMY
       HP%
       X%
       Y%
   END STRUCT
-  DIM foe(20) AS Enemy
-  foe(3).HP% = 100
+  DIM FOE(20) AS ENEMY
+  FOE(3).HP% = 100
   ```
 
-  **struct-of-arrays**（フィールドごとの並行MSX配列）へ lower されるので、手書きの並行配列とまったく同じ——**実行時コストはゼロ**。`GLOBAL foe` で全フィールドを関数跨ぎで共有します。（v1: 平坦フィールド。1レコード丸ごとの受け渡しは未対応）
+  **struct-of-arrays**（フィールドごとの並行MSX配列）へ lower されるので、手書きの並行配列とまったく同じ——**実行時コストはゼロ**。`GLOBAL FOE` で全フィールドを関数跨ぎで共有します。（v1: 平坦フィールド。1レコード丸ごとの受け渡しは未対応）識別子は大小文字を区別せず、流儀は `_` 区切りの**全大文字**です（[スタイルガイド](docs/13-style-guide.md)）。
 
 - **`DATASET`** — 分かりにくい大域 `READ`/`DATA`/`RESTORE` を置き換える名前付きデータブロック：
 
@@ -513,6 +533,13 @@ You may use, copy, modify, and distribute this software freely, including for co
   ```
 
   タイマーは1つだけ・トップレベル（MAIN）専用で、ハンドラはMAINの変数を共有します。これは**協調的**割り込み——文の切れ目で発火し、プリエンプティブではありません。**`EVENT VBLANK` は意図的に非対応**：本物のVBLANKフックはBASICインタプリタに安全に再入できないため。`HALT` フレーム同期（シューターがそうしています）か、ASMフックがフラグを立ててBASICがポーリングする形で。
+
+- **`MACRO`** — コンパイル時インラインヘルパ。`MACRO 名前(引数) = 式` は各呼び出し位置に式を展開するので、`FUNCTION` と違い **`GOSUB` オーバーヘッドが無い**。引数は展開時に括弧で囲まれ（優先順位の事故なし）、自己・相互再帰／引数個数違い／名前重複はエラー。
+
+  ```basic
+  MACRO SCREEN_COL(PX) = ((SCROLL% + (PX)) AND 255) \ 8
+  ' … SCREEN_COL(PLAYER_X% + 8) はインライン展開・呼び出し無し
+  ```
 
 ### インライン Z80 アセンブリ
 
@@ -559,6 +586,10 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 
 例：[`examples/strict-demo.msxb`](examples/strict-demo.msxb)。
 
+### OPTION EXPLICIT
+
+先頭に `OPTION EXPLICIT` を置くと、**一度も代入・宣言されていない変数の読み取り**をエラーにします（`E_UNDECLARED_VAR`）。綴り間違い（例：`RADIUS` を `RADUIS`）が黙って `0` になる典型的な事故を捕まえます。既定オフ。`STRICT` とは別軸で、`STRICT` は*型*、`OPTION EXPLICIT` は*未宣言の読み取り*。「宣言済み」＝代入、または `GLOBAL` / `DIM` / `CONST` / 引数 / `FOR` 変数 / `INPUT`・`READ` の対象（FunctionBASIC はスカラを代入で生成）。対象はスカラのみ（配列・関数名のタイポは呼び出し解決で既に捕捉）。
+
 ---
 
 ## 変換と出力
@@ -583,12 +614,15 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 
 ## エディタ
 
-- **INCLUDE構造を反映したプロジェクトツリー** — エントリの下に取り込みを入れ子表示。デスクトップ版では**プロジェクト＝フォルダ**（`Cmd+O` で開き、`Cmd+S` で編集中の `.msxb` をその場に無ダイアログ保存、*変換して保存*/実行は全保存してから変換、*ディスクから再読込*で読み直し）。ツリーの項目にホバーすると**ファイルパスのツールチップ**を表示。
+- **プロジェクト＝フォルダ**（デスクトップ・JetBrains流）— エディタは常にバインド済みプロジェクトフォルダで動作。初回起動（またはフォルダが移動/削除されたプロジェクト）では **Welcome** ダイアログ：*フォルダを開く* / *新規プロジェクト* / **最近のプロジェクト**、作業中にフォルダが消えていた場合は *現在の内容を保存して開く（復旧）*。未保存のまま別プロジェクトへ切替える時は確認（*保存して開く / 保存せず開く / キャンセル*）。`Cmd+O` で開き、`Cmd+S` で編集中の `.msxb` をその場に無ダイアログ保存、*変換して保存*/実行は全保存してから変換。
+- **外部変更の検出と整合** — 別プロセス（AIコーディング支援・`git`・他エディタ）がディスク上のファイルを書き換えると、エディタが検出（ネイティブ監視＋フォーカス/保存/実行前チェック）し、未保存編集が無ければ**自動再読込**（トースト通知）、両者が変わっていれば**競合ダイアログ**（*ディスクで置換 / エディタを保持 / 差分を見る*）。保存直前にもディスクを再確認するので、**古いバッファで新しい内容を黙って上書きすることはありません**。（設計: [docs/14](docs/14-external-file-sync.md)）
+- **INCLUDE構造を反映したプロジェクトツリー** — エントリの下に取り込みを入れ子表示。*ディスクから再読込*でフォルダを読み直し。ツリーの項目にホバーすると**ファイルパスのツールチップ**を表示。
 - **構造化⇔MSX-BASIC の行対応ハイライト** — 分割表示で、どちらのペインでもキャレットを移動すると、対応する相手ペインの行がハイライトされ表示位置までスクロール。出力を生まない行（`GLOBAL` 宣言・コメント・空行）はヘッダにその旨を表示。
 - **変換テーブル（読み取り専用）** — プロジェクトツリーから開くと、生成される対応表を表示：各長い名前が2文字MSX名にどう圧縮されるか（グローバル／関数ごとのローカル）、各関数の先頭行・引数（`REF`含む）・戻り値、`BREAK`/`CONTINUE` の飛び先。`.map.json` としてコピー可能。
 - **Problemsパネル** — プロジェクト全体（各エントリの `INCLUDE` グラフ）をライブ検証し、他ファイルのエラー（例：ライブラリの重複関数）も由来 file:line 付きで表示＋ワンクリックでジャンプ。未解決 `INCLUDE` の「＋作成」クイックフィックスと未使用 `INCLUDE` 警告も。
 - **クロスファイルのナビゲーション** — 定義ジャンプ/使用箇所/リネーム（プレビュー付き）、`INCLUDE` 行のジャンプ（`Cmd+B`/`Cmd`+クリック）と `INCLUDE` パス補完。
 - **検索・置換** — 全体検索「Find in Files」（JetBrains風キーマップ・正規表現）と字句解析ベースの**安全な一括リネーム**（`Shift+F6`）も。
+- **整形**（`Cmd+Alt+L`）— 唯一の正規形（gofmt 風）：ブロック構造で再インデント（4スペース）、全識別子を大文字化、無駄な空白を詰める。文字列・コメント・インライン `ASM` 本体は不可侵で、**意味は変えません**。[スタイルガイド](docs/13-style-guide.md)のリファレンス実装です。
 - **編集支援** — 自動インデント・括弧/引用符補完・現在行ハイライト・行移動/複製（各々ON/OFF）、元に戻す/やり直し、閉じられる分割タブ。
 - **アプリ内設定** — 言語・フォントサイズ・WebMSX 実行機種／`PRESETS`／URL。
 - **OSネイティブメニュー**と**日本語/英語UI**。すべて軽量・依存ゼロのエディタで実現。

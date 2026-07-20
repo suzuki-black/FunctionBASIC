@@ -128,6 +128,10 @@ button:hover { background: #1177bb; }
 #panes.split > .pane + .pane { border-left: 1px solid #333; }
 .pane { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
 .pane[hidden] { display: none; }
+/* 構造化ペインは縦積み：上に検索バー（通常フロー）、下にエディタ行。検索バーの有無で
+   テキスト層/ガターがブロックごと押し下がるだけなので、レイヤ間のズレが起きない。 */
+#structuredPane { flex-direction: column; }
+#editRow { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 
 /* 構造化エディタ: gutter + 重ね合わせ(highlight + textarea) */
 #gutter {
@@ -173,7 +177,7 @@ button:hover { background: #1177bb; }
 
 /* 単純検索バー（タブ直下に全幅ドッキング。PhpStorm の in-file 検索風）*/
 #findbar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  flex: 0 0 auto;                 /* 通常フローでエディタ上部に積む（絶対配置をやめる）*/
   background: var(--bg2); border-bottom: 1px solid #444;
   padding: 5px 8px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
   display: flex; flex-direction: column; gap: 5px;

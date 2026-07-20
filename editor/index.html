@@ -124,15 +124,9 @@
   <div id="panes">
     <!-- 構造化BASIC編集 -->
     <div id="structuredPane" class="pane">
-      <div id="gutter"></div>
-      <div id="editWrap">
-        <div id="curline" aria-hidden="true" hidden></div>
-        <pre id="highlight" aria-hidden="true"></pre>
-        <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-        <!-- INCLUDE パス補完のドロップダウン -->
-        <div id="acbox" hidden></div>
-        <!-- 検索・置換バー（Ctrl/Cmd+F / +H）-->
-        <div id="findbar" hidden>
+      <!-- 検索・置換バー（Ctrl/Cmd+F / +H）。通常フローでエディタを押し下げる（絶対配置＋
+           パディング調整をやめ、テキスト層/ガターがバーの有無でずれないようにする）。 -->
+      <div id="findbar" hidden>
           <div class="findbar-row">
             <input id="findInput" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="find.find" />
             <button id="findCase" class="findbtn" title="Aa" data-i18n-title="find.case">Aa</button>
@@ -147,6 +141,15 @@
             <button id="replaceOne" class="findbtn wide" data-i18n="find.one">置換</button>
             <button id="replaceAllBtn" class="findbtn wide" data-i18n="find.all">全置換</button>
           </div>
+        </div>
+      <div id="editRow">
+        <div id="gutter"></div>
+        <div id="editWrap">
+          <div id="curline" aria-hidden="true" hidden></div>
+          <pre id="highlight" aria-hidden="true"></pre>
+          <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+          <!-- INCLUDE パス補完のドロップダウン -->
+          <div id="acbox" hidden></div>
         </div>
       </div>
     </div>

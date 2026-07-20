@@ -26,7 +26,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.33";
+const APP_VERSION = "0.1.36";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -621,36 +621,48 @@ const esc = (s) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // ---- シンタックスハイライト（実Lexerを再利用）----
+// 設計方針: トークン位置は「色付け」だけに使い、行構造には一切影響させない。
+// 文字を1つずつ出力し、改行は必ず span の外にリテラルで出す。こうすると、たとえ
+// トークン位置が（全角/日本語行などで）ずれても、overlay の行数はソースと必ず一致する
+// ＝ textarea(ネイティブ・キャレット) と色付き表示/行番号/現在行帯が絶対にずれない。
+// 旧「境界スライス方式」は特定内容で改行を1つ落とし、overlay が1行短くなってキャレットが
+// 隣行へ飛ぶ不具合があった。本方式は原理的にそれが起きない。
 function highlightHtml(src) {
   const { tokens } = tokenize(src);
+  const n = src.length;
   const lineStarts = [0];
-  for (let i = 0; i < src.length; i++) if (src[i] === "\n") lineStarts.push(i + 1);
+  for (let i = 0; i < n; i++) if (src[i] === "\n") lineStarts.push(i + 1);
   const off = (p) => lineStarts[p.line - 1] + (p.column - 1);
   const cls = { KEYWORD: "t-kw", NUMBER: "t-num", STRING: "t-str", COMMENT: "t-com", OP: "t-op" };
-  // 色付けはソースを「次トークンの開始位置」で切り出して行う。t.raw の長さには頼らない。
-  // ASM ブロック等は t.pos が 'ASM' を指すのに t.raw が本体だけ（先頭 "ASM\n" を含まない）で、
-  // 旧実装は esc(t.raw)+pos加算方式のため ASM 行と直後の改行を落としていた。すると overlay が
-  // ソースより 1 行短くなり、その行以降 textarea(ネイティブ・キャレット) と色付き表示/行番号/
-  // 現在行帯が 1 行ずれ、DATASET 等の行で矢印を押すとキャレットが隣行へ飛んだ（行高は無関係）。
-  // 境界方式なら全文字を過不足なく一度だけ出力＝改行を絶対に落とさず、行数がソースと必ず一致する。
   const real = tokens.filter((t) => t.kind !== "EOF");
-  let html = "";
-  let pos = 0;
-  for (let i = 0; i < real.length; i++) {
-    const t = real[i];
-    const s = off(t.pos);
-    const e = i + 1 < real.length ? off(real[i + 1].pos) : src.length;
-    if (s > pos) { html += esc(src.slice(pos, s)); pos = s; } // 先頭/想定外の隙間は素で
-    if (e <= s) continue;                                     // 0 幅・逆順ガード
+  // 文字ごとのクラス（色）配列。先勝ち。改行文字は絶対に色付けしない。
+  const klassAt = new Array(n).fill(null);
+  for (let k = 0; k < real.length; k++) {
+    const t = real[k];
     let klass = t.kind === "NEWLINE" ? null : (cls[t.kind] ?? null);
     if (t.kind === "COMMENT" && /^'@/.test(t.raw)) klass = "t-mnem"; // ニーモニック注釈は別色
     if (t.kind === "IDENT" && isBuiltin(t.value)) klass = "t-builtin";
-    const text = src.slice(s, e); // 実ソースを切り出す＝改行を落とさない
-    html += klass ? `<span class="${klass}">${esc(text)}</span>` : esc(text);
-    pos = e;
+    if (!klass) continue;
+    const s = Math.max(0, off(t.pos));
+    const e = Math.min(n, k + 1 < real.length ? off(real[k + 1].pos) : n);
+    for (let j = s; j < e; j++) if (klassAt[j] == null && src[j] !== "\n") klassAt[j] = klass;
   }
-  if (pos < src.length) html += esc(src.slice(pos));
-  return html; // 全文字を出力済み（末尾 +"\n" は付けない：付けると overlay が 1 行多くなる）
+  // 出力: 改行はリテラルで（span を必ず閉じてから）出す＝行数がソースと必ず一致する。
+  let html = "";
+  let cur = null, buf = "";
+  const flush = () => { if (buf) { html += cur ? `<span class="${cur}">${esc(buf)}</span>` : esc(buf); buf = ""; } };
+  for (let i = 0; i < n; i++) {
+    const ch = src[i];
+    if (ch === "\n") { flush(); cur = null; html += "\n"; continue; }
+    const c = klassAt[i];
+    if (c !== cur) { flush(); cur = c; }
+    buf += ch;
+  }
+  flush();
+  // <textarea> は末尾改行の後の空行も1行として描く（キャレットが置ける）が、<pre> は末尾改行の
+  // 後の空行に高さを与えない。末尾が改行なら不可視のプレースホルダ(ZWSP)を足し、行数を一致させる。
+  if (src.endsWith("\n")) html += "​";
+  return html;
 }
 
 // ---- コンパイル ----
@@ -2021,14 +2033,24 @@ function lineH() { return measuredLH || parseFloat(getComputedStyle(srcEl).lineH
 // 飛ぶ（実測: 939 行で約 1 行分）。textarea 側は小数 line-height を丸めるため寄せられない。
 // よって「見た目レイヤ(div) を textarea の実測行高へ寄せる」。ファイルサイズに依存しないよう、
 // 画面外の隠しプローブ(textarea/div)を差分法で実測する（定数オフセットを相殺）。
+// 実要素と同一タグ・同一の行高関連スタイルでプローブを作る。以前は overlay を <div> で
+// 測っていたが、実オーバーレイは <pre id="highlight"> であり、WKWebView は pre と div を
+// 僅かに異なる行高で描くため較正が的外れになっていた。textarea は srcEl、overlay は hlEl の
+// 計算済みスタイルを写して測る（行高に効く指定を漏らさない）。
+function probeStyle(ref) {
+  const cs = getComputedStyle(ref);
+  return "position:absolute;left:-9999px;top:0;visibility:hidden;margin:0;padding:0;border:0;"
+    + "overflow:hidden;width:600px;box-sizing:content-box;white-space:pre;tab-size:4;"
+    + `font-family:${cs.fontFamily};font-size:${cs.fontSize};line-height:${cs.lineHeight};`
+    + `font-weight:${cs.fontWeight};font-style:${cs.fontStyle};letter-spacing:${cs.letterSpacing};`
+    + `word-spacing:${cs.wordSpacing};font-feature-settings:${cs.fontFeatureSettings};`
+    + `font-variant-ligatures:${cs.fontVariantLigatures};text-transform:${cs.textTransform};`
+    + `-webkit-font-smoothing:${cs.webkitFontSmoothing};text-rendering:${cs.textRendering};`;
+}
 function measureRenderedLH() {
-  const cs = getComputedStyle(srcEl);
-  const base = "position:absolute;left:-9999px;top:0;visibility:hidden;margin:0;padding:0;border:0;"
-    + "white-space:pre;overflow:hidden;width:600px;box-sizing:content-box;"
-    + `font-family:${cs.fontFamily};font-size:${cs.fontSize};line-height:${cs.lineHeight};`;
-  const ta = document.createElement("textarea"); ta.style.cssText = base; ta.setAttribute("wrap", "off");
-  const dv = document.createElement("div"); dv.style.cssText = base;
-  document.body.appendChild(ta); document.body.appendChild(dv);
+  const ta = document.createElement("textarea"); ta.style.cssText = probeStyle(srcEl); ta.setAttribute("wrap", "off");
+  const pr = document.createElement("pre"); pr.style.cssText = probeStyle(hlEl); // 実 overlay と同じ <pre>
+  document.body.appendChild(ta); document.body.appendChild(pr);
   const set = (el, n) => {
     const s = Array.from({ length: n }, () => "X").join("\n");
     if (el.tagName === "TEXTAREA") el.value = s; else el.textContent = s;
@@ -2036,8 +2058,8 @@ function measureRenderedLH() {
   };
   const N1 = 20, N2 = 220, D = N2 - N1;
   const taLH = (set(ta, N2) - set(ta, N1)) / D; // 差分で枠/初期行などの定数を相殺
-  const dvLH = (set(dv, N2) - set(dv, N1)) / D;
-  ta.remove(); dv.remove();
+  const dvLH = (set(pr, N2) - set(pr, N1)) / D;
+  ta.remove(); pr.remove();
   return { taLH, dvLH };
 }
 function calibrateLineHeight() {
@@ -2058,6 +2080,26 @@ function calibrateLineHeight() {
 function setFont(delta) {
   applyFontSize((settings.fontSize || 15) + delta);
   saveSettings();
+}
+// 診断: Cmd/Ctrl+Shift+L でキャレット行高の実測値を表示（WKWebViewズレ調査用）。
+function caretDiag() {
+  const scs = getComputedStyle(srcEl), hcs = getComputedStyle(hlEl);
+  const { taLH, dvLH } = measureRenderedLH();
+  const lines = srcEl.value.split("\n").length;
+  const caretLine = srcEl.value.slice(0, srcEl.selectionStart).split("\n").length;
+  alert([
+    "=== caret / line-height diag  (v" + APP_VERSION + ") ===",
+    "src CSS line-height : " + scs.lineHeight,
+    "hl  CSS line-height : " + hcs.lineHeight + "  (calibrated)",
+    "measuredLH          : " + measuredLH,
+    "probe taLH textarea : " + taLH.toFixed(4),
+    "probe dvLH pre      : " + dvLH.toFixed(4),
+    "diff (taLH - dvLH)  : " + (taLH - dvLH).toFixed(4),
+    "src.scrollHeight    : " + srcEl.scrollHeight,
+    "hl .scrollHeight    : " + hlEl.scrollHeight,
+    "lines=" + lines + "   caretLine=" + caretLine,
+    "font: " + scs.fontFamily.split(",")[0].replace(/["']/g, ""),
+  ].join("\n"));
 }
 
 // 改行を LF に正規化。構造化ソース(.msxb)は仕様上 LF だが、Windows/エディタ/git 経由で
@@ -2843,16 +2885,14 @@ function allMatches(text, q) {
 const findBar = $("findbar");
 let findMatches = [], findIdx = -1;
 const findOpen = () => !findBar.hidden;
-// 検索バーは #editWrap 上端に絶対配置で浮く。開いている間はテキスト層(#src/#highlight)と
-// ガターの上パディングをバーの高さぶん増やし、1行目がバーの真下に出るようにする（バーに
-// 隠れて1行目が見えなくなるのを防ぐ）。閉じると既定(CSS の 8px)へ戻す。
+// 検索バーは #structuredPane（縦積み）内の通常フロー要素。開くとエディタ行(#editRow)を
+// ブロックごと押し下げるだけなので、テキスト層(#src/#highlight)とガターは互いに一切ずれない
+// （旧実装は3要素の padding-top を手で合わせる方式で、バーの有無でズレる余地があった）。
+// ここでは残存インライン padding を念のため解除し、表示切替後の位置決めだけ更新する。
 function applyFindOffset() {
-  const base = 8; // CSS の #src/#highlight/#gutter の padding-top
-  const h = findOpen() ? Math.ceil(findBar.offsetHeight) : 0;
-  const pt = h ? base + h + "px" : "";
-  srcEl.style.paddingTop = pt;
-  hlEl.style.paddingTop = pt;
-  gutterEl.style.paddingTop = h ? base + h + "px" : "";
+  srcEl.style.paddingTop = "";
+  hlEl.style.paddingTop = "";
+  gutterEl.style.paddingTop = "";
   syncScroll();
   updateCurLine();
 }
@@ -3240,6 +3280,9 @@ document.addEventListener("keydown", (e) => {
     closeMenus();
     if (!$("modal").hidden) resolveModal(null);
     else if (gfindOpen()) closeGlobal();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "L" || e.key === "l")) {
+    e.preventDefault(); caretDiag(); // 行高ズレ診断
   }
 });
 

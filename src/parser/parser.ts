@@ -353,17 +353,23 @@ export function parse(tokens: Token[]): ParseResult {
       //  - PRINT/LPRINT 命令の直後 … USING のみ（PRINT USING）
       //  - '=' の直後 … NEW/RESTORE（COLOR=NEW / COLOR=RESTORE）
       const w = checkKind("IDENT") ? cur().value.toUpperCase() : "";
+      // 命令中に現れる「予約された節/モード/フラグ語」は式解析（＝変数化・改名）してはならない。
+      // 文脈を限定して素通し（word）にする。実在する MSX-BASIC 構文のみを対象にする。
       const clauseWordHere =
         w !== "" &&
-        isBuiltinClauseWord(w) &&
-        ((parts.length === 0 && (cmd === "SET" || cmd === "GET")) ||
-          (parts.length === 0 &&
-            (cmd === "PRINT" || cmd === "LPRINT") &&
-            w === "USING") ||
-          // OPEN/FIELD/NAME … AS（この文脈でだけ AS を節キーワードとして保護。
-          // それ以外では AS は通常の変数名として式解析される）
+        (
+          // SET/GET 直後の節キーワード（SET PAGE / GET TIME 等）・COLOR=NEW/RESTORE（'=' 直後）
+          (isBuiltinClauseWord(w) &&
+            ((parts.length === 0 && (cmd === "SET" || cmd === "GET")) ||
+              (last?.kind === "word" && last.word === "="))) ||
+          // OPEN/FIELD/NAME … AS（この文脈でだけ AS を節キーワードとして保護）
           (w === "AS" && (cmd === "OPEN" || cmd === "FIELD" || cmd === "NAME")) ||
-          (last?.kind === "word" && last.word === "="));
+          // OPEN … FOR <モード>：OUTPUT/INPUT/APPEND は実機の予約モード語＝改名不可。
+          (cmd === "OPEN" && (w === "OUTPUT" || w === "INPUT" || w === "APPEND")) ||
+          // PRINT/LPRINT … USING：書式キーワード。先頭でも「#n,」の後でも現れる（位置を問わない）。
+          ((cmd === "PRINT" || cmd === "LPRINT") && w === "USING") ||
+          // BLOAD "…",R：読込後に自動実行するフラグ。
+          (cmd === "BLOAD" && w === "R"));
       if (checkOp(";") || checkOp(",")) {
         parts.push({ kind: "sep", sep: advance().value });
       } else if (cur().kind === "KEYWORD" || checkOp("=") || checkOp("#")) {

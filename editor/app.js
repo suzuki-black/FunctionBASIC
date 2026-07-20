@@ -26,7 +26,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.36";
+const APP_VERSION = "0.1.38";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);

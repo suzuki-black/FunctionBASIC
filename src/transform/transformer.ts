@@ -1047,11 +1047,12 @@ function finishTransform(ctx: any): TransformResult {
     node: object,
     lhs: string | null,
     sc: any,
+    pos: Position = ORIGIN, // 未解決時のエラー位置（呼び出し文の行）。無指定は従来どおり原点。
   ) => {
     const fn = funcTable.get(name);
     const key = callVariant.get(node);
     if (!fn || !key) {
-      fail("E_UNRESOLVED_CALL", { name });
+      fail("E_UNRESOLVED_CALL", { name }, pos);
       return;
     }
     const lmap = localMaps.get(name);
@@ -1296,7 +1297,7 @@ function finishTransform(ctx: any): TransformResult {
           break;
         case "Call": {
           const args = s.call.args.map((a) => ({ ...a, expr: lowerExpr(a.expr, sc, items) }));
-          emitCall(items, s.call.name, args, s.call, null, sc);
+          emitCall(items, s.call.name, args, s.call, null, sc, s.pos);
           break;
         }
         case "Return":

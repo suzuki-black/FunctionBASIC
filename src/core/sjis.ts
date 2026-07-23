@@ -18,7 +18,18 @@ const RANGES: Array<[number, number]> = [
   [0x2460, 0x24ff], // 丸数字等
 ];
 
+// RANGES(0x3000-0x303f 等) 内に入ってしまうが、実コーデック（WHATWG/encoding_rs の Shift_JIS）
+// ではマップできない文字。IME が「から」で出しがちな波ダッシュ U+301C が代表格で、実際に保存が
+// 失敗する（0x8160 には全角チルダ ～ U+FF5E が割り当てられているため U+301C は不可）。範囲判定
+// の見逃しを個別に補正する。※EMダッシュ U+2014 等は既存サンプルでも使われ、ここでは扱わない
+// （必要になれば encoding_rs の挙動を確認の上で追加する）。
+export const SJIS_UNMAPPABLE: ReadonlyMap<number, string> = new Map([
+  // 〜(U+301C) と ～(U+FF5E) は見た目がほぼ同一なので、置換先をコードポイントで明示する。
+  [0x301c, "〜 U+301C → ～ U+FF5E か -"],
+]);
+
 export function isSjisLikely(cp: number): boolean {
+  if (SJIS_UNMAPPABLE.has(cp)) return false;
   return RANGES.some(([a, b]) => cp >= a && cp <= b);
 }
 
@@ -30,4 +41,23 @@ export function findNonSjis(text: string): string[] {
     if (!isSjisLikely(cp) && !bad.includes(ch)) bad.push(ch);
   }
   return bad;
+}
+
+// SJIS で保存できない文字を「行・桁つき」で列挙（エディタの診断/ガター印に使う）。
+// hint は置換候補の案内（既知の紛らわしい文字のみ。未知はサロゲート考慮の一般案内）。
+export function findNonSjisPositions(
+  text: string,
+): Array<{ line: number; column: number; char: string; cp: number; hint: string }> {
+  const out: Array<{ line: number; column: number; char: string; cp: number; hint: string }> = [];
+  let line = 1;
+  let column = 1;
+  for (const ch of text) {
+    if (ch === "\n") { line++; column = 1; continue; }
+    const cp = ch.codePointAt(0)!;
+    if (!isSjisLikely(cp)) {
+      out.push({ line, column, char: ch, cp, hint: SJIS_UNMAPPABLE.get(cp) ?? "Shift-JIS(JIS X 0208)に無い文字です" });
+    }
+    column += ch.length; // UTF-16 コード単位（レキサ/桁と一致）
+  }
+  return out;
 }

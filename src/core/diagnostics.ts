@@ -149,8 +149,8 @@ const CATALOG: Record<string, Entry> = {
   },
   E_MACRO_DUP: {
     code: "E_MACRO_DUP",
-    ja: (p) => `MACRO 名が重複しています（他の MACRO/FUNCTION と衝突）: ${p.name}`,
-    en: (p) => `Duplicate MACRO name (collides with another MACRO/FUNCTION): ${p.name}`,
+    ja: (p) => `MACRO 名が重複しています: ${p.name}`,
+    en: (p) => `Duplicate MACRO name: ${p.name}`,
   },
   E_MACRO_ARITY: {
     code: "E_MACRO_ARITY",
@@ -176,6 +176,16 @@ const CATALOG: Record<string, Entry> = {
     code: "E_STRUCT_FIELD",
     ja: (p) => (p.field ? `STRUCT ${p.struct} にフィールド ${p.field} はありません` : "STRUCT の本体には型付きフィールド名のみ置けます"),
     en: (p) => (p.field ? `STRUCT ${p.struct} has no field ${p.field}` : "A STRUCT body may only contain typed field names"),
+  },
+  E_STRUCT_DUP: {
+    code: "E_STRUCT_DUP",
+    ja: (p) => `STRUCT 名が重複しています: ${p.name}`,
+    en: (p) => `Duplicate STRUCT name: ${p.name}`,
+  },
+  E_NAME_COLLISION: {
+    code: "E_NAME_COLLISION",
+    ja: (p) => `名前 ${p.name} が衝突しています（${p.kind1} と ${p.kind2} で同名。別名にしてください）`,
+    en: (p) => `Name ${p.name} collides (declared as both ${p.kind1} and ${p.kind2}; rename one)`,
   },
   E_STRUCT_UNKNOWN: {
     code: "E_STRUCT_UNKNOWN",
@@ -373,8 +383,8 @@ const CATALOG: Record<string, Entry> = {
   },
   E_NON_SJIS: {
     code: "E_NON_SJIS",
-    ja: (p) => `Shift-JIS で表現できない文字（外字）: ${p.chars}`,
-    en: (p) => `Characters not representable in Shift-JIS: ${p.chars}`,
+    ja: (p) => `Shift-JIS で表現できない文字（外字）: ${p.chars}${p.hint ?? ""}`,
+    en: (p) => `Characters not representable in Shift-JIS: ${p.chars}${p.hint ?? ""}`,
   },
   // --- 内部 ---
   E_INTERNAL_LOWER: {

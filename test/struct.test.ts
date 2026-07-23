@@ -80,3 +80,14 @@ inv(0).COST% = 50`);
   assert.match(text, /DIM [A-Z]+\$\(4\),[A-Z]+%\(4\)/); // 文字列配列 + 整数配列
   assert.match(text, /[A-Z]+\$\(0\)="SWORD"/);
 });
+
+// 重複定義は他の宣言（FUNCTION/MACRO/CONST 等）と同様にエラー（黙って後勝ちで上書きしない）。
+test("STRUCT 名の重複は E_STRUCT_DUP（2つ目以降を報告）", () => {
+  const src = `STRUCT S\n    X%\nEND STRUCT\nSTRUCT S\n    Y%\nEND STRUCT\nDIM P AS S`;
+  const e = compile(src).diags.filter((d) => d.severity === "error");
+  assert.equal(e.length, 1, JSON.stringify(e));
+  assert.equal(e[0].code, "E_STRUCT_DUP");
+  assert.equal(e[0].line, 4, "2つ目の定義行で報告");
+  // 通常（重複なし）は無エラー
+  assert.deepEqual(errCodes(`STRUCT Q\n    X%\nEND STRUCT\nDIM P AS Q\nP.X% = 1`), []);
+});

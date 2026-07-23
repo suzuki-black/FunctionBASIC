@@ -6,7 +6,7 @@ import { transform } from "../src/transform/transformer.ts";
 import { renderMsx } from "../src/transform/transformer.ts";
 import { reverse } from "../src/reverse/reverse.ts";
 import { resolveIncludes, resolvePath } from "../src/preprocess/include.ts";
-import { findNonSjis } from "../src/core/sjis.ts";
+import { findNonSjis, findNonSjisPositions } from "../src/core/sjis.ts";
 
 const compile = (src: string) => {
   const { tokens, diagnostics: ld } = tokenize(src);
@@ -21,6 +21,17 @@ test("Shift-JIS可能な文字（ASCII/かな/漢字）はOK", () => {
 });
 test("絵文字・補助面はSJIS不可として検出", () => {
   assert.ok(findNonSjis("PRINT \"\u{1F600}\"").length > 0); // 😀
+});
+test("波ダッシュ U+301C は SJIS 不可として検出（0x8160 は全角チルダ ~U+FF5E の割当）", () => {
+  assert.ok(findNonSjis("' Y: 0〜207").length > 0, "U+301C を検出すべき");
+  assert.deepEqual(findNonSjis("' Y: 0～207"), [], "全角チルダ U+FF5E は OK");
+});
+test("findNonSjisPositions は不可文字を行・桁つきで返す", () => {
+  const p = findNonSjisPositions("SCREEN 5\n' 0〜207\nEND");
+  assert.equal(p.length, 1);
+  assert.equal(p[0].line, 2);
+  assert.equal(p[0].cp, 0x301c);
+  assert.ok(/U\+FF5E|~|-/.test(p[0].hint), "置換候補を案内する");
 });
 test("変換: コメント/文字列の絵文字は E_NON_SJIS", () => {
   const { diagnostics } = compile(`PRINT "hi \u{1F389}"`);

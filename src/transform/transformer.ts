@@ -25,6 +25,7 @@ import { assembleZ80 } from "../asm/z80asm.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
 import { checkNameCollisions } from "./check-names.ts";
+import { checkNameRegistry } from "./check-name-registry.ts";
 import { foldProgram } from "./fold-expr.ts";
 import { lowerDo } from "./lower-do.ts";
 import { lowerSelect } from "./lower-select.ts";
@@ -351,6 +352,10 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   const diagnostics: Diagnostic[] = [];
   const fail = (key: string, params: DiagParams = {}, pos: Position = ORIGIN) =>
     diagnostics.push(error(key, pos, params));
+
+  // ユーザー定義名のクロス種別衝突を検査（FUNCTION/MACRO/STRUCT/CONST/DATASET/SPRITE）。
+  // desugar パスが宣言ノードを取り除く前＝最初に走らせる。同種の重複は各既存チェックが担当。
+  diagnostics.push(...checkNameRegistry(program));
 
   // DO … LOOP を While へ desugar（最初に実行。DoLoop 内の SELECT/DO も再帰的に処理するので
   // 以降のパスは DoLoop を一切見ない）。

@@ -7,7 +7,7 @@ import { isKeyword } from "./keywords.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
 import type { Position } from "../core/position.ts";
-import { findNonSjis } from "../core/sjis.ts";
+import { findNonSjis, SJIS_UNMAPPABLE } from "../core/sjis.ts";
 
 export interface LexResult {
   tokens: Token[];
@@ -53,8 +53,16 @@ export function tokenize(source: string): LexResult {
   // 位置でエラーにする（識別子/キーワードは ASCII 化されるので対象外）。
   const checkSjis = (text: string, p: Position): void => {
     const bad = findNonSjis(text);
-    if (bad.length > 0)
-      diagnostics.push(error("E_NON_SJIS", p, { chars: JSON.stringify(bad.join("")) }));
+    if (bad.length > 0) {
+      // 見た目が紛らわしい既知の外字（波ダッシュ等）は置換候補を添える。
+      const hints = bad
+        .map((ch) => SJIS_UNMAPPABLE.get(ch.codePointAt(0)!))
+        .filter((h): h is string => !!h);
+      diagnostics.push(error("E_NON_SJIS", p, {
+        chars: JSON.stringify(bad.join("")),
+        hint: hints.length ? `（${hints.join(" / ")}）` : "",
+      }));
+    }
   };
 
   while (i < n) {

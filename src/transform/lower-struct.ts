@@ -17,6 +17,9 @@ export function lowerStruct(program: Program): Diagnostic[] {
   const collectStructs = (ss: Stmt[]): void => {
     for (const s of ss) {
       if (s.type === "Struct") {
+        // 重複定義は他の宣言（FUNCTION/MACRO/CONST/DATASET/SPRITE）と同様にエラー。
+        // 黙って「後勝ち」で上書きしない（最初の定義を採用してエラーを報告）。
+        if (structs.has(s.name)) { fail("E_STRUCT_DUP", s.pos, { name: s.name }); continue; }
         const fm = new Map<string, string>();
         for (const f of s.fields) {
           if (suffixOf(f) === "") { fail("E_STRUCT_FIELD_TYPE", s.pos, { field: f }); continue; }

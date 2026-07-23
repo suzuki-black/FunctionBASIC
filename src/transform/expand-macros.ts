@@ -5,7 +5,6 @@
 //
 // 意味論: 引数は「式のまま」代入（call-by-name）。優先順位事故を避けるため代入した実引数と
 // 展開結果は Group（括弧）で包む。本体が別マクロを含めば再展開する（自己/相互参照は深さ上限で検出）。
-import { suffixOf } from "../ast/nodes.ts";
 import type { Program, Stmt, Expr, MacroDef, LValue, Position } from "../ast/nodes.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
@@ -13,10 +12,10 @@ import { error } from "../core/diagnostics.ts";
 export function expandMacros(program: Program): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const macros = new Map<string, MacroDef>();
-  const fnNames = new Set(program.functions.map((f) => f.name));
+  // MACRO×MACRO の重複のみここで検査。MACRO×FUNCTION 等のクロス種別衝突は checkNameRegistry
+  // （E_NAME_COLLISION）が一貫して報告するため、ここでは扱わない（二重報告の回避）。
   for (const m of program.macros ?? []) {
-    const bare = suffixOf(m.name) ? m.name.slice(0, -1) : m.name;
-    if (macros.has(m.name) || fnNames.has(bare)) {
+    if (macros.has(m.name)) {
       diags.push(error("E_MACRO_DUP", m.pos, { name: m.name }));
       continue;
     }

@@ -112,14 +112,38 @@ function splitPrint(seg: string): string[] {
   );
 }
 
+// 長い DATA 文をカンマ境界で複数 DATA 行へ分割。READ は行境界を一切見ない（DATA は平坦な
+// ストリーム）ので分割しても意味は不変。RESTORE 先ラベルは先頭行に残るので DATASET も安全。
+// 行番号ぶん（最大 "65529 "=6B）の余裕を見て 1 行 248 バイト以内に収める。
+function splitData(seg: string): string[] {
+  const m = seg.match(/^DATA\s+([\s\S]*)$/i);
+  if (!m) return [seg];
+  const vals = splitTop(m[1], ",").map((s) => s.trim()); // 空値(=0)は温存・引用符内のカンマは尊重
+  const chunks: string[][] = [];
+  let cur: string[] = [];
+  for (const v of vals) {
+    if (cur.length && estimateMsxBytes("DATA " + [...cur, v].join(",")) > 248) {
+      chunks.push(cur);
+      cur = [v];
+    } else cur.push(v);
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks.map((c) => "DATA " + c.join(","));
+}
+
 // 1行を255バイト以内へ自動分割。docs/05 §5.12.2
 // - 条件文(IF…THEN…)は安全に分割できないのでそのまま（必要なら E_LINE_TOO_LONG）
+// - 単一の長い DATA 文はカンマ境界で分割（splitData）
 // - それ以外は ":" 区切りを255以内で再パック、長いPRINTは ";" 分割
 export function splitLongLine(text: string): string[] {
   if (estimateMsxBytes(text) <= 255) return [text];
   if (/^\s*IF\b/i.test(text)) return [text];
   const segs = splitTop(text, ":").map((s) => s.trim());
-  const expanded = segs.flatMap((s) => (estimateMsxBytes(s) > 255 ? splitPrint(s) : [s]));
+  // 単一の長い DATA 文はカンマ境界で分割（再パックを通さず 248B/行を厳守）。
+  if (segs.length === 1 && /^DATA\b/i.test(segs[0])) return splitData(segs[0]);
+  const expanded = segs.flatMap((s) =>
+    estimateMsxBytes(s) > 255 ? (/^DATA\b/i.test(s) ? splitData(s) : splitPrint(s)) : [s],
+  );
   const lines: string[] = [];
   let cur = "";
   for (const s of expanded) {
@@ -368,7 +392,8 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   diagnostics.push(...expandMacros(program));
   // SPRITE ドット絵定義を CONST（パターン番号）＋ SPRITE$ 代入へ desugar。checkExplicit より前に
   // 走らせ、注入した CONST でパターン名が「宣言済み」扱いになる（PUT SPRITE …, name が通る）。
-  diagnostics.push(...lowerSprite(program));
+  const spriteResult = lowerSprite(program);
+  diagnostics.push(...spriteResult.diagnostics);
   // OPTION EXPLICIT: 未宣言スカラ変数の読取を検査（マクロ展開後・struct lowering 前の元名で）。
   diagnostics.push(...checkExplicit(program));
   // STRUCT を struct-of-arrays へ desugar（フィールド→合成配列/変数。以降は通常の変数のみ）。
@@ -730,6 +755,7 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
     recStack,
     pool,
     asmVars: collectVarNames(program),
+    sprites: spriteResult.sprites,
   });
 }
 
@@ -939,6 +965,12 @@ function finishTransform(ctx: any): TransformResult {
           scanExpr(s.cond, sc);
           scanCalls(s.body, func);
           break;
+        case "Event":
+          // EVENT TIMER 本体内の関数呼び出しも収集対象（If/For/While と同様に本体へ降りる）。
+          // これが無いとハンドラ内の呼び出しが未登録＝E_UNKNOWN_FUNCTION＋本体欠落になる。
+          scanExpr(s.arg, sc);
+          scanCalls(s.body, func);
+          break;
         default:
           break;
       }
@@ -979,7 +1011,7 @@ function finishTransform(ctx: any): TransformResult {
   // --- DATASET レジストリ（変換方式A・docs/05 §5.16）---
   // 名前 → { labelId(RESTORE先＝先頭DATA行), id(切替検出用の番号≥1), data(DATA文) }。
   // DATA は末尾にまとめて出力。READ name INTO は「別ブロックなら先頭へ RESTORE、そして READ」。
-  const datasets = new Map<string, { labelId: number; id: number; data: Stmt[] }>();
+  const datasets = new Map<string, { labelId: number; id: number; data: Stmt[]; srcLine?: number }>();
   let dsIdSeq = 0;
   let hasDsRead = false;
   const scanDatasets = (ss: Stmt[]): void => {
@@ -987,7 +1019,7 @@ function finishTransform(ctx: any): TransformResult {
       switch (s.type) {
         case "Dataset":
           if (datasets.has(s.name)) fail("E_DATASET_DUP", { name: s.name }, s.pos);
-          else datasets.set(s.name, { labelId: newLabel(), id: ++dsIdSeq, data: s.data });
+          else datasets.set(s.name, { labelId: newLabel(), id: ++dsIdSeq, data: s.data, srcLine: s.pos?.line });
           break;
         case "ReadInto":
         case "RestoreDataset":
@@ -1670,6 +1702,23 @@ function finishTransform(ctx: any): TransformResult {
       })),
       sourceFile: fileOf(fn.pos.line),
     }));
+  // DATASET（名前＝ラベル）: 名前 → RESTORE 先 MSX 行・切替番号。
+  const datasetEntries = [...datasets.entries()].map(([name, d]) => ({
+    name,
+    restoreLine: labelLine.get(d.labelId) ?? 0,
+    switchId: d.id,
+    sourceLine: d.srcLine,
+  }));
+  // インライン ASM: 配置アドレス変数・USR退避・パッチ対象変数・バイト数（挿入順＝プログラム順）。
+  let asmIdx = 0;
+  const asmEntries = [...asmReg.entries()].map(([node, b]) => ({
+    index: ++asmIdx,
+    bytes: b.bytes.length,
+    addrVar: b.addrVar,
+    guardVar: b.guardVar || undefined,
+    patchVars: [...new Set(b.patches.map((p) => p.name))],
+    sourceLine: (node as any)?.pos?.line,
+  }));
   const map: MapTable = {
     version: "1.0",
     source: ctx.opts?.source ?? "",
@@ -1677,6 +1726,9 @@ function finishTransform(ctx: any): TransformResult {
     globalVarMap,
     functions,
     controlFlow,
+    ...(datasetEntries.length ? { datasets: datasetEntries } : {}),
+    ...(asmEntries.length ? { asmBlocks: asmEntries } : {}),
+    ...(ctx.sprites?.length ? { sprites: ctx.sprites } : {}),
   };
 
   const code = ctx.opts?.stripComments ? stripComments(out) : out;

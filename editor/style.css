@@ -392,3 +392,28 @@ table.mt td { padding: 1px 20px 1px 0; vertical-align: top; }
 }
 .set-row input[type="number"] { flex: 0 0 80px; }
 .set-hint { margin: 4px 0 0 140px; color: #9a9a9a; font-size: 11px; }
+
+/* エラー箇所推測ダイアログ（#modal と同じオーバーレイ体裁を流用） */
+#errEst {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+#errEst[hidden] { display: none; }
+.errest-box { min-width: 520px; max-width: 760px; }
+.ee-desc { color: #9a9a9a; font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
+#eeRun { flex: 0 0 auto; padding: 6px 16px; }
+.ee-result { margin-top: 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; max-height: 44vh; overflow: auto; }
+.ee-result:empty { display: none; }
+.ee-msx { background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; white-space: pre-wrap; word-break: break-all; }
+.ee-lineno { color: #dcdcaa; font-weight: bold; }
+.ee-hit { border-left: 3px solid #c586c0; padding: 3px 0 3px 10px; margin: 6px 0; }
+.ee-op { color: #9cdcfe; font-weight: bold; }
+.ee-arg { color: #ce9178; }
+.ee-con { color: var(--fg); }
+.ee-src { color: #6a9955; margin: 6px 0; }
+.ee-src a, .ee-nearby a { color: #4ec9b0; cursor: pointer; text-decoration: underline; }
+.ee-note { color: #d7ba7d; margin: 8px 0; }
+.ee-nearby { margin-top: 10px; border-top: 1px solid #444; padding-top: 8px; }
+.ee-nearby-item { padding: 2px 0; }
+.ee-empty { color: #9a9a9a; }

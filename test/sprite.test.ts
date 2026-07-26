@@ -152,3 +152,39 @@ test("フォーマッタ: SPRITE ブロックが正しくインデントされ�
   assert.ok(lines[1].startsWith("    \""), "本体がインデントされていない: " + JSON.stringify(lines[1]));
   assert.equal(lines[lines.length - 1], "END SPRITE");
 });
+
+// 変換テーブル: SPRITE 名 → パターン番号・サイズが map.sprites に載る。
+test("変換テーブル: SPRITE 名がパターン番号・サイズとして map に載る", () => {
+  const src = `SCREEN 1,0
+SPRITE BALL
+    "..####.."
+    ".######."
+    "########"
+    "########"
+    "########"
+    "########"
+    ".######."
+    "..####.."
+END SPRITE
+SPRITE DOT
+    "#......."
+    "........"
+    "........"
+    "........"
+    "........"
+    "........"
+    "........"
+    "........"
+END SPRITE
+PUT SPRITE 0, (100, 80), 15, BALL
+PUT SPRITE 1, (50, 50), 7, DOT`;
+  const { tokens } = tokenize(src);
+  const { program } = parse(tokens);
+  const r = transform(program);
+  assert.equal(r.diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.equal(r.map.sprites?.length, 2);
+  assert.deepEqual(r.map.sprites!.map((s) => [s.name, s.pattern, s.size]), [
+    ["BALL", 0, 8],
+    ["DOT", 1, 8],
+  ]);
+});

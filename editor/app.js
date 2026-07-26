@@ -14,6 +14,7 @@ import { LIBS } from "./core/libs.js";
 import { findDataBlobs } from "./core/disasm/detect.js";
 import { buildAnnotationLines, stripMnemonicComments } from "./core/disasm/annotate.js";
 import { MSX_BIOS } from "./core/disasm/msx-bios.js";
+import { estimateError } from "./core/analyze/error-estimate.js";
 
 const $ = (id) => document.getElementById(id);
 const srcEl = $("src");
@@ -26,7 +27,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.41";
+const APP_VERSION = "0.1.42";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -37,6 +38,15 @@ const I18N = {
   ja: {
     "title": "構造化BASIC エディタ — MSX-BASIC 変換",
     "m.file": "ファイル", "m.edit": "編集", "m.view": "表示", "m.run": "実行", "m.help": "ヘルプ",
+    "m.errest": "エラー箇所を推測…",
+    "ee.title": "エラー箇所を推測", "ee.kind": "エラー種別", "ee.line": "MSXの行番号", "ee.run": "推測する", "ee.close": "閉じる",
+    "ee.desc": "MSXで出たエラーの「種別」と「行番号」を入れると、その行にある“原因になりうる命令・引数”をアルゴリズムで洗い出します（AIなし・あくまで推測）。",
+    "ee.needline": "MSXの行番号を入力してください。",
+    "ee.needcode": "先に「変換して保存」か「実行」でMSXコードを生成してください。",
+    "ee.found": (n) => `MSX ${n} 行の内容`,
+    "ee.hits": "この行にある原因候補",
+    "ee.nohit": "この行に、その種別を起こす典型的な命令は見当たりませんでした。値を作っている別の行を確認してください。",
+    "ee.srclabel": "由来（構造化ソース）", "ee.nearby": "同じ種別の命令がある他の行",
     "save": "変換して保存", "dsk": "ディスク(.dsk)を保存…", "sav": "MSXPLAYer用(.sav)を保存…",
     "undo": "元に戻す", "redo": "やり直し", "m.find": "検索", "m.replace": "置換", "m.gfind": "全体検索",
     "m.asm": "機械語DATAを逆アセンブル注釈", "m.asmclear": "注釈を消す",
@@ -44,6 +54,9 @@ const I18N = {
     "asm.cleared": "ニーモニック注釈を消しました",
     "undo.none": "これ以上戻せません", "redo.none": "これ以上やり直せません",
     "format": "整形（インデント＋大文字化）", "def": "定義へ移動", "usages": "使用箇所（順送り）", "goline": "行へ移動…",
+    "nexterr": "次のエラー行へ",
+    "err.none": "エラーはありません",
+    "err.jump": (i, n, line, code) => `エラー ${i}/${n}：${line}行目（${code}）`,
     "rn.menu": "識別子をリネーム…",
     "rn.title": "リネーム", "rn.msg": (n) => `「${n}」を一括リネーム。新しい名前:`,
     "rn.done": (n, name) => `${n}箇所を「${name}」にリネームしました`,
@@ -80,7 +93,7 @@ const I18N = {
     "tip.unbound": (n) => `${n}\n（フォルダ未バインド・ファイルメニューでフォルダを開くと保存先が決まります）`,
     "tip.lib": (n) => `${n}\n（読み取り専用の埋め込みライブラリ）`,
     "tip.node.msx": "MSX-BASIC変換後（読み取り専用）",
-    "tip.node.maptable": "変換テーブル：変数名の圧縮・関数・制御フローの対応（読み取り専用）",
+    "tip.node.maptable": "変換テーブル：変数名の圧縮・関数・DATASET/ASM/SPRITE・制御フローの対応（読み取り専用）",
     "tip.node.webmsx": "アプリ内 WebMSX で実行",
     "proj.newfile": "新規ファイル", "proj.newfilemsg": "ファイル名（.msxb）:",
     "proj.rename": "名前を変更", "proj.renamemsg": "新しいファイル名:",
@@ -101,11 +114,17 @@ const I18N = {
     "tab.structured": "構造化BASIC", "tab.msx": "MSX-BASIC変換後", "tab.webmsx": "実行 (WebMSX)", "tab.maptable": "変換テーブル", "tab.close": "タブを閉じる",
     "note.webmsx": "▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します", "note.copy": "📋 コピー",
     "maptable.copy": "📋 JSON",
-    "maptable.note": "変数名の圧縮・関数・制御フローの対応表（読み取り専用）",
+    "maptable.note": "変数名の圧縮・関数・DATASET/ASM/SPRITE・制御フローの対応表（読み取り専用）",
     "maptable.none": "（変換テーブルはまだありません。エラーが無い状態でソースを変換すると表示されます）",
     "maptable.globals": (n) => `グローバル変数（${n}）`,
     "maptable.functions": (n) => `関数（${n}）`,
     "maptable.controlflow": (n) => `制御フロー（BREAK / CONTINUE）（${n}）`,
+    "maptable.datasets": (n) => `DATASET（名前付きDATAブロック＝ラベル）（${n}）`,
+    "maptable.asm": (n) => `インラインASM（${n}）`,
+    "maptable.sprites": (n) => `SPRITE（ドット絵定義）（${n}）`,
+    "maptable.ds.restore": "RESTORE先の行", "maptable.ds.switch": "切替番号",
+    "maptable.asm.addr": "配置アドレス変数", "maptable.asm.guard": "初回ガード", "maptable.asm.patch": "VARPTRパッチ変数", "maptable.asm.bytesUnit": "バイト",
+    "maptable.spr.pattern": "パターン番号", "maptable.spr.size": "サイズ",
     "maptable.col.orig": "元の名前", "maptable.col.msx": "MSX名",
     "maptable.entry": "先頭行", "maptable.params": "引数", "maptable.ret": "戻り値", "maptable.locals": "ローカル変数",
     "maptable.ref": "参照", "maptable.none.sub": "（なし）",
@@ -191,6 +210,15 @@ const I18N = {
   en: {
     "title": "Structured BASIC Editor — MSX-BASIC",
     "m.file": "File", "m.edit": "Edit", "m.view": "View", "m.run": "Run", "m.help": "Help",
+    "m.errest": "Estimate error location…",
+    "ee.title": "Estimate error location", "ee.kind": "Error kind", "ee.line": "MSX line number", "ee.run": "Estimate", "ee.close": "Close",
+    "ee.desc": "Enter the MSX error kind and the reported line; the tool algorithmically lists the statements/arguments on that line that could cause it (no AI — a heuristic guess).",
+    "ee.needline": "Please enter the MSX line number.",
+    "ee.needcode": "Convert & Save (or Run) first to generate MSX code.",
+    "ee.found": (n) => `Contents of MSX line ${n}`,
+    "ee.hits": "Likely causes on this line",
+    "ee.nohit": "No statement typical of this error kind was found on this line. Check the other line(s) that produce the value.",
+    "ee.srclabel": "Origin (structured source)", "ee.nearby": "Other lines with this kind of statement",
     "save": "Convert & Save", "dsk": "Save Disk (.dsk)…", "sav": "Save for MSXPLAYer (.sav)…",
     "undo": "Undo", "redo": "Redo", "m.find": "Find", "m.replace": "Replace", "m.gfind": "Find Everywhere",
     "m.asm": "Disassemble machine-code DATA", "m.asmclear": "Clear annotations",
@@ -198,6 +226,9 @@ const I18N = {
     "asm.cleared": "Cleared mnemonic annotations",
     "undo.none": "Nothing to undo", "redo.none": "Nothing to redo",
     "format": "Reformat (indent + uppercase)", "def": "Go to Definition", "usages": "Find Usages (cycle)", "goline": "Go to Line…",
+    "nexterr": "Next error line",
+    "err.none": "No errors",
+    "err.jump": (i, n, line, code) => `Error ${i}/${n}: line ${line} (${code})`,
     "rn.menu": "Rename Symbol…",
     "rn.title": "Rename", "rn.msg": (n) => `Rename all "${n}". New name:`,
     "rn.done": (n, name) => `Renamed ${n} occurrence(s) to "${name}"`,
@@ -234,7 +265,7 @@ const I18N = {
     "tip.unbound": (n) => `${n}\n(folder not bound — open a folder from the File menu to set where it saves)`,
     "tip.lib": (n) => `${n}\n(read-only bundled library)`,
     "tip.node.msx": "MSX-BASIC output (read-only)",
-    "tip.node.maptable": "Conversion table: name compression, functions, control flow (read-only)",
+    "tip.node.maptable": "Conversion table: name compression, functions, DATASET/ASM/SPRITE, control flow (read-only)",
     "tip.node.webmsx": "Run in the in-app WebMSX",
     "proj.newfile": "New file", "proj.newfilemsg": "File name (.msxb):",
     "proj.rename": "Rename", "proj.renamemsg": "New file name:",
@@ -255,11 +286,17 @@ const I18N = {
     "tab.structured": "Structured BASIC", "tab.msx": "MSX-BASIC (output)", "tab.webmsx": "Run (WebMSX)", "tab.maptable": "Conversion table", "tab.close": "Close tab",
     "note.webmsx": "Press ▶ WebMSX (or Ctrl/Cmd+Enter) to run here automatically.", "note.copy": "📋 Copy",
     "maptable.copy": "📋 JSON",
-    "maptable.note": "How names are compressed, plus function & control-flow mapping (read-only)",
+    "maptable.note": "How names are compressed, plus functions, DATASET/ASM/SPRITE and control-flow mapping (read-only)",
     "maptable.none": "(No conversion table yet. It appears once the source converts without errors.)",
     "maptable.globals": (n) => `Global variables (${n})`,
     "maptable.functions": (n) => `Functions (${n})`,
     "maptable.controlflow": (n) => `Control flow (BREAK / CONTINUE) (${n})`,
+    "maptable.datasets": (n) => `DATASET (named DATA blocks = labels) (${n})`,
+    "maptable.asm": (n) => `Inline ASM (${n})`,
+    "maptable.sprites": (n) => `SPRITE (dot-art defs) (${n})`,
+    "maptable.ds.restore": "RESTORE line", "maptable.ds.switch": "switch id",
+    "maptable.asm.addr": "address var", "maptable.asm.guard": "init guard", "maptable.asm.patch": "VARPTR-patched vars", "maptable.asm.bytesUnit": "bytes",
+    "maptable.spr.pattern": "pattern #", "maptable.spr.size": "size",
     "maptable.col.orig": "Original name", "maptable.col.msx": "MSX name",
     "maptable.entry": "entry line", "maptable.params": "params", "maptable.ret": "returns", "maptable.locals": "Local variables",
     "maptable.ref": "REF", "maptable.none.sub": "(none)",
@@ -501,6 +538,100 @@ function openSettings() {
 }
 function closeSettings() {
   $("settings").hidden = true;
+}
+
+// ---- エラー箇所推測ダイアログ（AIなし・静的解析） ----
+// [値, 日本語ラベル, 英語ラベル]。表示は現在言語で切替。
+const EE_KINDS = [
+  ["IFC", "Illegal function call（引数が範囲外）", "Illegal function call (arg out of range)"],
+  ["SUBSCRIPT", "Subscript out of range（配列の添字）", "Subscript out of range (array index)"],
+  ["DIV0", "Division by zero（0 で除算）", "Division by zero"],
+  ["OVERFLOW", "Overflow（数値が大きすぎ）", "Overflow (number too large)"],
+  ["TYPE", "Type mismatch（型の不一致）", "Type mismatch"],
+  ["OUT_OF_DATA", "Out of DATA（DATA 読み切り）", "Out of DATA"],
+  ["UNDEF_LINE", "Undefined line number（飛び先が無い）", "Undefined line number"],
+];
+function openErrEstimate() {
+  const sel = $("eeKind");
+  sel.innerHTML = "";
+  for (const [v, ja, en] of EE_KINDS) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = lang === "en" ? en : ja;
+    sel.appendChild(o);
+  }
+  $("eeResult").innerHTML = "";
+  $("errEst").hidden = false;
+  $("eeLine").focus();
+}
+function closeErrEstimate() {
+  $("errEst").hidden = true;
+}
+function runErrEstimate() {
+  const out = $("eeResult");
+  const line = parseInt($("eeLine").value, 10);
+  if (!Number.isFinite(line)) {
+    out.innerHTML = `<div class="ee-empty">${esc(t("ee.needline"))}</div>`;
+    return;
+  }
+  const code = (last && last.code) || [];
+  if (!code.length) {
+    out.innerHTML = `<div class="ee-empty">${esc(t("ee.needcode"))}</div>`;
+    return;
+  }
+  const rep = estimateError(code, srcEl.value.split("\n"), $("eeKind").value, line);
+  out.innerHTML = renderEeReport(rep);
+  // 由来ソース行クリックでジャンプ。
+  out.querySelectorAll("a[data-src]").forEach((a) =>
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeErrEstimate();
+      scrollToLine(parseInt(a.dataset.src, 10));
+    }),
+  );
+}
+function renderEeReport(rep) {
+  const parts = [];
+  if (!rep.found) {
+    parts.push(`<div class="ee-note">${esc(rep.note)}</div>`);
+  } else {
+    parts.push(
+      `<div class="ee-msx"><span class="ee-lineno">${rep.lineNo}</span>  ${esc(rep.msxText)}</div>`,
+    );
+    // 由来ソース行（元の変数名で見える）。クリックでジャンプ。
+    if (rep.srcLines.length) {
+      const links = rep.srcLines
+        .map(
+          (n, i) =>
+            `<a data-src="${n}">${n}</a>: ${esc(rep.srcTexts[i] ?? "")}`,
+        )
+        .join("<br>");
+      parts.push(`<div class="ee-src">${esc(t("ee.srclabel"))} — ${links}</div>`);
+    }
+    if (rep.hits.length) {
+      const hits = rep.hits
+        .map((h) => {
+          const arg = h.arg ? ` <span class="ee-arg">(${esc(h.arg)})</span>` : "";
+          return `<div class="ee-hit"><span class="ee-op">${esc(h.op)}</span>${arg}<br><span class="ee-con">${esc(h.constraint)}</span></div>`;
+        })
+        .join("");
+      parts.push(`<div class="ee-note">${esc(t("ee.hits"))}:</div>${hits}`);
+    } else {
+      parts.push(`<div class="ee-note">${esc(t("ee.nohit"))}</div>`);
+    }
+  }
+  if (rep.note && rep.hits.length > 1) parts.push(`<div class="ee-note">${esc(rep.note)}</div>`);
+  // 他行の候補（該当が無い/行が無いとき）。
+  if (rep.nearby.length) {
+    const items = rep.nearby
+      .map(
+        (n) =>
+          `<div class="ee-nearby-item"><span class="ee-lineno">${n.lineNo}</span> <span class="ee-op">${esc(n.op)}</span> — ${esc(n.text)}</div>`,
+      )
+      .join("");
+    parts.push(`<div class="ee-nearby"><div class="ee-note">${esc(t("ee.nearby"))}:</div>${items}</div>`);
+  }
+  return parts.join("");
 }
 function applySettingsFromForm() {
   setLang($("setLang").value === "en" ? "en" : "ja");
@@ -2505,6 +2636,30 @@ async function goToLine() {
   scrollToLine(line);
 }
 
+// エラー行を順に巡回（都度「次のエラー行」へ。最後まで行ったら先頭へ戻る）。
+// 対象はソース行を持つ error のみ（行番号を持たない E_LINE_TOO_LONG 等は除外）。
+let errNav = { sig: "", idx: -1 };
+function nextError() {
+  const errs = projectDiagnostics().list
+    .filter((d) => d.severity === "error" && d.line >= 1)
+    .sort((a, b) =>
+      a.file < b.file ? -1 : a.file > b.file ? 1 : (a.line - b.line) || ((a.column || 0) - (b.column || 0)));
+  if (!errs.length) { flash(t("err.none")); return; }
+  // エラー集合が変わったら先頭から。同じなら次へ進める（末尾→先頭で巡回）。
+  const sig = errs.map((d) => `${d.file}:${d.line}:${d.column}:${d.code}`).join("|");
+  if (sig !== errNav.sig) errNav = { sig, idx: -1 };
+  errNav.idx = (errNav.idx + 1) % errs.length;
+  const d = errs[errNav.idx];
+  if (project.files[d.file] != null) {
+    if (d.file !== activePath()) openFile(d.file);
+    recordJump();
+    scrollToLine(d.line, Math.max(0, (d.column || 1) - 1));
+  } else if (LIBS[d.file] != null || LIBS[d.file.split("/").pop()] != null) {
+    openLib(d.file, d.line);
+  }
+  flash(t("err.jump", errNav.idx + 1, errs.length, d.line, d.code));
+}
+
 // ---- ブックマーク ----
 function toggleBookmark() {
   const l = caretLine();
@@ -2799,6 +2954,38 @@ function buildMapTableView(map) {
     h += `</div>`;
   }
   h += `</section>`;
+  // DATASET（名前付きDATAブロック＝ラベル）: 名前 → RESTORE先MSX行・切替番号。
+  const dss = map.datasets || [];
+  if (dss.length) {
+    h += `<section class="mt-sec"><h3>${esc(t("maptable.datasets", dss.length))}</h3>`
+      + `<table class="mt"><thead><tr><th>${esc(t("maptable.col.orig"))}</th><th>${esc(t("maptable.ds.restore"))}</th><th>${esc(t("maptable.ds.switch"))}</th></tr></thead><tbody>`
+      + dss.map((d) => `<tr><td class="mt-orig">${esc(d.name)}</td><td class="mt-msx">${esc(String(d.restoreLine))}</td><td>${esc(String(d.switchId))}</td></tr>`).join("")
+      + `</tbody></table></section>`;
+  }
+  // インラインASM: 配置アドレス変数・初回ガード・VARPTRパッチ変数・バイト数。
+  const asm = map.asmBlocks || [];
+  if (asm.length) {
+    h += `<section class="mt-sec"><h3>${esc(t("maptable.asm", asm.length))}</h3>`;
+    for (const a of asm) {
+      h += `<div class="mt-fn"><div class="mt-fn-head"><span class="mt-fn-name">ASM #${esc(String(a.index))}</span>`
+        + `<span class="mt-fn-entry">${esc(String(a.bytes))} ${esc(t("maptable.asm.bytesUnit"))}</span></div>`
+        + `<div class="mt-fn-sig"><span class="mt-lbl">${esc(t("maptable.asm.addr"))}:</span> <span class="mt-msx">${esc(a.addrVar)}</span>`;
+      if (a.guardVar) h += ` &nbsp;·&nbsp; <span class="mt-lbl">${esc(t("maptable.asm.guard"))}:</span> <span class="mt-msx">${esc(a.guardVar)}</span>`;
+      h += `</div>`;
+      if ((a.patchVars || []).length)
+        h += `<div class="mt-fn-sig"><span class="mt-lbl">${esc(t("maptable.asm.patch"))}:</span> ${a.patchVars.map((v) => `<span class="mt-orig">${esc(v)}</span>`).join(", ")}</div>`;
+      h += `</div>`;
+    }
+    h += `</section>`;
+  }
+  // SPRITE（ドット絵定義）: 名前 → パターン番号・サイズ。
+  const spr = map.sprites || [];
+  if (spr.length) {
+    h += `<section class="mt-sec"><h3>${esc(t("maptable.sprites", spr.length))}</h3>`
+      + `<table class="mt"><thead><tr><th>${esc(t("maptable.col.orig"))}</th><th>${esc(t("maptable.spr.pattern"))}</th><th>${esc(t("maptable.spr.size"))}</th></tr></thead><tbody>`
+      + spr.map((s) => `<tr><td class="mt-orig">${esc(s.name)}</td><td class="mt-msx">${esc(String(s.pattern))}</td><td>${s.size}×${s.size}</td></tr>`).join("")
+      + `</tbody></table></section>`;
+  }
   if (cf.length) {
     h += `<section class="mt-sec"><h3>${esc(t("maptable.controlflow", cf.length))}</h3><table class="mt"><tbody>`
       + cf.map((c) => `<tr><td class="mt-orig">${esc(c.kind)}</td><td>${esc(t("maptable.cf.to"))} ${esc(String(c.targetLine))}</td></tr>`).join("")
@@ -3196,6 +3383,8 @@ srcEl.addEventListener("keydown", (e) => {
   if (mod && e.altKey && e.key === "ArrowLeft") { e.preventDefault(); goBack(); return; }
   if (mod && e.altKey && e.key === "ArrowRight") { e.preventDefault(); goForward(); return; }
   if (mod && e.key.toLowerCase() === "g") { e.preventDefault(); goToLine(); return; }
+  // 次のエラー行へ巡回（⌘⇧. / Ctrl+Shift+. ）。配列非依存に物理キーで判定。
+  if (mod && e.shiftKey && e.code === "Period") { e.preventDefault(); nextError(); return; }
   if (e.key === "F11" && !e.shiftKey) { e.preventDefault(); toggleBookmark(); return; }
   if (e.key === "F11" && e.shiftKey) { e.preventDefault(); nextBookmark(); return; }
 });
@@ -3227,6 +3416,7 @@ function runAction(act) {
     case "def": return goToDefinition();
     case "usages": return findUsages();
     case "goline": return goToLine();
+    case "nexterr": return nextError();
     case "back": return goBack();
     case "fwd": return goForward();
     case "bm": return toggleBookmark();
@@ -3239,6 +3429,7 @@ function runAction(act) {
     case "settings": return openSettings();
     case "run": return onPlayWebMSX();
     case "reverse": return onReverse();
+    case "errest": return openErrEstimate();
     case "import-basic": return onImportBasic();
     case "help": return showModal(t("sc.title"), t("sc.body"));
     case "about": return showModal("FunctionBASIC", t("about.body", APP_VERSION));
@@ -3279,6 +3470,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeMenus();
     if (!$("modal").hidden) resolveModal(null);
+    else if (!$("errEst").hidden) closeErrEstimate();
     else if (gfindOpen()) closeGlobal();
   }
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "L" || e.key === "l")) {
@@ -3330,6 +3522,16 @@ $("setSave").addEventListener("click", applySettingsFromForm);
 $("setCancel").addEventListener("click", closeSettings);
 $("settings").addEventListener("click", (e) => {
   if (e.target.id === "settings") closeSettings(); // 背景クリックで閉じる
+});
+
+// エラー箇所推測ダイアログ
+$("eeRun").addEventListener("click", runErrEstimate);
+$("eeClose").addEventListener("click", closeErrEstimate);
+$("eeLine").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); runErrEstimate(); }
+});
+$("errEst").addEventListener("click", (e) => {
+  if (e.target.id === "errEst") closeErrEstimate(); // 背景クリックで閉じる
 });
 
 // 検索・置換バー

@@ -11,6 +11,7 @@
 // MSX の1行255文字制限を越えないよう、32バイトは一時文字列変数へ分割連結してから代入する。
 import type { Program, Stmt, Expr, LValue, SpriteDef, BuiltinStmt } from "../ast/nodes.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
+import type { SpriteEntry } from "../core/maptable.ts";
 import { error, warning } from "../core/diagnostics.ts";
 
 const ON_CHARS = new Set(["#", "*", "●", "X", "x", "1"]); // 点灯
@@ -23,10 +24,11 @@ const chr = (b: number): Expr => ({ type: "CallExpr", name: "CHR$", args: [{ byR
 const chrChain = (bs: number[]): Expr =>
   bs.map(chr).reduce((a, e) => ({ type: "Bin", op: "+", left: a, right: e }));
 
-export function lowerSprite(program: Program): Diagnostic[] {
+export function lowerSprite(program: Program): { diagnostics: Diagnostic[]; sprites: SpriteEntry[] } {
   const diags: Diagnostic[] = [];
   const fail = (key: string, pos: any, params: any = {}) => diags.push(error(key, pos, params));
 
+  const sprites: SpriteEntry[] = []; // 名前→パターン番号（変換テーブル用）
   const seen = new Set<string>();
   let nextPat = 0;
   let has8 = false;
@@ -78,6 +80,7 @@ export function lowerSprite(program: Program): Diagnostic[] {
     const bytes = encode(s);
     if (!bytes) return [];
     const k = nextPat++;
+    sprites.push({ name: s.name, pattern: k, size: bytes.length === 8 ? 8 : 16, sourceLine: s.pos?.line });
     const out: Stmt[] = [
       // パターン名→番号の定数。整数ラベルなので STRICT の型サフィックス検査は免除。
       { type: "Const", name: s.name, expr: num(k), pos: s.pos, strictExempt: true },
@@ -117,7 +120,7 @@ export function lowerSprite(program: Program): Diagnostic[] {
   for (const fn of program.functions) fn.body = rw(fn.body);
 
   // 定義が無ければ以降の SCREEN 整合チェックも不要。
-  if (!has8 && !has16) return diags;
+  if (!has8 && !has16) return { diagnostics: diags, sprites };
 
   // 8×8 と 16×16 の混在は MSX では表現できない（サイズは画面全体で一つ）。
   if (has8 && has16) diags.push(warning("W_SPRITE_MIXED", firstPos ?? ORIGIN, {}));
@@ -133,7 +136,7 @@ export function lowerSprite(program: Program): Diagnostic[] {
       diags.push(warning("W_SPRITE_SCREEN", firstPos ?? ORIGIN, { arg: screenArg, want: `${wantSize}×${wantSize}`, mode: "モード", fix }));
     }
   }
-  return diags;
+  return { diagnostics: diags, sprites };
 }
 
 const ORIGIN = { line: 1, column: 1 } as any;

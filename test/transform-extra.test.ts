@@ -573,3 +573,49 @@ test("PRINT #n, USING の USING をファイル番号の後でも改名しない
 test("BLOAD \"…\",R の実行フラグ R を改名しない", () => {
   assert.match(compile(`BLOAD "CAS:F",R`).msx, /BLOAD "CAS:F",R/);
 });
+
+test("変換テーブル: DATASET が名前→RESTORE先行・切替番号として載る", () => {
+  const { map, code, diagnostics } = compile(
+    ["GLOBAL A%", "DATASET FRAME_A", "  DATA 1,2,3", "END DATASET", "DATASET ENEMY_X", "  DATA 10,20",
+     "END DATASET", "READ FRAME_A INTO A%", "PRINT A%"].join("\n"),
+  );
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.equal(map.datasets?.length, 2);
+  const a = map.datasets!.find((d) => d.name === "FRAME_A")!;
+  assert.ok(a && a.switchId === 1);
+  // RESTORE先行 = 先頭DATAのMSX行番号と一致する。
+  const dataLine = code.find((l) => /^DATA 1,2,3/.test(l.text))!.lineNo;
+  assert.equal(a.restoreLine, dataLine);
+  assert.equal(map.datasets!.find((d) => d.name === "ENEMY_X")!.switchId, 2);
+});
+
+test("変換テーブル: インラインASM が配置アドレス変数・パッチ変数として載る", () => {
+  const { map, msx, diagnostics } = compile(
+    ["GLOBAL SC%", "ASM", "  LD A,(SC%)", "  INC A", "  LD (SC%),A", "END ASM", "PRINT SC%"].join("\n"),
+  );
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0);
+  assert.equal(map.asmBlocks?.length, 1);
+  const b = map.asmBlocks![0];
+  assert.ok(b.bytes > 0);
+  assert.ok(b.addrVar && msx.includes(`DEFUSR=${b.addrVar}`)); // 出力に実在する変数名
+  assert.deepEqual(b.patchVars, ["SC%"]); // ASMが参照したBASIC変数
+});
+
+test("長い DATA 行はカンマ境界で自動分割される（値は不変・全行255以内）", () => {
+  // 1本の DATA に 200 個の &HXX 値 → 素朴に出すと 255 バイト超。
+  const vals = Array.from({ length: 200 }, (_, i) => "&H" + (i % 256).toString(16).toUpperCase().padStart(2, "0"));
+  const { msx, diagnostics } = compile(`DATA ${vals.join(", ")}\nGLOBAL A\nREAD A`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0); // E_LINE_TOO_LONG 出ない
+  const lines = msx.split("\n");
+  // 全行（行番号込み）が 255 バイト以内
+  for (const l of lines) assert.ok(Buffer.byteLength(l, "utf8") <= 255, `too long: ${l.length}B`);
+  // 分割後の DATA 値を連結すると元の順序・内容と一致
+  const out = lines.filter((l) => /^\d+ DATA /.test(l)).flatMap((l) => l.replace(/^\d+ DATA /, "").split(",").map((s) => s.trim()));
+  assert.deepEqual(out, vals);
+  assert.ok(lines.filter((l) => /^\d+ DATA /.test(l)).length >= 2, "複数行に分割される");
+});
+
+test("短い DATA 行は分割されない（1行のまま）", () => {
+  const { msx } = compile(`DATA 1, 2, 3\nGLOBAL A\nREAD A`);
+  assert.equal(msx.split("\n").filter((l) => /DATA/.test(l)).length, 1);
+});

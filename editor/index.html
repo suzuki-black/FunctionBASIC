@@ -55,6 +55,7 @@
         <div class="mi" data-act="def"><span data-i18n="def">定義へ移動</span><span class="sc">Ctrl/Cmd+B</span></div>
         <div class="mi" data-act="usages"><span data-i18n="usages">使用箇所（順送り）</span><span class="sc">Alt+F7</span></div>
         <div class="mi" data-act="goline"><span data-i18n="goline">行へ移動…</span><span class="sc">Ctrl/Cmd+G</span></div>
+        <div class="mi" data-act="nexterr"><span data-i18n="nexterr">次のエラー行へ</span><span class="sc">Ctrl/Cmd+Shift+.</span></div>
         <div class="sep"></div>
         <div class="mi" data-act="back"><span data-i18n="back">戻る</span><span class="sc">Ctrl/Cmd+Alt+←</span></div>
         <div class="mi" data-act="fwd"><span data-i18n="fwd">進む</span><span class="sc">Ctrl/Cmd+Alt+→</span></div>
@@ -79,6 +80,8 @@
       <div class="dropdown">
         <div class="mi" data-act="run"><span data-i18n="runmsx">▶ WebMSXで実行</span><span class="sc">Ctrl/Cmd+Enter</span></div>
         <div class="mi" data-act="reverse"><span data-i18n="reverse">MSX→構造化に逆変換</span></div>
+        <div class="sep"></div>
+        <div class="mi" data-act="errest"><span data-i18n="m.errest">エラー箇所を推測…</span></div>
       </div>
     </div>
     <div class="menu" data-menu="help">
@@ -193,6 +196,27 @@
       <div class="modal-actions">
         <button id="modalCancel" hidden>キャンセル</button>
         <button id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- エラー箇所推測ダイアログ -->
+  <div id="errEst" hidden>
+    <div class="modal-box errest-box">
+      <div class="modal-title" data-i18n="ee.title">エラー箇所を推測</div>
+      <div class="ee-desc" data-i18n="ee.desc">MSXで出たエラーの「種別」と「行番号」を入れると、その行にある“原因になりうる命令・引数”をアルゴリズムで洗い出します（AIなし・あくまで推測）。</div>
+      <div class="set-row">
+        <label class="set-label" data-i18n="ee.kind">エラー種別</label>
+        <select id="eeKind"></select>
+      </div>
+      <div class="set-row">
+        <label class="set-label" data-i18n="ee.line">MSXの行番号</label>
+        <input id="eeLine" type="number" min="0" placeholder="240" />
+        <button id="eeRun" data-i18n="ee.run">推測する</button>
+      </div>
+      <div id="eeResult" class="ee-result"></div>
+      <div class="modal-actions">
+        <button id="eeClose" data-i18n="ee.close">閉じる</button>
       </div>
     </div>
   </div>

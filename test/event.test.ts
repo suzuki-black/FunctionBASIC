@@ -52,3 +52,32 @@ test("EVENT TIMER: エラー（2つ目 / VBLANK未対応 / 関数内）", () => 
   assert.deepEqual(errCodes(`EVENT VBLANK\nA%=1\nEND EVENT`), ["E_EVENT_VBLANK"]);
   assert.ok(errCodes(`FUNCTION F()\nEVENT TIMER 5\nA%=1\nEND EVENT\nEND FUNCTION\nF()`).includes("E_EVENT_NOT_TOPLEVEL"));
 });
+
+// 回帰: EVENT 本体内の関数呼び出しが収集されず E_UNKNOWN_FUNCTION になっていたバグ
+// （scanCalls に case "Event" が無く本体を辿らなかった）。ハンドラから GOSUB で呼べること。
+test("EVENT TIMER: 本体からユーザ関数を呼べる（文/式とも・回帰）", () => {
+  const stmt = compile(`FUNCTION PLAY_FRAME()
+  PRINT "F"
+END FUNCTION
+SCREEN 1
+EVENT TIMER 1
+  PLAY_FRAME()
+END EVENT
+DO
+LOOP`);
+  assert.equal(stmt.diags.filter((d) => d.severity === "error").length, 0);
+  assert.match(stmt.text, /=== FUNCTION PLAY_FRAME ===/); // 関数が出力される
+  assert.match(stmt.text, /GOSUB \d+/); // ハンドラ（END 後）が関数を GOSUB する
+
+  const expr = compile(`FUNCTION F()
+  F=1
+END FUNCTION
+GLOBAL X
+SCREEN 1
+EVENT TIMER 1
+  X=F()
+END EVENT
+DO
+LOOP`);
+  assert.equal(expr.diags.filter((d) => d.severity === "error").length, 0);
+});

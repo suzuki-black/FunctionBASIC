@@ -619,3 +619,40 @@ test("短い DATA 行は分割されない（1行のまま）", () => {
   const { msx } = compile(`DATA 1, 2, 3\nGLOBAL A\nREAD A`);
   assert.equal(msx.split("\n").filter((l) => /DATA/.test(l)).length, 1);
 });
+
+// 回帰: 文字列 DATA が「行番号を付けると 255 バイト超」になる境界。トークン化推定（DATA を 1B
+// 換算）＋行番号無視だと本文だけでは 255 以下に見え分割を素通り→MSX が末尾の " を切り捨て
+// 未閉じ文字列→Syntax error（MML プレーヤ出力で実際に発生）。生バイト＋行番号で予算化して防ぐ。
+test("行番号を付けると255超になる文字列DATAも分割される（生バイト基準）", () => {
+  // 各値=32B(内容32+引用符無し…内容32)。DATA本文の生バイトは255だが、DATA を 1B 換算する
+  // トークン化推定では ~252B に見え「本文だけなら 255 以下」。しかし行番号 "1000 "(5B) を足すと
+  // 物理 260B で 255 超 → 旧実装は分割を素通りし MSX が末尾の " を落として syntax error になった。
+  const vals = Array.from({ length: 7 }, (_, i) =>
+    `"${("@15V14O2A16A8O1A8O3A16G16F16_" + i).padEnd(32, "X")}"`,
+  );
+  const { msx, diagnostics } = compile(`DATA ${vals.join(", ")}\nGLOBAL A$\nREAD A$`);
+  assert.equal(diagnostics.filter((d) => d.severity === "error").length, 0, "E_LINE_TOO_LONG が出ない");
+  const lines = msx.split("\n");
+  // MSX が ASCII ロード時に読む「行番号込みの生バイト長」が全行 255 以内
+  for (const l of lines)
+    assert.ok(Buffer.byteLength(l, "utf8") <= 255, `physical too long (${Buffer.byteLength(l, "utf8")}B): ${l}`);
+  const dataLines = lines.filter((l) => /^\d+ DATA /.test(l));
+  assert.ok(dataLines.length >= 2, "複数行に分割される");
+  // 各 DATA 行の引用符が閉じている（奇数なら未閉じ＝MSX で syntax error）
+  for (const l of dataLines) assert.equal((l.match(/"/g) ?? []).length % 2, 0, `未閉じ引用符: ${l}`);
+  // 値は順序・内容とも不変
+  const out = dataLines.flatMap((l) => splitTopComma(l.replace(/^\d+ DATA /, "")));
+  assert.deepEqual(out, vals);
+});
+
+// 引用符内カンマを尊重してトップレベル分割（テスト用）
+function splitTopComma(s: string): string[] {
+  const out: string[] = [];
+  let cur = "", inStr = false;
+  for (const ch of s) {
+    if (ch === '"') inStr = !inStr;
+    if (ch === "," && !inStr) { out.push(cur.trim()); cur = ""; } else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}

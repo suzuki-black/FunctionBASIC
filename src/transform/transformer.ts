@@ -65,6 +65,15 @@ const ONE_BYTE = new Set<string>([
 ]);
 // UTF-8 バイト長（Node/ブラウザ両対応）
 const utf8len = (s: string): number => new TextEncoder().encode(s).length;
+
+// MSX は ASCII プログラムをロードするとき、各行を「行番号込みの生バイト列」として読み込む。
+// 1 行の上限は 255 バイトで、超えると末尾が切り捨てられる（DATA 末尾の " が落ちて文字列が
+// 閉じず Syntax error になる等）。トークン化推定（キーワード 1 バイト換算）では ASCII ロード時の
+// 実バイト長を過小評価するため、行長の予算化・検査は「生 UTF-8 バイト長」で行い、さらに
+// 行番号ぶん（最大 "65529 " = 6B）を必ず差し引く。
+const MSX_LINE_MAX = 255;
+const LINENO_RESERVE = 6; // 最大行番号 65529 ＋ 区切り空白
+const LINE_TEXT_BUDGET = MSX_LINE_MAX - LINENO_RESERVE - 1; // = 248（さらに 1B の安全余裕）
 export function estimateMsxBytes(text: string): number {
   const parts = text.match(/"[^"]*"|[A-Za-z][A-Za-z0-9_]*[%!#$]?|[^"A-Za-z]+/g) ?? [];
   let total = 0;
@@ -101,7 +110,7 @@ function splitPrint(seg: string): string[] {
   const chunks: string[][] = [];
   let cur: string[] = [];
   for (const p of parts) {
-    if (cur.length && estimateMsxBytes("PRINT " + [...cur, p].join(";") + ";") > 255) {
+    if (cur.length && utf8len("PRINT " + [...cur, p].join(";") + ";") > LINE_TEXT_BUDGET) {
       chunks.push(cur);
       cur = [p];
     } else cur.push(p);
@@ -114,7 +123,7 @@ function splitPrint(seg: string): string[] {
 
 // 長い DATA 文をカンマ境界で複数 DATA 行へ分割。READ は行境界を一切見ない（DATA は平坦な
 // ストリーム）ので分割しても意味は不変。RESTORE 先ラベルは先頭行に残るので DATASET も安全。
-// 行番号ぶん（最大 "65529 "=6B）の余裕を見て 1 行 248 バイト以内に収める。
+// 生バイトで測り、行番号ぶんを差し引いた LINE_TEXT_BUDGET(=248) 以内に収める。
 function splitData(seg: string): string[] {
   const m = seg.match(/^DATA\s+([\s\S]*)$/i);
   if (!m) return [seg];
@@ -122,7 +131,7 @@ function splitData(seg: string): string[] {
   const chunks: string[][] = [];
   let cur: string[] = [];
   for (const v of vals) {
-    if (cur.length && estimateMsxBytes("DATA " + [...cur, v].join(",")) > 248) {
+    if (cur.length && utf8len("DATA " + [...cur, v].join(",")) > LINE_TEXT_BUDGET) {
       chunks.push(cur);
       cur = [v];
     } else cur.push(v);
@@ -136,19 +145,19 @@ function splitData(seg: string): string[] {
 // - 単一の長い DATA 文はカンマ境界で分割（splitData）
 // - それ以外は ":" 区切りを255以内で再パック、長いPRINTは ";" 分割
 export function splitLongLine(text: string): string[] {
-  if (estimateMsxBytes(text) <= 255) return [text];
+  if (utf8len(text) <= LINE_TEXT_BUDGET) return [text];
   if (/^\s*IF\b/i.test(text)) return [text];
   const segs = splitTop(text, ":").map((s) => s.trim());
-  // 単一の長い DATA 文はカンマ境界で分割（再パックを通さず 248B/行を厳守）。
+  // 単一の長い DATA 文はカンマ境界で分割（再パックを通さず予算厳守）。
   if (segs.length === 1 && /^DATA\b/i.test(segs[0])) return splitData(segs[0]);
   const expanded = segs.flatMap((s) =>
-    estimateMsxBytes(s) > 255 ? (/^DATA\b/i.test(s) ? splitData(s) : splitPrint(s)) : [s],
+    utf8len(s) > LINE_TEXT_BUDGET ? (/^DATA\b/i.test(s) ? splitData(s) : splitPrint(s)) : [s],
   );
   const lines: string[] = [];
   let cur = "";
   for (const s of expanded) {
     const cand = cur ? cur + ": " + s : s;
-    if (cur && estimateMsxBytes(cand) > 255) {
+    if (cur && utf8len(cand) > LINE_TEXT_BUDGET) {
       lines.push(cur);
       cur = s;
     } else cur = cand;
@@ -1670,9 +1679,10 @@ function finishTransform(ctx: any): TransformResult {
     prevNo = l.lineNo;
   }
 
-  // 1行255バイト制限の検査（docs/05 §5.12）。自動分割は将来、まずは検出。
+  // 1行255バイト制限の検査（docs/05 §5.12）。MSX は ASCII ロード時に「行番号込みの生バイト列」で
+  // 読むため、行番号＋区切り空白＋本文の生 UTF-8 バイト長で判定する（トークン化推定では溢れを見逃す）。
   for (const l of out) {
-    if (estimateMsxBytes(l.text) > 255)
+    if (utf8len(`${l.lineNo} ${l.text}`) > MSX_LINE_MAX)
       fail("E_LINE_TOO_LONG", { lineNo: l.lineNo });
     // 外字(Shift-JIS表現不能)は字句解析でソース位置つきに検出する（lexer checkSjis）。
   }

@@ -372,7 +372,7 @@ Tip: for larger programs, tell the AI to keep game state in `GLOBAL`s with descr
 
 FunctionBASIC is early and developing. Shipped features are described in the sections above; what's **not yet done** (no fixed dates):
 
-- **Native MSX playback (auto-launch)** — beyond the embedded webMSX and the `.sav` hand-off: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script, and/or auto-launch MSXPLAYer. (Would also make FM/MSX-AUDIO audible — see the FM limitation under [Run & export](#run--export).)
+- **Native MSX playback (auto-launch)** — beyond the embedded webMSX, the external-browser run and the `.sav` hand-off: launch openMSX with the generated `.dsk` auto-mounted and `RUN` it via a Tcl script, and/or auto-launch MSXPLAYer. (Would make FM audible *in-app / statefully* — today FM plays via **Open in external browser** — and would add MSX-AUDIO, which webMSX can't emulate. See [Run & export](#run--export).)
 - **Editor — code folding & large-file performance** — likely a CodeMirror-based editor, beyond today's lightweight zero-dependency one.
 - **More language growth** — `DATASET` strategy B (array-backed random/interleaved access, at a RAM cost), `SELECT CASE` v3 (dense-integer `ON … GOTO` jump table), more string helpers, and local arrays.
 - **Graphics API** (`DrawLine` / `DrawRect` / `PutSprite` / `ClearScreen`) — SCREEN-mode-aware wrappers over `LINE` / `PSET` / `PUT SPRITE` / `COPY`, building on the `M2_*` helpers.
@@ -794,7 +794,7 @@ END FUNCTION
 
 FunctionBASIC はまだ初期段階で、発展途上です。対応済みの機能は上の各セクションに記載しています。**未対応**（時期未定）：
 
-- **ネイティブMSXプレイヤー対応（自動起動）** — 埋め込み webMSX と `.sav` 受け渡しに加え、生成した `.dsk` を openMSX に自動マウントして Tcl で `RUN`、および/または MSXPLAYer の自動起動。（FM/MSX-AUDIO を実音で鳴らせるようになる — [実行・書き出し](#実行書き出し)の FM 制限を参照）
+- **ネイティブMSXプレイヤー対応（自動起動）** — 埋め込み webMSX・外部ブラウザ実行・`.sav` 受け渡しに加え、生成した `.dsk` を openMSX に自動マウントして Tcl で `RUN`、および/または MSXPLAYer の自動起動。（FM を*アプリ内で・状態を保って*鳴らせるようになる。現状 FM は **外部ブラウザで実行** で発音。加えて webMSX が非対応の MSX-AUDIO も鳴らせる。[実行・書き出し](#実行書き出し)参照）
 - **エディタ：コード折りたたみ・大規模ファイル性能** — CodeMirror ベース想定。現状の軽量・依存ゼロエディタを発展。
 - **言語のさらなる拡張** — `DATASET` 方式B（配列バッキングでランダム/交互アクセス。RAMコストあり）、`SELECT CASE` v3（密整数の `ON … GOTO` ジャンプテーブル）、文字列ヘルパの追加、ローカル配列。
 - **グラフィックAPI**（`DrawLine` / `DrawRect` / `PutSprite` / `ClearScreen`）— SCREENモードを意識した `LINE` / `PSET` / `PUT SPRITE` / `COPY` のラッパ。`M2_*` ヘルパの上に構築。

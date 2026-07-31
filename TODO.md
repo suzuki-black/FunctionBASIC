@@ -5,18 +5,21 @@ Tracked follow-ups that are not yet done (or not yet verifiable here).
 ## Sound verification (FM / MSX-AUDIO)
 
 The transpiler output for MSX-MUSIC (FM) is **confirmed correct**: pasting the
-converted BASIC into MSXPen (MSX2+ America) plays the FM music. The limitation is
-in our *embedded* player only.
+converted BASIC into MSXPen (MSX2+ America) plays the FM music. The remaining
+limitation is in our *embedded* player only.
 
-- [ ] **FM (MSX-MUSIC) does not sound in the embedded WebMSX.** We embed
-  webmsx.org as a **cross-origin iframe**, drivable only by rebooting with a
-  data-ZIP URL each run. None of these made FM sound in the iframe (all tried
-  and reverted): `MACHINE=MSX2PA` (MSX2+ America) + `PRESETS=MSXMUSIC`; typing
-  the run after boot via `BASIC_ENTER=RUN"..."` instead of `BASIC_RUN`. The same
-  program **does** play in MSXPen (MSX2+ America), so the transpiler output is
-  correct. The run URL is back to the original `DISKA_FILES_URL` + `BASIC_RUN`.
-  Verify FM in **MSXPen / openMSX / real hardware** for now; the real fix is the
-  same-origin embedding below.
+- [x] **FM (MSX-MUSIC) silent in the embedded WebMSX — root cause found, workaround
+  shipped (v0.1.43).** The in-app player embeds webmsx.org as a **cross-origin
+  iframe**, and WKWebView / cross-origin iframes start their **Web Audio context
+  suspended (muted)**; the emulator can't unmute it and no WebMSX URL param
+  (`MACHINE=MSX2PA` + `PRESETS=MSXMUSIC`, `BASIC_ENTER` vs `BASIC_RUN`, etc.)
+  changes that. So the embedded iframe stays silent **by design**. Workaround:
+  **Open in external browser** (Run menu) — a real browser tab has no such
+  restriction. FM programs (`CALL MUSIC` / `PLAY #2`) auto-launch there as
+  **MSX2+ with `PRESETS=MSXMUSIC` and `OPLL_VOL` raised**, so sound just plays.
+  The `allow="autoplay"` on the iframe was removed (it never applied to the
+  cross-origin AudioContext). True in-app FM still needs the same-origin
+  embedding below. (Also plays in MSXPen / openMSX / real hardware.)
 - [ ] **MSX-AUDIO (Y8950 / OPL1)** is not emulated by WebMSX at all → verify on
   **openMSX** or real hardware. (`CALL AUDIO` etc. transpile correctly.)
 - [ ] **turbo R `_TURBO`**: the run machine is MSX2+, so `examples/turbo-r.msxb`
@@ -25,6 +28,29 @@ in our *embedded* player only.
   BASIC compiler)** — legit as a keyword, so the transpiler passes it through — but
   it is **not** an interpreted MSX-BASIC statement, so a plain `RUN` in the WebMSX
   interpreter reports `Syntax error`. See the turbo R samples section below.
+
+## OPLL music tooling (external converter + BIN+ASM path)
+
+- MML-PLAY route for reproducing a reference recording is **abandoned** (decision):
+  MML `@`/`V` re-attack per note → clicks / metallic noise; it can't reproduce
+  register-level expression (ADSR decay, mid-phrase timbre) cleanly. The route
+  that matches the reference is **BIN + ASM**: replay the VGM register dump.
+- [ ] **BIN+ASM snare cutoff.** A snare/percussion hit occasionally drops out
+  mid-playback in the ASM register-replay player. The `.BIN` data is byte-identical
+  to the source VGM (converter output is valid), so the issue is the ASM player's
+  `$0E` (rhythm key-on) timing, not the data. Investigate when the BIN+ASM path is
+  resumed.
+
+## Recently shipped (v0.1.43)
+
+- [x] **Open in external browser** (FM audio; auto MSX2+ + MSX-MUSIC + OPLL_VOL).
+- [x] **BLOAD binary bundling** — `.BIN` next to the `.msxb` is read verbatim and
+  bundled into the run payload and exported `.dsk` (multi-file FAT12 builder).
+- [x] **Fast boot setting** (opt-in, default off) — fast-forwards the boot so
+  sound/video start sooner; playback tempo unchanged.
+- [x] **Line-length fix** — budget raw ASCII bytes **including the line number**
+  (a >255-byte `DATA` line was losing its closing quote → spurious `Syntax error`).
+- [x] **Security** — `read_binary` rejects path separators / `..` / absolute paths.
 
 ## Future: same-origin WebMSX (MSXPen-style runner)
 

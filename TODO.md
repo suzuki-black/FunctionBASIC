@@ -135,6 +135,48 @@ P2 = medium, P3 = lower (risk or higher cost). Nothing here is committed yet.
   (prove overlay line count matches source) before landing. Defer until the Worker/cache
   wins are in and measured.
 
+## FAST library — ASM-backed bulk speedups (design note + candidates)
+
+**Positioning (decided).** Performance is an **opt-in escape-hatch layer**, never the
+default. The identity is transparent, readable MSX-BASIC for *learning* — that stays
+sacrosanct. FAST ships as an optional add-on (`INCLUDE "lib/fast.msxb"`, a *tool you
+choose*, not part of the language), is **not hidden** (shown like ASM blocks in the
+conversion table), and is teachable (compare the slow `FOR…PUT SPRITE` vs `FAST SPRITES`
+to show *why* batching/ASM is faster). **No 1:1 per-command FAST** (`FAST PUT SPRITE` is
+a trap — pays the BASIC↔ASM boundary cost per call and mis-teaches). The unit that wins
+is the **batch**: internalize the loop in ASM so BASIC crosses the boundary once/frame.
+Structured core = universal (all BASIC/learning); FAST = the game-builder tier on top.
+
+**Candidate primitives** — scored on: (I)maginable / (F)its FunctionBASIC feel /
+(G)eneric / (S)peedup. API is BASIC-shaped, `%`-typed, consumes arrays (ties to
+STRUCT-of-arrays). On MSX2 `FILL`/`COPY` can dispatch to the **VDP hardware blitter**
+(HMMV/HMMM) for a large extra win; the primitive hides the machine difference.
+
+- [ ] **`FAST SPRITES foe, n%`** — flush the whole sprite attribute table (≤32 × Y/X/pat/col)
+  from a STRUCT-of-arrays in one VRAM burst (VDP auto-increment). I◎ F◎ G◎ S◎.
+  Flagship; the generalized space-shooter fleet redraw (10→27fps proven).
+- [ ] **`FAST FILL page,x,y,w,h,val` / `FAST CLS`** — fill a VRAM region / clear screen.
+  I◎ F◎ G◎ S◎ (MSX2 = hardware fill).
+- [ ] **`FAST COPY srcpage,sx,sy,w,h TO dstpage,dx,dy`** — block move RAM→VRAM / VRAM→VRAM
+  (backgrounds, tile stamps). I○ (a fast `COPY`) F◎ G◎ S◎ (MSX2 = hardware blit).
+- [ ] **`FAST SCROLL region,dx`** — shift a VRAM/nametable region (soft scroll where no HW
+  scroll). I◎ F◎ G○ S◎.
+- [ ] **`hit% = FAST HITTEST(x%,y%,w%,h%, bx%,by%,bw%,bh%, n%)`** — AABB overlap scan of one
+  box vs an array; returns first hit / bitmask. I○ F○ G◎ (collision is everywhere) S◎
+  (BASIC nested loops are brutal).
+- [ ] **`FAST TEXT x%,y%, a$`** — write a string into the nametable at a cell (score/HUD).
+  I◎ F◎ G◎ S○.
+- [ ] **`FAST VMOVE dst,src,vel,n%`** — bulk integer array update (`X()=X()+VX()` for all)
+  for physics/particles. I○ F○ G○ S◎ *only when n% is large enough to amortize the crossing*.
+- [ ] **`FAST VWRITE / VREAD page,addr, arr, n%`** — block VRAM↔`%`-array/buffer; the
+  low-level building block the others compose from. I○ (bulk VPOKE/VPEEK) F○ G◎ S◎.
+
+**First library = core 4:** `FAST SPRITES`, `FAST FILL`/`CLS`, `FAST COPY`, `FAST HITTEST`
+(best on all four criteria; covers move-sprites / draw-bg / clear / collide — the spine of
+most 2D games). Ships within today's ASM-block constraints (`%`-int vars, VARPTR patch,
+HIMEM buffer): pass array first-element VARPTRs, ASM iterates internally. Extensions that
+would help: absolute CALL/JP to labels, auto buffer allocation, MSX2 VDP-command dispatch.
+
 ## Future: same-origin WebMSX (MSXPen-style runner)
 
 - [ ] Embedding WebMSX **same-origin** (loading `wmsx.js` and driving the `WMSX`

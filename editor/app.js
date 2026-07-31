@@ -27,7 +27,7 @@ const msxPane = $("msxPane");
 const maptableOut = $("maptableOut");
 const maptableNote = $("maptableNote");
 // アプリのバージョン（About表示用の単一の真実。src-tauri/tauri.conf.json と揃える）
-const APP_VERSION = "0.1.42";
+const APP_VERSION = "0.1.43";
 
 // ---- ログ（失敗を可視化。サンドボックス等での不調を診断しやすく）----
 const log = (...a) => console.log("[editor]", ...a);
@@ -106,8 +106,10 @@ const I18N = {
     "set.machine": "機種", "set.machinedefault": "既定（WebMSX）",
     "set.machinehint": "turbo R の例や FM 検証時に切替。既定のままで多くの例は動作",
     "set.presets": "拡張(PRESETS)", "set.presetshint": "カンマ区切り。FM を試す機種では MSXMUSIC を指定",
+    "set.fastboot": "高速ブート（起動を短縮）",
+    "set.fastboothint": "起動のブート工程を早送りして音が鳴るまでを短縮。演奏テンポは不変。既定オフ",
     "set.url": "WebMSX URL", "set.save": "保存", "set.cancel": "キャンセル",
-    "runmsx": "▶ WebMSXで実行", "reverse": "MSX→構造化に逆変換", "helpsc": "キーボードショートカット…",
+    "runmsx": "▶ WebMSXで実行", "runext": "▶ 外部ブラウザで実行（音あり）", "reverse": "MSX→構造化に逆変換", "helpsc": "キーボードショートカット…",
     "m.app": "FunctionBASIC", "about": "FunctionBASICについて",
     "about.body": (v) => `FunctionBASIC  v${v}\n\n構造化BASIC → MSX-BASIC 変換エディタ`,
     "tb.save": "変換して保存", "tb.play": "▶ WebMSX", "tb.font": "文字",
@@ -185,11 +187,16 @@ const I18N = {
     "recentprojects": "最近のプロジェクト…",
     "run.noerr": "エラーがあるため実行できません",
     "run.ok": (name, note) => `アプリ内WebMSXで実行（RUN"${name}"）${note}`,
+    "run.ext.ok": "外部ブラウザでWebMSXを開きました（音を出すには画面を1回クリック）",
     "run.note": (n) => `（日本語等${n}字は実行用に除去）`, "run.open.err": "WebMSXを開けませんでした",
     "dsk.noerr": "エラーがあるためディスクを作成できません", "dsk.desktoponly": "ディスク(.dsk)作成はデスクトップ版で利用できます",
     "dsk.cancel": "ディスク作成をキャンセルしました",
     "dsk.ok": (path, name) => `ディスク作成: ${path} → WebMSXにドラッグ後 RUN"${name}"`,
     "dsk.err": (e) => "ディスク作成に失敗: " + e,
+    "dsk.bundled": (n) => `（同梱${n}ファイル）`,
+    "dsk.missing": (names) => `※未検出の同梱ファイル: ${names}`,
+    "run.toobig": (kb) => `ペイロードが大きすぎます（約${kb}KB > URL上限）。デスクトップ版でディスク(.dsk)にしてください。`,
+    "run.toobig.dsk": (kb) => `ペイロードが大きすぎる（約${kb}KB）ためディスク(.dsk)にしました → WebMSXにドラッグ／openMSXで開く： `,
     "sav.noerr": "エラーがあるため.savを作成できません", "sav.desktoponly": ".sav作成はデスクトップ版で利用できます",
     "sav.cancel": ".sav作成をキャンセルしました",
     "sav.ok": (path, name, backup) =>
@@ -278,8 +285,10 @@ const I18N = {
     "set.machine": "Machine", "set.machinedefault": "Default (WebMSX)",
     "set.machinehint": "Switch for turbo R examples or FM tests; most examples run on the default",
     "set.presets": "Extensions (PRESETS)", "set.presetshint": "Comma-separated. Use MSXMUSIC on an FM-capable machine to try FM",
+    "set.fastboot": "Fast boot (shorten startup)",
+    "set.fastboothint": "Fast-forward the boot so sound starts sooner. Playback tempo unchanged. Off by default",
     "set.url": "WebMSX URL", "set.save": "Save", "set.cancel": "Cancel",
-    "runmsx": "▶ Run in WebMSX", "reverse": "Reverse: MSX → Structured", "helpsc": "Keyboard Shortcuts…",
+    "runmsx": "▶ Run in WebMSX", "runext": "▶ Run in External Browser (with sound)", "reverse": "Reverse: MSX → Structured", "helpsc": "Keyboard Shortcuts…",
     "m.app": "FunctionBASIC", "about": "About FunctionBASIC",
     "about.body": (v) => `FunctionBASIC  v${v}\n\nStructured BASIC → MSX-BASIC converter/editor`,
     "tb.save": "Convert & Save", "tb.play": "▶ WebMSX", "tb.font": "Font",
@@ -357,11 +366,16 @@ const I18N = {
     "recentprojects": "Recent Projects…",
     "run.noerr": "Cannot run: there are errors.",
     "run.ok": (name, note) => `Running in the embedded WebMSX (RUN"${name}")${note}`,
+    "run.ext.ok": "Opened WebMSX in the external browser (click the screen once to enable sound)",
     "run.note": (n) => ` (${n} non-ASCII char(s) stripped for run)`, "run.open.err": "Could not open WebMSX.",
     "dsk.noerr": "Cannot create disk: there are errors.", "dsk.desktoponly": "Disk (.dsk) creation is available in the desktop app.",
     "dsk.cancel": "Disk creation cancelled.",
     "dsk.ok": (path, name) => `Disk created: ${path} → drag into WebMSX, then RUN"${name}"`,
     "dsk.err": (e) => "Disk creation failed: " + e,
+    "dsk.bundled": (n) => `(${n} file(s) bundled)`,
+    "dsk.missing": (names) => `(missing bundled files: ${names})`,
+    "run.toobig": (kb) => `Payload too large (~${kb}KB > URL limit). Use Save Disk (.dsk) in the desktop app.`,
+    "run.toobig.dsk": (kb) => `Payload too large (~${kb}KB), saved as a disk (.dsk) → drag into WebMSX / open in openMSX: `,
     "sav.noerr": "Cannot create .sav: there are errors.", "sav.desktoponly": ".sav creation is available in the desktop app.",
     "sav.cancel": ".sav creation cancelled.",
     "sav.ok": (path, name, backup) =>
@@ -388,6 +402,7 @@ const DEFAULT_SETTINGS = {
   webmsxUrl: "https://webmsx.org",
   webmsxMachine: "", // "" = WebMSX 既定機。MSX1/MSX2/MSX2P/MSX2PA/MSXTR 等
   webmsxPresets: "", // 例: "MSXMUSIC"（カンマ区切り）。FM を試す機種で指定
+  webmsxFastBoot: false, // 起動短縮（FAST_BOOT=1）。既定オフ・演奏速度は不変
   fontSize: 15,
   autoIndent: true, // Enter で構造に応じて自動字下げ/字上げ
   autoPair: true, // ( と " の自動補完（選択を囲む / 対応閉じはタイプオーバー）
@@ -534,6 +549,7 @@ function openSettings() {
   $("setMachine").value = settings.webmsxMachine;
   $("setPresets").value = settings.webmsxPresets;
   $("setUrl").value = settings.webmsxUrl;
+  $("setFastBoot").checked = settings.webmsxFastBoot;
   $("settings").hidden = false;
 }
 function closeSettings() {
@@ -649,6 +665,7 @@ function applySettingsFromForm() {
   settings.webmsxMachine = $("setMachine").value;
   settings.webmsxPresets = $("setPresets").value.trim();
   settings.webmsxUrl = $("setUrl").value.trim() || DEFAULT_SETTINGS.webmsxUrl;
+  settings.webmsxFastBoot = $("setFastBoot").checked;
   saveSettings();
   if (isDesktop() && project.dir) startWatching(project.dir); // 外部監視のON/OFFを反映
   applyEditorPrefs();
@@ -1732,17 +1749,54 @@ async function deflateRaw(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-// 1ファイルZIP。DEFLATEで縮むなら圧縮、使えない/逆効果なら無圧縮(store)。
-async function zipForWebmsx(name, data) {
-  if (typeof CompressionStream !== "undefined") {
-    try {
-      const def = await deflateRaw(data);
-      if (def.length < data.length) return zipEntry(name, data, def, 8);
-    } catch (e) {
-      logErr("deflate 失敗 → store にフォールバック", e);
-    }
+// 複数エントリZIP。WebMSX の DISKA_FILES_URL は ZIP 内の全ファイルを1枚のディスクへ
+// 展開する（検証済み）。entries: [{name, data(Uint8Array), method(0|8), payload(Uint8Array)}]
+function zipMulti(entries) {
+  const a = [];
+  const p16 = (v) => a.push(v & 0xff, (v >>> 8) & 0xff);
+  const p32 = (v) => a.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
+  const meta = [];
+  for (const e of entries) {
+    const nameB = new TextEncoder().encode(e.name);
+    const crc = crc32(e.data);
+    const localOff = a.length;
+    p32(0x04034b50); p16(20); p16(0); p16(e.method); p16(0); p16(0x21);
+    p32(crc); p32(e.payload.length); p32(e.data.length); p16(nameB.length); p16(0);
+    for (const b of nameB) a.push(b);
+    for (const b of e.payload) a.push(b);
+    meta.push({ nameB, crc, usize: e.data.length, csize: e.payload.length, method: e.method, localOff });
   }
-  return zipEntry(name, data, data, 0);
+  const cdOffset = a.length;
+  for (const m of meta) {
+    p32(0x02014b50); p16(20); p16(20); p16(0); p16(m.method); p16(0); p16(0x21);
+    p32(m.crc); p32(m.csize); p32(m.usize);
+    p16(m.nameB.length); p16(0); p16(0); p16(0); p16(0); p32(0); p32(m.localOff);
+    for (const b of m.nameB) a.push(b);
+  }
+  const cdSize = a.length - cdOffset;
+  p32(0x06054b50); p16(0); p16(0); p16(entries.length); p16(entries.length); p32(cdSize); p32(cdOffset); p16(0);
+  return Uint8Array.from(a);
+}
+
+// 各ファイルを（縮むなら）DEFLATE して複数エントリZIPにまとめる。
+async function zipForWebmsxFiles(files) { // files: [{name, data:Uint8Array}]
+  const entries = [];
+  for (const f of files) {
+    let payload = f.data, method = 0;
+    if (typeof CompressionStream !== "undefined") {
+      try {
+        const def = await deflateRaw(f.data);
+        if (def.length < f.data.length) { payload = def; method = 8; }
+      } catch (e) { logErr("deflate 失敗 → store にフォールバック", e); }
+    }
+    entries.push({ name: f.name, data: f.data, method, payload });
+  }
+  return zipMulti(entries);
+}
+
+// 1ファイルZIP（従来経路の薄いラッパ）。
+async function zipForWebmsx(name, data) {
+  return zipForWebmsxFiles([{ name, data }]);
 }
 
 function toBase64(u8) {
@@ -1760,17 +1814,81 @@ function encodeDiskParam(s) {
   return s.replace(/[^A-Za-z0-9\-_.~/:]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
 }
 
-// 変換後プログラム → WebMSX 自動実行 URL（DEFLATEでURLを圧縮）
-async function webmsxAutorunUrl(name, asciiProgram) {
-  const data = new TextEncoder().encode(asciiProgram); // ASCII のみ
-  const zip = await zipForWebmsx(name, data);
+// アプリ内WebMSXは data URL をクエリに載せるため、WebView の URL 長上限（実測~8KB）に
+// 従属する。超過分は .dsk へフォールバックする。余裕を見て 7800B を上限とする。
+const WEBMSX_URL_MAX = 7800;
+
+// BLOAD 以外の非ディスク device（同梱対象外）。
+const BLOAD_DEVICES = /^(CAS|GRP|CRT|LPT|COM|SCRN|KYBD)$/i;
+
+// 変換後MSXから BLOAD で参照される「ディスク上のファイル名」を抽出。
+// device(CAS: 等)は除外、drive接頭辞(A:)は剥がす。動的名(BLOAD A$)は拾えない。
+function scanBloadRefs(msx) {
+  const out = new Set();
+  const re = /\bBLOAD\s*"([^"]+)"/gi;
+  let m;
+  while ((m = re.exec(msx))) {
+    let name = m[1].trim();
+    const dev = name.match(/^([A-Za-z]+):/);
+    if (dev && BLOAD_DEVICES.test(dev[1])) continue; // device は同梱しない
+    name = name.replace(/^[A-Za-z]:/, ""); // drive 接頭辞 A: は剥がす
+    if (name) out.add(name);
+  }
+  return [...out];
+}
+
+// デスクトップ限定: BLOAD 参照バイナリをプロジェクトフォルダから生バイトで読む。
+// 返り値 files[].data は number[]（Rust Vec<u8>）。見つからない名は missing に。
+async function collectBundleFiles(msx) {
+  if (!isDesktop() || !project.dir) return { files: [], missing: [] };
+  const files = [], missing = [];
+  for (const name of scanBloadRefs(msx)) {
+    try {
+      const bytes = await tauri().core.invoke("read_binary", { dir: project.dir, name });
+      files.push({ name, data: bytes });
+    } catch (e) {
+      logErr("read_binary", e);
+      missing.push(name);
+    }
+  }
+  return { files, missing };
+}
+
+// FM(OPLL/MSX-MUSIC)を使うプログラムか。CALL MUSIC / PLAY#（FM-BASIC）を検出。
+// ※BIN+ASM の直接ポート書き込みは BASIC からは見えないため、その場合は機種を MSX2+ に
+//   設定してもらう（下の fmCapable 経路で OPLL を有効化する）。
+const usesFM = (msx) => /\bCALL\s*MUSIC\b|\bPLAY\s*#/i.test(msx || "");
+// MSX-MUSIC(OPLL)を内蔵する機種か（MSX2/MSX2P/MSX2PA/MSXTR…）。
+const fmCapable = (machine) => /^MSX(2|T)/i.test(machine || "");
+
+// 変換後プログラム＋同梱ファイル群 → WebMSX 自動実行 URL（各ファイルをDEFLATE圧縮）。
+// FM を使う（または FM 内蔵機種を選択した）場合は OPLL を確実に鳴らすため、機種を MSX2+ に
+// 補い、MSXMUSIC 拡張を有効化し、OPLL 音量を最大(F)にする（「鳴らない/小さい」を防止）。
+async function webmsxAutorunUrlFiles(runName, files) { // files:[{name,data:Uint8Array}]
+  const zip = await zipForWebmsxFiles(files);
   const dataUrl = "data:application/zip;base64," + toBase64(zip);
+  const fm = usesFM(new TextDecoder().decode(files[0]?.data || new Uint8Array()));
+  let machine = settings.webmsxMachine;
+  if (fm && !machine) machine = "MSX2P"; // 既定機は FM 無しの可能性 → MSX2+ に
+  let presets = settings.webmsxPresets;
+  let extra = "";
+  if (fm || fmCapable(machine)) {
+    const set = new Set((presets || "").split(",").map((s) => s.trim()).filter(Boolean));
+    set.add("MSXMUSIC"); // OPLL を明示有効化（内蔵機種でも冗長安全）
+    presets = [...set].join(",");
+    extra = "&OPLL_VOL=F"; // OPLL 音量を最大に（無音防止）
+  }
   return (
     `${webmsxBaseUrl()}?DISKA_FILES_URL=${encodeDiskParam(dataUrl)}` +
-    (settings.webmsxMachine ? `&MACHINE=${encodeURIComponent(settings.webmsxMachine)}` : "") +
-    (settings.webmsxPresets ? `&PRESETS=${encodeURIComponent(settings.webmsxPresets)}` : "") +
-    `&BASIC_RUN=${name}`
+    (machine ? `&MACHINE=${encodeURIComponent(machine)}` : "") +
+    (presets ? `&PRESETS=${encodeURIComponent(presets)}` : "") +
+    extra +
+    (settings.webmsxFastBoot ? "&FAST_BOOT=1" : "") + // 起動短縮（既定オフ・演奏速度は不変）
+    `&BASIC_RUN=${runName}`
   );
+}
+async function webmsxAutorunUrl(name, asciiProgram) {
+  return webmsxAutorunUrlFiles(name, [{ name, data: new TextEncoder().encode(asciiProgram) }]);
 }
 
 async function onPlayWebMSX() {
@@ -1788,8 +1906,25 @@ async function onPlayWebMSX() {
   const { out, stripped } = asciiForWebMSX(body);
   const program = out.split("\n").join("\r\n") + "\x1a";
   const name = diskFileName(baseName());
-  const url = await webmsxAutorunUrl(name, program);
-  log(`WebMSX 実行: URL長=${url.length} name=${name} stripped=${stripped}`);
+  // BLOAD 参照バイナリを同梱（デスクトップのみ）。BASIC を先頭ファイルにして複数ファイルZIP化。
+  const { files: bins, missing } = await collectBundleFiles(r.msx);
+  const files = [
+    { name, data: new TextEncoder().encode(program) },
+    ...bins.map((b) => ({ name: b.name, data: Uint8Array.from(b.data) })),
+  ];
+  const url = await webmsxAutorunUrlFiles(name, files);
+  log(`WebMSX 実行: URL長=${url.length} name=${name} stripped=${stripped} bins=${bins.length}`);
+
+  // URL長が WebView 上限を超えると「URI Too Long」で失敗する。超過時は壊れURLを出さず
+  // .dsk フォールバック（デスクトップのみ保存可・ドラッグ/openMSX 案内）。
+  if (url.length > WEBMSX_URL_MAX) {
+    if (isDesktop()) {
+      await saveDskBundle(baseName(), r.msx, t("run.toobig.dsk", Math.round(url.length / 1024)));
+    } else {
+      setStatus("err", t("run.toobig", Math.round(url.length / 1024)));
+    }
+    return;
+  }
 
   // アプリ内 iframe の src を差し替えて同一画面で再実行（新タブ/別ウィンドウを開かない）。
   // src を毎回付け替えることで WebMSX がリロード→自動ロード→自動RUN する。
@@ -1798,8 +1933,80 @@ async function onPlayWebMSX() {
   frame.src = url;
   revealRun();
 
+  const miss = missing.length ? " " + t("dsk.missing", missing.join(", ")) : "";
   const note = stripped > 0 ? t("run.note", stripped) : "";
-  setStatus("ok", t("run.ok", name, note));
+  setStatus("ok", t("run.ok", name, note) + miss);
+}
+
+// WebMSX を「外部ブラウザ」で実行する。デスクトップの WKWebView はクロスオリジン iframe の
+// Web Audio(AudioContext) を gesture 無しで suspended(=無音)にするため、音を出すにはシステム
+// ブラウザで開く必要がある。外部ブラウザは URL 長制限も緩い(~2MB)ので data-ZIP 同梱もそのまま通る。
+async function onPlayWebMSXExternal() {
+  log("WebMSX 外部実行: 開始");
+  await autosave();
+  const r = compileProject({ stripComments: true, packLines: true });
+  if (r.diags.some((d) => d.severity === "error")) {
+    setStatus("err", t("run.noerr"));
+    return;
+  }
+  const body = r.msx.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const { out, stripped } = asciiForWebMSX(body);
+  const program = out.split("\n").join("\r\n") + "\x1a";
+  const name = diskFileName(baseName());
+  const { files: bins, missing } = await collectBundleFiles(r.msx);
+  const files = [
+    { name, data: new TextEncoder().encode(program) },
+    ...bins.map((b) => ({ name: b.name, data: Uint8Array.from(b.data) })),
+  ];
+  const url = await webmsxAutorunUrlFiles(name, files);
+  log(`WebMSX 外部実行: URL長=${url.length} name=${name} bins=${bins.length}`);
+
+  // 外部ブラウザはURLが長くても通るが、極端に大きい時のみ .dsk へ逃がす。
+  if (url.length > 1_800_000) {
+    if (isDesktop()) {
+      await saveDskBundle(baseName(), r.msx, t("run.toobig.dsk", Math.round(url.length / 1024)));
+    } else {
+      setStatus("err", t("run.toobig", Math.round(url.length / 1024)));
+    }
+    return;
+  }
+
+  // システムブラウザで開く（音が鳴る）。デスクトップは opener プラグイン、ブラウザ版は新規タブ。
+  if (isDesktop()) {
+    try {
+      await tauri().core.invoke("plugin:opener|open_url", { url });
+    } catch (e) {
+      logErr("opener", e);
+      window.open(url, "_blank");
+    }
+  } else {
+    window.open(url, "_blank");
+  }
+  const miss = missing.length ? " " + t("dsk.missing", missing.join(", ")) : "";
+  setStatus("ok", t("run.ext.ok") + miss);
+}
+
+// バイナリ同梱の .dsk を保存（BLOAD 参照を自動収集して Rust の save_dsk に渡す）。
+// prefixNote: 先頭に付ける補足（例: 大きすぎて .dsk にした旨）。保存できたら true。
+async function saveDskBundle(base, msx, prefixNote) {
+  const { files: bins, missing } = await collectBundleFiles(msx);
+  const res = await tauri().core.invoke("save_dsk", { base, msx, bins });
+  if (!res) {
+    setStatus("", t("dsk.cancel"));
+    return false; // 保存ダイアログでキャンセル
+  }
+  // WebMSX も開く（任意）。失敗してもディスクは出来ている。
+  try {
+    await tauri().core.invoke("plugin:opener|open_url", { url: webmsxBaseUrl() });
+  } catch (e) {
+    logErr("opener", e);
+    window.open(webmsxBaseUrl(), "_blank");
+  }
+  const bnote = bins.length ? " " + t("dsk.bundled", bins.length) : "";
+  const miss = missing.length ? " " + t("dsk.missing", missing.join(", ")) : "";
+  log("ディスク作成: 完了", res.path);
+  setStatus("ok", (prefixNote || "") + t("dsk.ok", res.path, res.load_name) + bnote + miss);
+  return true;
 }
 
 // ---- 再生（WebMSX、方式B＝ディスクイメージ。打鍵を経由せず確実）----
@@ -1818,20 +2025,7 @@ async function onMakeDsk() {
     return;
   }
   try {
-    const res = await tauri().core.invoke("save_dsk", { base, msx: r.msx });
-    if (!res) {
-      setStatus("", t("dsk.cancel"));
-      return; // 保存ダイアログでキャンセル
-    }
-    // WebMSX も開く（任意）。失敗してもディスクは出来ている。
-    try {
-      await tauri().core.invoke("plugin:opener|open_url", { url: webmsxBaseUrl() });
-    } catch (e) {
-      logErr("opener", e);
-      window.open(webmsxBaseUrl(), "_blank");
-    }
-    log("ディスク作成: 完了", res.path);
-    setStatus("ok", t("dsk.ok", res.path, res.load_name));
+    await saveDskBundle(base, r.msx, "");
   } catch (e) {
     logErr("save_dsk", e);
     setStatus("err", t("dsk.err", e?.message ?? e));
@@ -3428,6 +3622,7 @@ function runAction(act) {
     case "fontdown": return setFont(-1);
     case "settings": return openSettings();
     case "run": return onPlayWebMSX();
+    case "run-ext": return onPlayWebMSXExternal();
     case "reverse": return onReverse();
     case "errest": return openErrEstimate();
     case "import-basic": return onImportBasic();

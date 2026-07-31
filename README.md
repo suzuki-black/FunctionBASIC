@@ -249,6 +249,8 @@ Put `OPTION EXPLICIT` at the top to flag **reading a variable that is never assi
 ## Run & export
 
 - **Instant run** — one click loads and `RUN`s the program in an embedded webMSX.
+- **Open in external browser** — run the same program in your default browser, where FM (MSX-MUSIC) audio plays reliably. The in-app player runs webMSX as a cross-origin iframe whose Web Audio stays muted; the external browser has no such restriction. FM programs (`CALL MUSIC` / `PLAY #2`) are auto-configured for it — the machine is set to **MSX2+** with **MSX-MUSIC** enabled and OPLL volume raised — so sound comes out without touching the webMSX menus.
+- **Binary bundling for BLOAD** — when the program `BLOAD`s `.BIN` files (e.g. Z80 routines or VRAM data next to the `.msxb`), those binaries are read verbatim and bundled alongside the program into the run payload / disk image, so `BLOAD "FILE.BIN"` resolves on both the instant run and the exported `.dsk`.
 - **Real disk export** — generate a 720&nbsp;KB FAT12 `.dsk` image for openMSX or real hardware.
 - **MSXPLAYer export (`.sav`)** — write a `.sav` virtual floppy for the official MSX emulator **MSXPLAYer** (the same FAT12 image, all 1440 sectors repacked). Overwrite-safe — the existing file is auto-backed-up first. It is a data hand-off, not a boot disk: place it on MSXPLAYer's work drive, then `FILES` / `RUN"NAME.BAS"`. (*File → Save for MSXPLAYer (.sav)…*) Format per SAVList / MakeBlankSav (MIT).
 
@@ -258,16 +260,16 @@ Prebuilt desktop app: **[Releases](https://github.com/suzuki-black/FunctionBASIC
 
 The in-app player embeds [webMSX](https://webmsx.org) as a **cross-origin iframe**, which means it can only be driven by rebooting with a data-URL disk each run. This brings a few limitations (transpilation itself is unaffected — the generated MSX-BASIC is correct):
 
-- **No FM (MSX-MUSIC) sound here.** Programs using `CALL MUSIC` / `PLAY #2` transpile correctly and play in MSXPen / openMSX / real hardware, but FM stays silent in the embedded player. Verify FM elsewhere.
+- **No FM (MSX-MUSIC) sound in the *embedded* player.** Programs using `CALL MUSIC` / `PLAY #2` transpile correctly, but FM stays silent in the in-app iframe (its Web Audio is muted by the browser's cross-origin policy). Use **Open in external browser** to hear FM — the program is auto-launched as MSX2+ with MSX-MUSIC enabled, so it just plays. (It also plays in MSXPen / openMSX / real hardware.)
 - **No MSX-AUDIO.** webMSX does not emulate MSX-AUDIO (Y8950); `CALL AUDIO` etc. need openMSX or real hardware.
-- **Reboot per run.** Every run reboots the machine (there is a short lead time and no state is preserved between runs).
+- **Reboot per run.** Every run reboots the machine (there is a short lead time and no state is preserved between runs). An optional **Fast boot** setting (*Settings → Fast boot*, off by default) fast-forwards the boot sequence so sound and video start sooner; playback tempo is unchanged.
 - **Machine is webMSX's default.** turbo R–only programs (`_TURBO …`, examples/turbo-r.msxb) need the machine switched to turbo R via the webMSX gear (⚙) menu.
 - **Audio needs a click.** Browsers may keep audio suspended until you click the webMSX screen once (Web Audio autoplay policy).
 - **Very large programs can exceed the autorun URL.** Each run embeds the transpiled program as a ZIP inside the page URL. The app minimizes it automatically — it **strips comments, packs statements onto fewer lines, and uses a compact URL encoding** for the run payload only (your source, saved files and the program's behavior are all unchanged). A program much larger than the Space Shooter example can still exceed the URL length the embedded WebView accepts; if a run reports **"URI Too Long"**, use **Save Disk (.dsk)** and drag it into webMSX (`RUN"NAME.BAS"`) instead. (The comment-strip *setting* is separate — it only affects the displayed/saved `.bas`, not the run, which always optimizes internally.)
 
 For sound-accurate or stateful testing, **Save Disk (.dsk)** and run in openMSX or on real hardware. (A future same-origin player could remove the reboot-per-run and FM limitations — see `TODO.md`.)
 
-> **Tip — paste into MSXPen.** Use the **📋 Copy** button on the *MSX-BASIC (output)* tab to copy the converted program, then paste it into [MSXPen](https://msxpen.com) and run it there — the same program plays with FM audible. Exactly **why FM stays silent in this app's embedded player is still unclear** (a likely-but-unconfirmed cause is that our per-run reboot auto-runs the program from disk before the FM chip has finished initializing). For now, pasting into MSXPen is a reliable way to hear FM without leaving the browser.
+> **Tip — hear FM.** The quickest way is **Open in external browser** (FM programs auto-launch as MSX2+ with MSX-MUSIC). You can also use the **📋 Copy** button on the *MSX-BASIC (output)* tab and paste the converted program into [MSXPen](https://msxpen.com). FM is silent only in *this app's embedded iframe*, and the cause is now understood: WKWebView/cross-origin iframes start their Web Audio context suspended (muted) and the emulator can't unmute it — a real browser tab has no such restriction.
 
 ---
 
@@ -669,6 +671,8 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 ## 実行・書き出し
 
 - **即時実行** — 埋め込み webMSX に流し込み、自動でロード＆`RUN`。ワンクリック。
+- **外部ブラウザで開く** — 同じプログラムを既定ブラウザで実行。FM（MSX-MUSIC）音がきちんと鳴ります。アプリ内プレイヤーは webMSX を別オリジン iframe として動かすため Web Audio が無音のままですが、外部ブラウザにはその制限がありません。FM プログラム（`CALL MUSIC` / `PLAY #2`）は自動設定され、マシンを **MSX2+**・**MSX-MUSIC 有効**・OPLL 音量を上げた状態で起動するので、webMSX のメニューを触らずに音が出ます。
+- **BLOAD 用バイナリ同梱** — プログラムが `.BIN`（`.msxb` の隣に置いた Z80 ルーチンや VRAM データ等）を `BLOAD` する場合、そのバイナリを無加工で読み取り、実行ペイロード / ディスクイメージにプログラムと一緒に同梱します。即時実行でも書き出した `.dsk` でも `BLOAD "FILE.BIN"` が解決します。
 - **実ディスク書き出し** — openMSX・実機用に 720&nbsp;KB FAT12 の `.dsk` を生成。
 - **MSXPLAYer書き出し（`.sav`）** — 公式MSXエミュレータ **MSXPLAYer** 用の `.sav` 仮想フロッピーを生成（中身は同じ FAT12 イメージ・全1440セクタの詰め替え）。**上書き前に既存ファイルを自動バックアップ**。起動ディスクではなくデータ受け渡し用途で、MSXPLAYer のワークドライブに置いて `FILES` / `RUN"NAME.BAS"`。（*ファイル → MSXPLAYer用(.sav)を保存…*）形式は SAVList / MakeBlankSav（MIT）準拠。
 
@@ -678,16 +682,16 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 
 アプリ内プレイヤーは [webMSX](https://webmsx.org) を**別オリジンの iframe** として埋め込んでいるため、実行のたびに data-URL ディスクで**リブートする**方式に限られます。これにより以下の制限があります（**変換自体には影響なし**＝生成される MSX-BASIC は正しい）：
 
-- **FM（MSX-MUSIC）音は鳴りません。** `CALL MUSIC` / `PLAY #2` を使うプログラムは正しく変換され、MSXPen・openMSX・実機では鳴りますが、埋め込みプレイヤーでは無音です。FM は他環境で確認してください。
+- **FM（MSX-MUSIC）音は*埋め込み*プレイヤーでは鳴りません。** `CALL MUSIC` / `PLAY #2` を使うプログラムは正しく変換されますが、アプリ内 iframe では無音です（別オリジン制限で Web Audio がミュートされるため）。FM を聴くには **外部ブラウザで開く** を使ってください — MSX2+・MSX-MUSIC 有効で自動起動するのでそのまま鳴ります。（MSXPen・openMSX・実機でも鳴ります。）
 - **MSX-AUDIO 非対応。** webMSX は MSX-AUDIO（Y8950）をエミュレートしません。`CALL AUDIO` 等は openMSX か実機が必要です。
-- **実行ごとにリブート。** 毎回マシンが再起動します（短いリードタイムがあり、実行間で状態は保持されません）。
+- **実行ごとにリブート。** 毎回マシンが再起動します（短いリードタイムがあり、実行間で状態は保持されません）。任意の **高速ブート**設定（*設定 → 高速ブート*・既定オフ）でブート工程を早送りし、音と映像が出るまでを短縮できます（演奏テンポは不変）。
 - **マシンは webMSX 既定。** turbo R 専用プログラム（`_TURBO …`、examples/turbo-r.msxb）は、webMSX の歯車（⚙）メニューでマシンを turbo R に切り替えてください。
 - **音はクリックで開始。** ブラウザの自動再生制限により、webMSX 画面を一度クリックするまで音が止まることがあります。
 - **非常に大きいプログラムは自動実行URLの上限を超えることがあります。** 実行のたびに変換後プログラムを ZIP 化してページURLに載せます。アプリは実行用ペイロードだけを自動で最小化します — **コメント除去・文の行パッキング（`:`連結）・コンパクトなURLエンコード**（ソース・保存ファイル・実行結果はすべて不変）。スペースシューター例よりかなり大きいプログラムだと、埋め込みWebViewが受け付けるURL長を超える場合があり、実行時に **「URI Too Long」** が出たら **ディスク(.dsk)を保存** して webMSX にドラッグ（`RUN"NAME.BAS"`）してください。（設定の「コメント除去」はこれとは別物で、**表示/保存する `.bas` にのみ効き、実行には影響しません**＝実行は常に内部で最適化されます。）
 
 音まで正確に、あるいは状態を保って試すには、**ディスク(.dsk)を保存** して openMSX か実機で実行してください。（将来の同一オリジン版プレイヤーで、リブート毎回と FM の制限は解消し得ます — `TODO.md` 参照。）
 
-> **ヒント — MSXPen に貼り付け。** *MSX-BASIC変換後* タブの **📋 コピー** ボタンで変換後プログラムをコピーし、[MSXPen](https://msxpen.com) に貼り付けて実行すると、同じプログラムが FM 付きで鳴ります。本アプリの埋め込みプレイヤーで **FM が鳴らない理由は現状不明**です（実行のたびにリブートしてディスクから自動実行するため、FM 音源チップの初期化前に走っている可能性がありますが未確認）。当面は MSXPen に貼り付けるのが確実に FM を聴ける方法です。
+> **ヒント — FM を聴く。** 一番手軽なのは **外部ブラウザで開く**（FM プログラムは MSX2+・MSX-MUSIC で自動起動）。あるいは *MSX-BASIC変換後* タブの **📋 コピー** ボタンでコピーして [MSXPen](https://msxpen.com) に貼り付けても鳴ります。FM が無音なのは*本アプリの埋め込み iframe だけ*で、理由も判明しました＝WKWebView／別オリジン iframe は Web Audio コンテキストが suspended（ミュート）で始まり、エミュレータ側から解除できないためです。実ブラウザのタブにはこの制限がありません。
 
 ---
 

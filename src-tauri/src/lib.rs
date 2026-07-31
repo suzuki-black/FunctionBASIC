@@ -201,6 +201,37 @@ fn read_file(dir: String, name: String) -> Result<FileRead, String> {
     })
 }
 
+// バイナリ（BLOAD 用 .bin 等）を生バイト列として読む。read_file はテキスト復号する
+// ため .bin が壊れる。ディスク同梱用にこちらで無加工のバイト列を返す。
+// 大小無視でフォルダ内を照合し、実体のファイル名（実際のケース）で読む。
+#[tauri::command]
+fn read_binary(dir: String, name: String) -> Result<Vec<u8>, String> {
+    // BLOAD 名は同一フォルダ内の 8.3 ファイル名を前提とする。第三者製 .msxb を開いた場合に
+    // 絶対パスや ".." でフォルダ外（例: 秘密鍵）を読ませて ZIP/URL 経由で持ち出す経路を塞ぐため、
+    // パス区切り・親参照・絶対パスを含む名前は拒否する（正規の単一ファイル名のみ許可）。
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || std::path::Path::new(&name).is_absolute()
+    {
+        return Err(format!("不正なファイル名: {name}"));
+    }
+    let base = std::path::Path::new(&dir);
+    let direct = base.join(&name);
+    if direct.is_file() {
+        return std::fs::read(&direct).map_err(|e| e.to_string());
+    }
+    // 大小無視で一致するファイルを探す（macOS は既定で無視だが Linux 等向け）。
+    let want = name.to_ascii_lowercase();
+    for entry in std::fs::read_dir(base).map_err(|e| e.to_string())?.flatten() {
+        if entry.file_name().to_string_lossy().to_ascii_lowercase() == want {
+            return std::fs::read(entry.path()).map_err(|e| e.to_string());
+        }
+    }
+    Err(format!("ファイルが見つかりません: {name}"))
+}
+
 // フォルダを監視して、変更時に "files-changed" イベントを front へ emit する。
 // notify のイベントは細かく多発するので、整合（再 stat）は front 側でデバウンスする。
 // watcher は Tauri の管理状態に保持して生存させる（フォルダ切替時は置き換え）。
@@ -273,8 +304,27 @@ fn dsk_filename(base: &str) -> String {
     format!("{name}.BAS")
 }
 
-// 720KB FAT12 イメージに program（ASCIIバイト列）を1ファイルで収めて返す。
-fn build_dsk(base: &str, program: &[u8]) -> Result<Vec<u8>, String> {
+// 8.3 ファイル名 → FAT ディレクトリ名（11バイト・大文字・空白padding）。
+fn fat_name(filename: &str) -> [u8; 11] {
+    let upper = filename.to_ascii_uppercase();
+    let (stem, ext) = match upper.rfind('.') {
+        Some(i) => (&upper[..i], &upper[i + 1..]),
+        None => (upper.as_str(), ""),
+    };
+    let mut name = [b' '; 11];
+    for (i, b) in stem.bytes().enumerate().take(8) {
+        name[i] = b;
+    }
+    for (i, b) in ext.bytes().enumerate().take(3) {
+        name[8 + i] = b;
+    }
+    name
+}
+
+// 複数ファイルを 720KB FAT12 フルイメージ（1440×512）へ収めて返す。
+// クラスタは 2 から各ファイルへ連続割当（BLOAD 用バイナリの同梱に対応）。
+// files: (8.3ファイル名, データ) の順。先頭が起動対象の .BAS になる想定。
+fn build_dsk_files(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
     const SECTOR: usize = 512;
     const TOTAL_SECTORS: usize = 1440; // 720KB
     const SPC: usize = 2; // sectors / cluster
@@ -287,6 +337,10 @@ fn build_dsk(base: &str, program: &[u8]) -> Result<Vec<u8>, String> {
     let root_sectors = ROOT_ENTRIES * 32 / SECTOR; // 7
     let data_start_sector = RESERVED + NUM_FATS * SECTORS_PER_FAT + root_sectors; // 14
     let cluster_bytes = SPC * SECTOR; // 1024
+
+    if files.len() > ROOT_ENTRIES {
+        return Err("ファイル数がルートディレクトリ上限(112)を超えています".into());
+    }
 
     let mut img = vec![0u8; total];
 
@@ -313,15 +367,23 @@ fn build_dsk(base: &str, program: &[u8]) -> Result<Vec<u8>, String> {
     img[510] = 0x55;
     img[511] = 0xAA;
 
-    // --- 必要クラスタ数 ---
-    let data_len = program.len();
-    let clusters = data_len.div_ceil(cluster_bytes).max(1);
+    // --- 全ファイルの必要クラスタ総数チェック ---
     let max_clusters = (TOTAL_SECTORS - data_start_sector) / SPC;
-    if clusters > max_clusters {
-        return Err("プログラムが720KBディスクに収まりません".into());
+    let need: usize = files
+        .iter()
+        .map(|(_, d)| {
+            if d.is_empty() {
+                0
+            } else {
+                d.len().div_ceil(cluster_bytes)
+            }
+        })
+        .sum();
+    if need > max_clusters {
+        return Err("ファイルが720KBディスクに収まりません".into());
     }
 
-    // --- FAT12 構築 ---
+    // --- FAT12 の 12bit エントリ書込ヘルパ ---
     let fat_bytes = SECTORS_PER_FAT * SECTOR;
     let mut fat = vec![0u8; fat_bytes];
     let set12 = |fat: &mut [u8], idx: usize, val: u16| {
@@ -336,49 +398,54 @@ fn build_dsk(base: &str, program: &[u8]) -> Result<Vec<u8>, String> {
     };
     set12(&mut fat, 0, 0xFF9); // メディア
     set12(&mut fat, 1, 0xFFF);
-    for k in 0..clusters {
-        let cl = 2 + k;
-        let v: u16 = if k + 1 == clusters {
-            0xFFF
-        } else {
-            (cl + 1) as u16
-        };
-        set12(&mut fat, cl, v);
+
+    let root_off = (RESERVED + NUM_FATS * SECTORS_PER_FAT) * SECTOR;
+    let data_off = data_start_sector * SECTOR;
+    let date: u16 = (((2024 - 1980) as u16) << 9) | (1 << 5) | 1; // 2024-01-01
+
+    // --- 各ファイル：ルートエントリ＋FAT鎖＋データ配置（クラスタは連続割当）---
+    let mut cursor = 2usize; // 次の空きクラスタ
+    for (fi, (fname, data)) in files.iter().enumerate() {
+        let e = root_off + fi * 32;
+        img[e..e + 11].copy_from_slice(&fat_name(fname));
+        img[e + 11] = 0x20; // アーカイブ属性
+        img[e + 24] = (date & 0xFF) as u8;
+        img[e + 25] = (date >> 8) as u8;
+        let sz = data.len() as u32;
+        img[e + 28] = (sz & 0xFF) as u8;
+        img[e + 29] = ((sz >> 8) & 0xFF) as u8;
+        img[e + 30] = ((sz >> 16) & 0xFF) as u8;
+        img[e + 31] = ((sz >> 24) & 0xFF) as u8;
+        if data.is_empty() {
+            img[e + 26] = 0; // 開始クラスタ 0（空ファイル）
+            img[e + 27] = 0;
+            continue;
+        }
+        let nclus = data.len().div_ceil(cluster_bytes);
+        let start = cursor;
+        img[e + 26] = (start & 0xFF) as u8;
+        img[e + 27] = ((start >> 8) & 0xFF) as u8;
+        for k in 0..nclus {
+            let cl = start + k;
+            let v: u16 = if k + 1 == nclus { 0xFFF } else { (cl + 1) as u16 };
+            set12(&mut fat, cl, v);
+        }
+        let off = data_off + (start - 2) * cluster_bytes;
+        img[off..off + data.len()].copy_from_slice(data);
+        cursor += nclus;
     }
+
     let fat1 = RESERVED * SECTOR;
     img[fat1..fat1 + fat_bytes].copy_from_slice(&fat);
     let fat2 = (RESERVED + SECTORS_PER_FAT) * SECTOR;
     img[fat2..fat2 + fat_bytes].copy_from_slice(&fat);
 
-    // --- ルートディレクトリ・エントリ ---
-    let root_off = (RESERVED + NUM_FATS * SECTORS_PER_FAT) * SECTOR;
-    let mut name = [b' '; 11];
-    let base_name = dsk_filename(base); // "NAME.BAS"
-    let stem = base_name.trim_end_matches(".BAS");
-    for (i, b) in stem.bytes().enumerate().take(8) {
-        name[i] = b;
-    }
-    name[8] = b'B';
-    name[9] = b'A';
-    name[10] = b'S';
-    img[root_off..root_off + 11].copy_from_slice(&name);
-    img[root_off + 11] = 0x20; // アーカイブ属性
-    let date: u16 = (((2024 - 1980) as u16) << 9) | (1 << 5) | 1; // 2024-01-01
-    img[root_off + 24] = (date & 0xFF) as u8;
-    img[root_off + 25] = (date >> 8) as u8;
-    img[root_off + 26] = 2; // 開始クラスタ = 2
-    img[root_off + 27] = 0;
-    let sz = data_len as u32;
-    img[root_off + 28] = (sz & 0xFF) as u8;
-    img[root_off + 29] = ((sz >> 8) & 0xFF) as u8;
-    img[root_off + 30] = ((sz >> 16) & 0xFF) as u8;
-    img[root_off + 31] = ((sz >> 24) & 0xFF) as u8;
-
-    // --- データ領域（クラスタは連続なので先頭から流し込むだけ）---
-    let data_off = data_start_sector * SECTOR;
-    img[data_off..data_off + data_len].copy_from_slice(program);
-
     Ok(img)
+}
+
+// 720KB FAT12 イメージに program（ASCIIバイト列）を1ファイルで収めて返す（従来経路）。
+fn build_dsk(base: &str, program: &[u8]) -> Result<Vec<u8>, String> {
+    build_dsk_files(&[(dsk_filename(base), program.to_vec())])
 }
 
 #[derive(serde::Serialize)]
@@ -391,6 +458,16 @@ struct DskResult {
 // 1 ファイルとして収めた 720KB FAT12 フルイメージ（1440×512 バイト）を返す。
 // .dsk / .sav の両経路で共有する。
 fn build_disk_image(base: &str, msx: &str) -> Result<Vec<u8>, String> {
+    build_disk_image_files(base, msx, &[])
+}
+
+// 変換後 BASIC（先頭ファイル）＋ 追加バイナリ群（BLOAD 用など）を 1 枚の
+// 720KB FAT12 フルイメージに収めて返す。bins が空なら従来と同一の単一ファイル。
+fn build_disk_image_files(
+    base: &str,
+    msx: &str,
+    bins: &[(String, Vec<u8>)],
+) -> Result<Vec<u8>, String> {
     let body = msx.replace("\r\n", "\n").replace('\r', "\n");
     let crlf = body.split('\n').collect::<Vec<_>>().join("\r\n");
     let (bytes, _enc, had_errors) = encoding_rs::SHIFT_JIS.encode(&crlf);
@@ -399,7 +476,19 @@ fn build_disk_image(base: &str, msx: &str) -> Result<Vec<u8>, String> {
     }
     let mut data = bytes.into_owned();
     data.push(0x1A);
-    build_dsk(base, &data)
+    let mut files: Vec<(String, Vec<u8>)> = Vec::with_capacity(1 + bins.len());
+    files.push((dsk_filename(base), data)); // 先頭＝起動対象 .BAS
+    for (n, d) in bins {
+        files.push((n.clone(), d.clone()));
+    }
+    build_dsk_files(&files)
+}
+
+// 同梱バイナリ（BLOAD 用など）。data は生バイト列（Tauri IPC で number 配列として渡る）。
+#[derive(serde::Deserialize)]
+struct DskBin {
+    name: String,
+    data: Vec<u8>,
 }
 
 // 変換後 BASIC を ASCII(Shift-JIS) のディスクファイルにして .dsk を保存。
@@ -409,8 +498,14 @@ async fn save_dsk(
     app: tauri::AppHandle,
     base: String,
     msx: String,
+    bins: Option<Vec<DskBin>>,
 ) -> Result<Option<DskResult>, String> {
-    let img = build_disk_image(&base, &msx)?;
+    let extra: Vec<(String, Vec<u8>)> = bins
+        .unwrap_or_default()
+        .into_iter()
+        .map(|b| (b.name, b.data))
+        .collect();
+    let img = build_disk_image_files(&base, &msx, &extra)?;
     let load_name = dsk_filename(&base);
 
     let Some(picked) = app
@@ -577,6 +672,58 @@ mod tests {
         // OS のテンポラリディレクトリを使う（Windows に /tmp は無い）。
         std::fs::write(std::env::temp_dir().join("fbe_test.dsk"), &img).unwrap();
     }
+
+    // BLOAD 用バイナリ同梱：.BAS の後ろに .BIN を置き、クラスタ連続割当・FAT鎖・
+    // データ配置・ディレクトリ2件がすべて正しいこと（マルチクラスタで鎖も検証）。
+    #[test]
+    fn dsk_multifile_bin_placement() {
+        let prog = b"10 BLOAD\"D.BIN\"\r\n20 END\r\n\x1a".to_vec();
+        // 2500B の .BIN → 3クラスタ（1024B/cluster）にまたがる
+        let bin: Vec<u8> = (0..2500u32).map(|i| (i & 0xFF) as u8).collect();
+        let files = vec![
+            ("MUSIC.BAS".to_string(), prog.clone()),
+            ("D.BIN".to_string(), bin.clone()),
+        ];
+        let img = build_dsk_files(&files).unwrap();
+        assert_eq!(img.len(), 737280, "720KB");
+
+        let r = 7 * 512; // ルートディレクトリ（sector 7）
+        // entry0 = MUSIC.BAS, 開始クラスタ 2
+        assert_eq!(&img[r..r + 11], b"MUSIC   BAS");
+        assert_eq!(u16::from_le_bytes([img[r + 26], img[r + 27]]), 2);
+        assert_eq!(
+            u32::from_le_bytes([img[r + 28], img[r + 29], img[r + 30], img[r + 31]]),
+            prog.len() as u32
+        );
+        // entry1 = D.BIN, 開始クラスタ 3（BAS が cluster2 を1つ使ったため）
+        let e = r + 32;
+        assert_eq!(&img[e..e + 11], b"D       BIN");
+        assert_eq!(u16::from_le_bytes([img[e + 26], img[e + 27]]), 3);
+        assert_eq!(
+            u32::from_le_bytes([img[e + 28], img[e + 29], img[e + 30], img[e + 31]]),
+            bin.len() as u32
+        );
+
+        // FAT12 鎖: cluster2=EOF（BAS単体）, cluster3->4->5->EOF（BIN 3クラスタ）
+        let get12 = |idx: usize| -> u16 {
+            let o = 512 + idx * 3 / 2; // FAT1 は sector1(=512) から
+            if idx & 1 == 0 {
+                (img[o] as u16) | (((img[o + 1] & 0x0F) as u16) << 8)
+            } else {
+                ((img[o] as u16) >> 4) | ((img[o + 1] as u16) << 4)
+            }
+        };
+        assert_eq!(get12(2), 0xFFF);
+        assert_eq!(get12(3), 4);
+        assert_eq!(get12(4), 5);
+        assert_eq!(get12(5), 0xFFF);
+
+        // データ配置：BAS=cluster2、BIN=cluster3 から連続で完全一致
+        let data_off = 14 * 512;
+        assert_eq!(&img[data_off..data_off + prog.len()], &prog[..]);
+        let bin_off = data_off + (3 - 2) * 1024;
+        assert_eq!(&img[bin_off..bin_off + bin.len()], &bin[..]);
+    }
 }
 
 // OSネイティブメニューを構築。クリックで menu-action イベントをフロントへ送り、
@@ -671,6 +818,7 @@ fn build_native_menu<R: tauri::Runtime>(
         true,
         &[
             &mi("run", "WebMSXで実行", "Run in WebMSX")?,
+            &mi("run-ext", "外部ブラウザで実行（音あり）", "Run in External Browser (with sound)")?,
             &mi("reverse", "MSX→構造化に逆変換", "Reverse: MSX → Structured")?,
         ],
     )?;
@@ -721,6 +869,7 @@ pub fn run() {
             read_folder,
             stat_files,
             read_file,
+            read_binary,
             watch_folder,
             save_source,
             save_build,

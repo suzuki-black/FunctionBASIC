@@ -79,6 +79,7 @@
       <span class="mtitle" data-i18n="m.run">実行</span>
       <div class="dropdown">
         <div class="mi" data-act="run"><span data-i18n="runmsx">▶ WebMSXで実行</span><span class="sc">Ctrl/Cmd+Enter</span></div>
+        <div class="mi" data-act="run-ext"><span data-i18n="runext">▶ 外部ブラウザで実行（音あり）</span></div>
         <div class="mi" data-act="reverse"><span data-i18n="reverse">MSX→構造化に逆変換</span></div>
         <div class="sep"></div>
         <div class="mi" data-act="errest"><span data-i18n="m.errest">エラー箇所を推測…</span></div>
@@ -178,7 +179,7 @@
     <!-- 実行（アプリ内 WebMSX。▶を押すと src を差し替えて同一画面で再実行）-->
     <div id="webmsxPane" class="pane" hidden>
       <div id="webmsxNote" data-i18n="note.webmsx">▶ WebMSX（または Ctrl/Cmd+Enter）を押すと、ここで自動実行します</div>
-      <iframe id="webmsxFrame" title="WebMSX" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
+      <iframe id="webmsxFrame" title="WebMSX" allow="gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
     </div>
   </div>
   </div><!-- /#content -->
@@ -278,6 +279,9 @@
         <label class="set-label" data-i18n="set.url">WebMSX URL</label>
         <input id="setUrl" type="text" spellcheck="false" />
       </div>
+
+      <label class="set-check"><input id="setFastBoot" type="checkbox" /><span data-i18n="set.fastboot">高速ブート（起動を短縮・演奏速度は不変）</span></label>
+      <div class="set-hint" data-i18n="set.fastboothint"></div>
 
       <div class="modal-actions">
         <button id="setCancel" data-i18n="set.cancel">キャンセル</button>

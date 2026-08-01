@@ -177,6 +177,43 @@ most 2D games). Ships within today's ASM-block constraints (`%`-int vars, VARPTR
 HIMEM buffer): pass array first-element VARPTRs, ASM iterates internally. Extensions that
 would help: absolute CALL/JP to labels, auto buffer allocation, MSX2 VDP-command dispatch.
 
+**Chosen direction (decided 2026-08-01).** After comparing against whole-program
+compilation (BACON — see below), the **ASM-library path is chosen** for playable action:
+no external dependency, works today (proven in the space-shooter), normal `RUN`, and the
+speedup lives *visibly in your source* rather than being concealed by a compiler. The
+hard part = making ASM blocks give a beginner (someone who bounced off even BASIC) a sense
+of *understanding* (納得感). Comments alone are not enough. Three layers to build:
+
+1. **BASIC "twin" (the key move)** — every FAST routine ships beside its exact *slow but
+   readable* BASIC equivalent, shown side-by-side in the editor: "this scary ASM just does
+   what this `FOR … PUT SPRITE` loop does, only in machine code." Anchors the unknown (ASM)
+   to the known (BASIC); doubles as the slow-vs-fast teaching moment.
+2. **Structured ASM (writeability, #3)** — bring structured-BASIC thinking to ASM: named
+   count loops (`REPEAT n … END`), register *aliases* (`COUNT = B`, `SPRADR = HL`) so you
+   follow the data not the opcodes, and named helpers for MSX idioms (`COPY src,dst,len`,
+   `VDPWRITE addr`). Turns opcode-soup into readable intent; makes ASM easier to write too.
+3. **Auto-annotation (peek-and-understand, #2)** — thorough JP/EN comments + editor glosses
+   each instruction in plain language with BIOS names (reuse the existing machine-code
+   disassembly-annotation feature).
+
+- [ ] **Exemplar: build `FAST_SPRITES` with all three layers** (clean BASIC API + BASIC-twin
+  + structured/annotated ASM), drop it into the T2 template, and measure the before/after.
+  This establishes the "納得感" pattern that the other FAST primitives copy.
+
+## Future option (low priority): whole-program compilation via BACON
+
+De-risked 2026-08-01 and **kept as a future escape valve only** (not the primary path).
+Finding: FunctionBASIC's output (T2) compiles cleanly to Z80 with **MSX-BACON**
+(hra1129, MIT, PC cross-compiler) — 0 errors, incl PUT SPRITE / SPRITE$ / STICK / STRIG /
+TIME; machine-code speed (べーしっ君-class 15–100×). The full pipeline works for simple
+programs (`hello.bas` → `.bin`). **Why deferred:** (a) it *conceals* the speedup entirely
+(you never see or own the machine code — counter to the "learn/own it" identity), (b)
+external dependency (BACON + ZMA) with real version-matching friction (T2's asm needs
+BACON's bundled ZMA v1.0.18; public source v1.0.17/18/19 reject it; no wine here to run the
+bundled exe), (c) changed run model (BLOAD machine code + BACONLDR, not `RUN`), (d) not
+100% compatible / reduced float precision. Revisit only if the ASM-library ceiling is hit
+and a "compile the whole thing" button becomes worth the dependency.
+
 ## Future: same-origin WebMSX (MSXPen-style runner)
 
 - [ ] Embedding WebMSX **same-origin** (loading `wmsx.js` and driving the `WMSX`

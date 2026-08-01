@@ -10,6 +10,7 @@
 import type { Program, Stmt, Expr, LValue, Position } from "../ast/nodes.ts";
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
+import { isBuiltin, isBuiltinClauseWord } from "../core/builtins.ts";
 
 // 変数へ書き込む組み込み命令（その Var 引数は代入対象＝宣言扱い、READ 検査しない）。
 const WRITE_BUILTINS = new Set(["INPUT", "LINE INPUT", "LINEINPUT", "READ", "GET", "SWAP"]);
@@ -18,8 +19,14 @@ export function checkExplicit(program: Program): Diagnostic[] {
   if (!program.optionExplicit) return [];
   const diags: Diagnostic[] = [];
 
+  // CONST はプログラム全体で参照できる定数（リテラルに畳まれる）。関数スコープの検査でも
+  // 見えるよう、トップレベル CONST 名を各スコープの「宣言済み」集合に事前投入する。
+  // （GLOBAL は各関数で再宣言する規約なので投入しない＝未再宣言の読取は正しく検出する。）
+  const globalConsts = new Set<string>();
+  for (const s of program.toplevel) if (s.type === "Const") globalConsts.add(s.name);
+
   const checkScope = (stmts: Stmt[], params: string[]): void => {
-    const declared = new Set<string>(params);
+    const declared = new Set<string>([...globalConsts, ...params]);
 
     // pass 1: このスコープで宣言/書込みされる全名前を集める
     const collect = (ss: Stmt[]): void => {
@@ -49,7 +56,15 @@ export function checkExplicit(program: Program): Diagnostic[] {
       if (!e) return;
       switch (e.type) {
         case "Var":
-          if (!declared.has(e.name) && !seen.has(e.name)) {
+          // 組み込みのシステム変数/関数(TIME・INKEY$ 等)や、文の節キーワードが裸の識別子として
+          // 現れたもの(PUT SPRITE の SPRITE、SET SCROLL の SCROLL 等)はユーザ変数ではないので
+          // 未宣言検査から除外する。ユーザ変数がこれらと同名になることは名前割当が禁止している。
+          if (
+            !declared.has(e.name) &&
+            !seen.has(e.name) &&
+            !isBuiltin(e.name) &&
+            !isBuiltinClauseWord(e.name)
+          ) {
             seen.add(e.name);
             diags.push(error("E_UNDECLARED_VAR", pos, { name: e.name }));
           }

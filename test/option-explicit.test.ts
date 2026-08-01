@@ -117,3 +117,51 @@ test("未知の OPTION は E_OPTION_UNKNOWN（余分な構文エラーを出さ�
   assert.deepEqual(errCodes(`OPTION FOO
 PRINT 1`), ["E_OPTION_UNKNOWN"]);
 });
+
+test("OPTION EXPLICIT: 裸の組み込みシステム変数/関数(TIME・INKEY$)は未宣言扱いしない", () => {
+  // ゲームループの定番。TIME(フレーム同期)・INKEY$(キー入力)は組み込みでユーザ変数ではない。
+  assert.equal(
+    errCodes(`OPTION EXPLICIT
+FR = TIME
+K$ = INKEY$
+PRINT FR; K$`).length,
+    0,
+  );
+});
+
+test("OPTION EXPLICIT: PUT SPRITE の SPRITE 等・節キーワードは未宣言扱いしない", () => {
+  // PUT SPRITE の "SPRITE"、SET SCROLL の "SCROLL" は文の節キーワードで変数ではない。
+  assert.equal(
+    errCodes(`OPTION EXPLICIT
+SCREEN 1, 2
+X% = 100
+PUT SPRITE 0, (X%, 100), 15, 0
+SET SCROLL 0, 0, 1, 1`).length,
+    0,
+  );
+});
+
+test("OPTION EXPLICIT: 関数内から読むトップレベル CONST は宣言済み扱い", () => {
+  // CONST はプログラム全体の定数（リテラルに畳まれる）。関数内の読取を誤検出しない。
+  assert.equal(
+    errCodes(`OPTION EXPLICIT
+CONST ROW% = 20
+FUNCTION SHOWROW()
+    LOCATE 1, ROW%
+    PRINT "x";
+END FUNCTION
+SHOWROW()`).length,
+    0,
+  );
+});
+
+test("OPTION EXPLICIT: 組み込み除外があっても本物のタイポは検出する", () => {
+  // TIME は通すが、綴り違いの WRONG% は依然 E_UNDECLARED_VAR。
+  assert.deepEqual(
+    errCodes(`OPTION EXPLICIT
+FR = TIME
+X% = WRONG% + 1
+PRINT FR; X%`),
+    ["E_UNDECLARED_VAR"],
+  );
+});

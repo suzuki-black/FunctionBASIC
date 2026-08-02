@@ -1,0 +1,277 @@
+' ============================================================
+'  FASTシリーズ 見本: FAST_SPRITES - スプライトを一括で描く
+'  FAST series exemplar: FAST_SPRITES - draw all sprites at once
+'
+'  「納得感」の3層で作った最初の見本 / built with the 3 understandability layers:
+'    (1) 双子 / twin      : 同じ動作の「遅いが読めるBASIC」= SLOW_SPRITES を併記
+'    (2) 構造化+別名       : ASMのレジスタに役割コメント(COUNT=B 等)、意図で読む
+'    (3) 注釈 / annotation : 1命令ずつ日英で「何をしているか」を説明
+'
+'  使い方 / HOW TO USE: 4つの配列に全スプライトの Y/X/絵番号/色 を入れて
+'  FAST_SPRITES(個数) を1回呼ぶ。中はASMだが、下の SLOW_SPRITES と「同じ事」をするだけ。
+'  Fill 4 arrays with every sprite's Y/X/pattern/colour, then call FAST_SPRITES(count)
+'  once per frame. The ASM does exactly what SLOW_SPRITES (below) does, just in machine code.
+'
+'  MSX2以降 / needs MSX2+ (SCREEN 1, 16x16 sprites, OAM at &H1B00).
+' ============================================================
+
+CONST NSPR% = 24                  ' 動かすスプライト数 / how many sprites
+
+' 全スプライトの属性(平行配列=STRUCT配列と同じ形) / per-sprite attributes (parallel arrays)
+GLOBAL SPY%                       ' Y座標 / Y
+GLOBAL SPX%                       ' X座標 / X
+GLOBAL SPP%                       ' 絵の番号(SPRITE$の番号) / pattern index (SPRITE$ number)
+GLOBAL SPC%                       ' 色 / colour
+' FAST_SPRITES がASMへ渡す作業変数 / scratch passed into the ASM
+GLOBAL SPN%                       ' 個数 / count
+GLOBAL PYP%                       ' &SPY%(0) 配列先頭アドレス / address of SPY%(0)
+GLOBAL PXP%
+GLOBAL PPP%
+GLOBAL PCP%
+' FAST_MOVE がASMへ渡す作業変数 / scratch for FAST_MOVE
+GLOBAL PPOS%                      ' 位置配列の先頭アドレス / address of the position array
+GLOBAL PVEL%                      ' 速度配列の先頭アドレス / address of the velocity array
+GLOBAL MVN%                       ' 個数 / count
+GLOBAL MVHI%                      ' 上限 / high bound (low bound is assumed 0)
+GLOBAL CNT%                       ' ASM内ループカウンタ / ASM loop counter
+
+' ------------------------------------------------------------
+'  (1) 双子 / the twin: 遅いが読める版。FAST_SPRITES はこれと同じ動作。
+'  The slow-but-readable version. FAST_SPRITES does the SAME thing, faster.
+'  比べるためにこちらへ差し替えて実行してもよい / swap this in to compare.
+' ------------------------------------------------------------
+FUNCTION SLOW_SPRITES(N%)
+    GLOBAL SPY%
+    GLOBAL SPX%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    FOR I% = 0 TO N% - 1
+        PUT SPRITE I%, (SPX%(I%), SPY%(I%)), SPC%(I%), SPP%(I%)
+    NEXT I%
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_SPRITES: 上の双子と同じ動作を、スプライト属性テーブル(OAM,&H1B00)へ
+'  VDPポート直書きで一気に流し込む。BASICは1回だけASMへ渡る(境界コストが1回)。
+'  Flush the whole sprite attribute table (OAM @ &H1B00) via direct VDP-port writes,
+'  so BASIC crosses into machine code just ONCE (not once per sprite).
+' ------------------------------------------------------------
+FUNCTION FAST_SPRITES(N%)
+    GLOBAL SPY%
+    GLOBAL SPX%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    GLOBAL SPN%
+    GLOBAL PYP%
+    GLOBAL PXP%
+    GLOBAL PPP%
+    GLOBAL PCP%
+    ' ASMへ渡す値を用意 / prepare the values the ASM reads
+    SPN% = N%                     ' 個数 / count
+    PYP% = VARPTR(SPY%(0))        ' 各配列の先頭アドレス / start address of each array
+    PXP% = VARPTR(SPX%(0))
+    PPP% = VARPTR(SPP%(0))
+    PCP% = VARPTR(SPC%(0))
+    ASM
+      DI                          ' 割込み停止(VDP書込中の乱れ防止) / halt interrupts during the burst
+      ' --- OAM(&H1B00)へ書き込みモードでVDPアドレスを設定 / point the VDP at OAM for writing ---
+      LD   A,&H00                 ' アドレス下位 / address low byte
+      OUT  (&H99),A               ' VDPポート#99へ / to VDP port
+      LD   A,&H5B                 ' 上位&H1B|&H40(書込ビット) / high &H1B OR &H40 (write bit)
+      OUT  (&H99),A               ' 以後 #98 への書込は自動で番地が進む / writes now auto-increment
+      ' --- ループ回数 / loop count: B = 残りスプライト数 (COUNT) ---
+      LD   A,(SPN%)               ' A = 個数 / count
+      LD   B,A                    ' B = COUNT (DJNZ用) / loop counter
+SPRLP:                            ' 1スプライト分を書く / write one sprite's 4 bytes
+      ' Y ----
+      LD   HL,(PYP%)              ' HL = SPY 配列の今の位置 / current pos in SPY
+      LD   A,(HL)                 ' A = Y(下位バイト=値) / Y (low byte holds 0..255)
+      OUT  (&H98),A               ' OAMへY書込(番地自動+1) / write Y to OAM
+      INC  HL                     ' 次の要素へ(%は2バイト) / next element (% = 2 bytes)
+      INC  HL
+      LD   (PYP%),HL              ' 進めた位置を保存 / save advanced pointer
+      ' X ----
+      LD   HL,(PXP%)
+      LD   A,(HL)                 ' A = X
+      OUT  (&H98),A               ' OAMへX / write X
+      INC  HL
+      INC  HL
+      LD   (PXP%),HL
+      ' 絵番号 / pattern (16x16は番号×4) ----
+      LD   HL,(PPP%)
+      LD   A,(HL)                 ' A = 絵番号 / pattern index
+      ADD  A,A                    ' ×2
+      ADD  A,A                    ' ×4 (16x16スプライトの規則) / ×4 for 16x16
+      OUT  (&H98),A               ' OAMへパターン / write pattern
+      INC  HL
+      INC  HL
+      LD   (PPP%),HL
+      ' 色 / colour ----
+      LD   HL,(PCP%)
+      LD   A,(HL)                 ' A = 色 / colour
+      OUT  (&H98),A               ' OAMへ色 / write colour
+      INC  HL
+      INC  HL
+      LD   (PCP%),HL
+      DJNZ SPRLP                  ' COUNT を1減らし、0でなければ次のスプライトへ / loop
+      EI                          ' 割込み再開 / re-enable interrupts
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_MOVE: 位置配列を速度配列で一括更新し、[LO,HI]で跳ね返す。
+'  呼ぶ前に PPOS%=VARPTR(位置配列(0)) と PVEL%=VARPTR(速度配列(0)) を設定する。
+'  双子(同じ動作の読めるBASIC):
+'    FOR I=0 TO N-1
+'      POS(I)=POS(I)+VEL(I)
+'      IF POS(I)<LO THEN POS(I)=LO: VEL(I)=-VEL(I)
+'      IF POS(I)>HI THEN POS(I)=HI: VEL(I)=-VEL(I)
+'    NEXT
+'  Move a position array by a velocity array, bouncing within [LO,HI]. Same as the
+'  BASIC twin above, in one ASM pass. Set PPOS%/PVEL% (VARPTRs) before calling.
+' ------------------------------------------------------------
+'  注意: この簡易版は LO=0 前提(位置は0..255の1バイト)。ASM節の対応命令が
+'  8bit中心(16bit SBC/EX無し)なので、8bit演算＋加算キャリーで境界を判定する。
+'  Note: this simple version assumes LO=0 (positions fit in a byte); the ASM subset is
+'  8-bit-centric (no 16-bit SBC/EX), so bounds are detected via 8-bit add carry / CP.
+FUNCTION FAST_MOVE(N%, LO%, HI%)
+    GLOBAL PPOS%
+    GLOBAL PVEL%
+    GLOBAL MVN%
+    GLOBAL MVHI%
+    GLOBAL CNT%
+    MVN% = N%
+    MVHI% = HI%
+    CNT% = 0                     ' ASMが書く変数もBASIC側で先に作っておく(VARPTR不正防止)
+    '                              pre-create the ASM-written var in BASIC (else VARPTR fails)
+    ASM
+      DI
+      LD   A,(MVN%)             ' 残り個数をメモリカウンタへ(Bは使えない) / count -> memory counter
+      LD   (CNT%),A
+MVLP:                           ' 1要素ぶん(8bit,LOは0前提) / one element (8-bit, LO assumed 0)
+      ' --- 速度の符号で方向を分岐 / branch on velocity sign ---
+      LD   HL,(PVEL%)           ' HL -> 速度要素 / -> vel element
+      LD   A,(HL)               ' A = 速度(下位) / vel low byte
+      LD   B,A                  ' B = 速度を保存 / save vel
+      AND  &H80                 ' 符号ビットだけ / test sign bit
+      JR   NZ,MVNEG             ' 負=0へ近づく / negative -> toward 0
+      ' --- 正の速度: 新位置=位置+速度、HI超えで反射 / positive: pos+vel, reflect at HI ---
+      LD   HL,(PPOS%)           ' HL -> 位置要素 / -> pos element
+      LD   A,(HL)               ' A = 位置 / pos
+      ADD  A,B                  ' 新位置 = 位置 + 速度 / newpos = pos + vel
+      LD   C,A                  ' C = 新位置 / newpos
+      LD   A,(MVHI%)            ' A = HI
+      CP   C                    ' HI-新位置: 新位置>HIならキャリー / carry if newpos>HI
+      JR   NC,MVSTORE           ' HI以内→格納 / in range -> store
+      LD   A,(MVHI%)            ' はみ出し→HIに丸め / clamp to HI
+      LD   C,A
+      JR   MVREF               ' 反射へ / go reflect
+MVNEG:                          ' 負の速度(0へ向かう) / negative velocity
+      LD   HL,(PPOS%)
+      LD   A,(HL)               ' A = 位置 / pos
+      ADD  A,B                  ' 位置+速度 = 位置-|速度| (8bit) / pos - |vel|
+      LD   C,A                  ' C = 新位置 / newpos
+      JR   C,MVSTORE           ' キャリー有=0未満に落ちてない→格納 / no underflow -> store
+      XOR  A                    ' 0未満→0に丸め / underflow -> clamp to 0
+      LD   C,A
+MVREF:                          ' 速度を16bitで反転 vel=-vel / negate 16-bit velocity
+      LD   HL,(PVEL%)           ' HL -> 速度下位 / -> vel low
+      XOR  A
+      SUB  (HL)                 ' 0 - 速度下位(借りはキャリーへ) / 0 - vel low
+      LD   (HL),A
+      INC  HL                   ' -> 速度上位 / -> vel high
+      LD   A,0
+      SBC  A,(HL)               ' 0 - 速度上位 - 借り / 0 - vel high - borrow
+      LD   (HL),A
+MVSTORE:                        ' 新位置を書き戻す(上位バイト=0) / store newpos (high byte 0)
+      LD   HL,(PPOS%)
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      ' --- 両ポインタを次要素へ +2 / advance both pointers ---
+      LD   HL,(PPOS%)
+      INC  HL
+      INC  HL
+      LD   (PPOS%),HL
+      LD   HL,(PVEL%)
+      INC  HL
+      INC  HL
+      LD   (PVEL%),HL
+      ' --- カウンタ--、0でなければ次へ / loop while count<>0 ---
+      LD   A,(CNT%)
+      DEC  A
+      LD   (CNT%),A
+      JR   NZ,MVLP
+      EI
+    END ASM
+END FUNCTION
+
+' ---------------- MAIN: デモ / demo ----------------
+' 24個のスプライトを跳ね回らせる。FAST_SPRITES を毎フレーム1回呼ぶだけ。
+' Bounce 24 sprites; call FAST_SPRITES once per frame.
+GLOBAL VX%
+GLOBAL VY%
+
+SCREEN 1, 2
+WIDTH 32
+COLOR 15, 4, 4
+KEY OFF
+CLS
+
+DIM SPY%(31)
+DIM SPX%(31)
+DIM SPP%(31)
+DIM SPC%(31)
+DIM VX%(31)
+DIM VY%(31)
+
+' 1つだけ四角いスプライトの絵を定義(全機体で共有) / one square sprite shape, shared by all
+SPRITE BLOB
+    "................"
+    ".####....####..."
+    ".####....####..."
+    ".####....####..."
+    ".####....####..."
+    "................"
+    "................"
+    "....########...."
+    "....########...."
+    "................"
+    "................"
+    ".####....####..."
+    ".####....####..."
+    ".####....####..."
+    ".####....####..."
+    "................"
+END SPRITE
+
+' 初期配置と速度 / initial positions and velocities
+FOR I% = 0 TO NSPR% - 1
+    SPY%(I%) = 20 + I% * 6
+    SPX%(I%) = 20 + I% * 8
+    SPP%(I%) = BLOB              ' 全員同じ絵 / same shape for all
+    SPC%(I%) = 2 + (I% AND 7)   ' 色をばらけさせる / vary colour
+    VX%(I%) = 1 + (I% AND 1)
+    VY%(I%) = 1 + (I% AND 3)
+NEXT I%
+
+WHILE 1
+    ' フレーム同期 / frame sync
+    FR = TIME
+    DO WHILE TIME = FR
+    LOOP
+
+    ' 位置更新+端で反射も一括ASM / move + bounce, also in one ASM pass each (X then Y)
+    ' 呼ぶ前に対象配列の先頭アドレスを渡す / pass each array's start address before calling
+    PPOS% = VARPTR(SPX%(0))
+    PVEL% = VARPTR(VX%(0))
+    FAST_MOVE(NSPR%, 0, 240)
+    PPOS% = VARPTR(SPY%(0))
+    PVEL% = VARPTR(VY%(0))
+    FAST_MOVE(NSPR%, 0, 176)
+
+    ' 全スプライトを一括描画 / draw ALL sprites in one shot
+    FAST_SPRITES(NSPR%)
+    ' 比較したい時はこちらに差し替え / to compare, swap in the slow twin:
+    ' SLOW_SPRITES(NSPR%)
+WEND

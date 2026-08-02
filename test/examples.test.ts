@@ -45,6 +45,19 @@ test("例: cat-sprite.msxb はエラーなしで変換される", () => {
   assert.deepEqual(errorsOf("cat-sprite.msxb"), []);
 });
 
+// starters/ の FAST 比較サンプル（インライン ASM 節を含む）も変換確認する。
+test("例: starters/shooter-nofast.msxb（FAST不使用）はエラーなしで変換される", () => {
+  assert.deepEqual(errorsOf("starters/shooter-nofast.msxb"), []);
+});
+
+test("例: starters/shooter-fast.msxb（FAST_SPRITES/FAST_STREAM・ASM節）はエラーなしで変換される", () => {
+  assert.deepEqual(errorsOf("starters/shooter-fast.msxb"), []);
+});
+
+test("例: starters/fast-sprites.msxb（FAST_SPRITES/FAST_MOVE 見本・ASM節）はエラーなしで変換される", () => {
+  assert.deepEqual(errorsOf("starters/fast-sprites.msxb"), []);
+});
+
 test("例: recursion.msxb（自己/二重/相互再帰）はエラーなしで変換される", () => {
   const { msx, diagnostics } = compileExample("recursion.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

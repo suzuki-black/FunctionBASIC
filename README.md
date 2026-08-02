@@ -353,6 +353,10 @@ Each `FUNCTION` becomes a `GOSUB` routine and every long name gets a unique 2-ch
 
 More, all convert-tested: a **multicolour sprite** trick (two hardware sprites stacked at the same spot for two colours — a self-bouncing cat) in [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb); a **game-loop skeleton** (`WHILE 1 … WEND` with `BREAK` on fire); an MSX2 **`SCREEN 5` graphics + BGM/SE** demo (custom palette, `LINE …,BF` / `CIRCLE` / `PAINT`, `SET PAGE` double-buffering, `COPY`, `PLAY`, `SOUND`) in [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb); and a **recursion** showcase (factorial / Fibonacci / mutual) in [`examples/recursion.msxb`](examples/recursion.msxb). Browse [`examples/`](examples/) and the per-feature [`examples/cookbook/`](examples/cookbook/).
 
+### FAST library A/B — the same shooter, slow vs fast
+
+Two horizontal shooters with an **identical spec** (match the shared `CONST`s and they are the very same game) let you *feel* what a small ASM-backed "FAST" layer buys you. [`examples/starters/shooter-nofast.msxb`](examples/starters/shooter-nofast.msxb) does every move and draw in interpreted BASIC; [`examples/starters/shooter-fast.msxb`](examples/starters/shooter-fast.msxb) batches the heavy work through tiny inline-Z80 helpers (`FAST_SPRITES` flushes the whole sprite table in one VDP burst; `FAST_STREAM` moves a whole array in one pass) — collision, input, scroll and HUD stay identical. At the default `MAX_ENEMY% = 26` the FAST build stays smooth while the no-FAST build strains; **lower `MAX_ENEMY%` (e.g. to 8) in both files and the no-FAST version plays fine too.** Changing that one number and re-running is meant as a gentle first step back into editing BASIC. See also [`examples/starters/fast-sprites.msxb`](examples/starters/fast-sprites.msxb) — an annotated `FAST_SPRITES` / `FAST_MOVE` exemplar with a readable BASIC "twin" shown beside the ASM. (The FAST helpers are ordinary inline `ASM` blocks you can read and edit — an opt-in speed layer, not a hidden compiler.)
+
 ---
 
 ## Vibe-coding with an AI assistant
@@ -774,6 +778,10 @@ END FUNCTION
 各 `FUNCTION` は `GOSUB` ルーチンになり、長い名前はそれぞれ一意の2文字MSX変数へ割り当てられます。
 
 その他（すべて変換確認済み）：**多色スプライト技**（同じ位置に2枚のハードウェアスプライトを重ねて2色に＝自分で跳ね回る猫）は [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)；**ゲームループの雛形**（`WHILE 1 … WEND` ＋ 発射で `BREAK`）；MSX2 の **`SCREEN 5` グラフィック＋BGM/SE** デモ（独自パレット、`LINE …,BF` / `CIRCLE` / `PAINT`、`SET PAGE` ダブルバッファ、`COPY`、`PLAY`、`SOUND`）は [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)；**再帰**のショーケース（階乗／フィボナッチ／相互再帰）は [`examples/recursion.msxb`](examples/recursion.msxb)。[`examples/`](examples/) と機能別の [`examples/cookbook/`](examples/cookbook/) もどうぞ。
+
+### FAST比較 — 同じシューティングを「遅い版 vs 速い版」で
+
+**完全に同じ仕様**（共有 `CONST` を同値にすれば全く同じゲーム）の横スクロールSTGを2本用意しました。小さなASMの「FAST」層が何をもたらすかを体で確かめられます。[`examples/starters/shooter-nofast.msxb`](examples/starters/shooter-nofast.msxb) は移動も描画も全部インタプリタBASIC、[`examples/starters/shooter-fast.msxb`](examples/starters/shooter-fast.msxb) は重い所だけ小さなインラインZ80で一括処理（`FAST_SPRITES`＝スプライト表を1回のVDPバーストで書く、`FAST_STREAM`＝配列を1パスで移動）。当たり判定・入力・スクロール・HUDは両版同一。既定 `MAX_ENEMY% = 26` では FAST版は軽く、no-FAST版は重い。**両ファイルの `MAX_ENEMY%` を小さく（例: 8）すれば no-FAST版でもちゃんと遊べます。** この数字を変えて動かし直すことが、BASICプログラムへ戻る最初の一歩になるよう意図しています。ASM側を読める形にした見本 [`examples/starters/fast-sprites.msxb`](examples/starters/fast-sprites.msxb)（`FAST_SPRITES`/`FAST_MOVE` に「同じ動作の読めるBASIC双子」を併記）も参照。FASTの部品はすべて**読んで編集できる普通のインライン `ASM` ブロック**＝隠しコンパイラではなく、選んで使う速度層です。
 
 ---
 

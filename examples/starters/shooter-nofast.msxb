@@ -1,0 +1,248 @@
+' ============================================================
+'  横スクロールSTG - FAST不使用版(純BASIC・遅い基準)
+'  Horizontal shooter - NO-FAST version (pure BASIC, the slow baseline)
+'
+'  FASTフル活用版(shooter-fast.msxb)と「全く同じ仕様」。下の共有CONSTを
+'  同じ値にすれば同一のゲームになる。動き/描画/当たりを全部インタプリタBASICで
+'  やるので重い(最悪2秒/フレームまで許容)。速度比較のための基準。
+'  Same spec as shooter-fast.msxb: set the shared CONSTs to the same values and it is the
+'  identical game. Everything (move/draw/collision) is interpreted BASIC, so it is slow
+'  (up to ~2s/frame is acceptable) -- this is the baseline for the speed comparison.
+'
+'  そうさ / CONTROLS: 上下=移動 / up-down=move, スペース=発射 / SPACE=fire
+'
+'  * 数字をいじって遊ぼう / TWEAK ME:
+'    既定 MAX_ENEMY%=26 は敵が多く、この“FAST不使用版”はかなり重い（＝FASTの威力が分かる）。
+'    MAX_ENEMY% を 8 くらいに下げると、FAST不使用でもそれなりに遊べるようになる。
+'    数字を変えて動かしてみるのが、BASICプログラムに戻る第一歩！
+'    Default MAX_ENEMY%=26 is heavy for this NO-FAST build (that shows what FAST buys you).
+'    Lower MAX_ENEMY% to ~8 and even this no-FAST version plays fine. Changing this
+'    number and re-running is your first step back into BASIC programming!
+'
+'  MSX2以降 / needs MSX2+ (SCREEN 1, 16x16 sprites, SET SCROLL).
+' ============================================================
+
+' ====== 共有CONST(FAST版と同値にすれば同一仕様) / shared CONSTs ======
+CONST MAX_ENEMY% = 26             ' 敵の最大表示数 / max enemies on screen
+CONST MAX_SHOT% = 4               ' 弾の最大数 / max shots
+CONST ENEMY_DX% = 2               ' 敵の左進スピード / enemy leftward speed
+CONST SHOT_DX% = 5                ' 弾の右進スピード / shot rightward speed
+CONST PLAYER_DY% = 3              ' 自機の上下スピード / player vertical speed
+CONST FIRE_COOL% = 6              ' 連射間隔(フレーム) / frames between shots
+CONST SCROLL_DX% = 2              ' 背景スクロール速 / background scroll speed
+' ====== ここまで共有 / end shared ======
+
+CONST PLAYER_X% = 16              ' 自機の固定X / player fixed X
+CONST TOP_Y% = 16                 ' 上端 / top
+CONST BOT_Y% = 168                ' 下端 / bottom
+CONST HIDE_Y% = 216               ' 隠し位置 / off-screen park
+
+GLOBAL EX%
+GLOBAL EY%
+GLOBAL SX%
+GLOBAL SY%
+GLOBAL SACT%
+GLOBAL PY%
+GLOBAL SCORE%
+GLOBAL HUD_DIRTY%
+
+FUNCTION DRAW_HUD()
+    GLOBAL SCORE%
+    LOCATE 0, 0
+    PRINT "SCORE"; SCORE%;
+END FUNCTION
+
+' 敵を右端に(再)出現 / (re)spawn an enemy at the right edge with a random height
+FUNCTION SPAWN_ENEMY(I%)
+    GLOBAL EX%
+    GLOBAL EY%
+    EX%(I%) = 248
+    EY%(I%) = TOP_Y% + INT(RND(1) * (BOT_Y% - TOP_Y%))
+END FUNCTION
+
+' ---------------- MAIN ----------------
+SCREEN 1, 2
+WIDTH 32
+COLOR 15, 1, 1
+KEY OFF
+CLS
+
+DIM EX%(MAX_ENEMY% - 1)
+DIM EY%(MAX_ENEMY% - 1)
+DIM SX%(MAX_SHOT% - 1)
+DIM SY%(MAX_SHOT% - 1)
+DIM SACT%(MAX_SHOT% - 1)
+
+' --- 自機 / player ship (points right) ---
+SPRITE PLAYER
+    "................"
+    "..##............"
+    "..####.........."
+    "..######........"
+    "..########......"
+    "..##########...."
+    "..############.."
+    "..##############"
+    "..############.."
+    "..##########...."
+    "..########......"
+    "..######........"
+    "..####.........."
+    "..##............"
+    "................"
+    "................"
+END SPRITE
+
+' --- 敵 / enemy ---
+SPRITE ENEMYP
+    "................"
+    "......####......"
+    "....########...."
+    "..####....####.."
+    "..##.##..##.##.."
+    "..##########.##."
+    ".##############."
+    ".##.########.##."
+    ".##.########.##."
+    ".##############."
+    "..##########...."
+    "..##......##...."
+    ".##........##..."
+    ".##........##..."
+    "................"
+    "................"
+END SPRITE
+
+' --- 弾 / shot ---
+SPRITE SHOTP
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "......####......"
+    "....########...."
+    "....########...."
+    "....########...."
+    "......####......"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+' 簡単な星背景を敷いてスクロール感を出す / sparse star BG for the scroll feel
+FOR I% = 0 TO 23
+    LOCATE (I% * 7) AND 31, (I% * 5) AND 23
+    PRINT ".";
+NEXT I%
+
+' 初期化 / init
+PY% = 90
+SCORE% = 0
+HUD_DIRTY% = 1
+FIRE_TMR% = 0
+SCX% = 0
+FOR I% = 0 TO MAX_ENEMY% - 1
+    EX%(I%) = 40 + I% * 16
+    EY%(I%) = TOP_Y% + INT(RND(1) * (BOT_Y% - TOP_Y%))
+NEXT I%
+FOR I% = 0 TO MAX_SHOT% - 1
+    SACT%(I%) = 0
+NEXT I%
+
+WHILE 1
+    ' 1) フレーム同期 / frame sync
+    FR = TIME
+    DO WHILE TIME = FR
+    LOOP
+
+    ' 2) 入力: 上下移動 / input: move up-down
+    JOY% = STICK(0)
+    IF JOY% = 1 OR JOY% = 2 OR JOY% = 8 THEN
+        PY% = PY% - PLAYER_DY%
+        IF PY% < TOP_Y% THEN
+            PY% = TOP_Y%
+        END IF
+    END IF
+    IF JOY% = 4 OR JOY% = 5 OR JOY% = 6 THEN
+        PY% = PY% + PLAYER_DY%
+        IF PY% > BOT_Y% THEN
+            PY% = BOT_Y%
+        END IF
+    END IF
+
+    ' 3) 発射(連射間隔つき) / fire (with cooldown)
+    IF FIRE_TMR% > 0 THEN
+        FIRE_TMR% = FIRE_TMR% - 1
+    END IF
+    IF STRIG(0) AND FIRE_TMR% <= 0 THEN
+        FIRED% = 0
+        FOR I% = 0 TO MAX_SHOT% - 1
+            IF FIRED% = 0 AND SACT%(I%) = 0 THEN
+                SACT%(I%) = 1
+                SX%(I%) = PLAYER_X% + 16
+                SY%(I%) = PY%
+                FIRED% = 1
+                FIRE_TMR% = FIRE_COOL%
+            END IF
+        NEXT I%
+    END IF
+
+    ' 4) 敵を左へ流す(端で右へ復帰) / move enemies left, wrap to the right  [BASIC]
+    FOR I% = 0 TO MAX_ENEMY% - 1
+        EX%(I%) = EX%(I%) - ENEMY_DX%
+        IF EX%(I%) < 0 THEN
+            EX%(I%) = EX%(I%) + 256
+        END IF
+    NEXT I%
+
+    ' 5) 弾を右へ / move shots right  [BASIC]
+    FOR I% = 0 TO MAX_SHOT% - 1
+        IF SACT%(I%) = 1 THEN
+            SX%(I%) = SX%(I%) + SHOT_DX%
+            IF SX%(I%) > 240 THEN
+                SACT%(I%) = 0
+            END IF
+        END IF
+    NEXT I%
+
+    ' 6) 当たり判定: 弾x敵 / collision shots x enemies  [BASIC]
+    FOR S% = 0 TO MAX_SHOT% - 1
+        IF SACT%(S%) = 1 THEN
+            FOR E% = 0 TO MAX_ENEMY% - 1
+                IF ABS(SX%(S%) - EX%(E%)) < 16 AND ABS(SY%(S%) - EY%(E%)) < 16 THEN
+                    SACT%(S%) = 0
+                    SPAWN_ENEMY(E%)
+                    SCORE% = SCORE% + 1
+                    HUD_DIRTY% = 1
+                END IF
+            NEXT E%
+        END IF
+    NEXT S%
+
+    ' 7) 描画: 自機・敵・弾を PUT SPRITE で1つずつ / draw one by one  [BASIC]
+    PUT SPRITE 0, (PLAYER_X%, PY%), 15, PLAYER
+    FOR I% = 0 TO MAX_ENEMY% - 1
+        PUT SPRITE 1 + I%, (EX%(I%), EY%(I%)), 8, ENEMYP
+    NEXT I%
+    FOR I% = 0 TO MAX_SHOT% - 1
+        IF SACT%(I%) = 1 THEN
+            PUT SPRITE 1 + MAX_ENEMY% + I%, (SX%(I%), SY%(I%)), 11, SHOTP
+        ELSE
+            PUT SPRITE 1 + MAX_ENEMY% + I%, (0, HIDE_Y%), 11, SHOTP
+        END IF
+    NEXT I%
+
+    ' 8) 背景スクロール / scroll the background
+    SCX% = (SCX% + SCROLL_DX%) AND 255
+    SET SCROLL SCX%, 0, 1, 1
+
+    ' 9) スコア表示(変化時のみ) / HUD only when changed
+    IF HUD_DIRTY% = 1 THEN
+        DRAW_HUD()
+        HUD_DIRTY% = 0
+    END IF
+WEND

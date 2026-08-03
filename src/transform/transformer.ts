@@ -763,6 +763,7 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
     recursiveFns,
     recStack,
     pool,
+    arraysGlobal,
     asmVars: collectVarNames(program),
     sprites: spriteResult.sprites,
   });
@@ -1246,7 +1247,7 @@ function finishTransform(ctx: any): TransformResult {
   // コードは MAIN 先頭で HIMEM 直下の予約領域へ 1 回だけ POKE 配置する（プロローグ）。
   // アドレスは固定なので呼び出し側は DEFUSR/USR ＋ 変数オペランドを VARPTR でパッチする
   // だけ（そのパッチも初回のみ）。毎フレーム呼んでも軽い。
-  interface AsmBlk { addrVar: string; guardVar: string; bytes: number[]; patches: { offset: number; name: string }[] }
+  interface AsmBlk { addrVar: string; guardVar: string; bytes: number[]; patches: { offset: number; name: string }[]; relocs: { offset: number; target: number }[] }
   const asmReg = new Map<any, AsmBlk>();
   let asmPT = "", asmQ = "", asmLo = "", asmHi = "", asmBase = "";
   const registerAsm = (s: any) => {
@@ -1257,7 +1258,7 @@ function finishTransform(ctx: any): TransformResult {
     if (bytes.length === 0 || bytes[bytes.length - 1] !== 0xc9) bytes.push(0xc9); // USR は RET で戻る
     // 変数オペランドのパッチは「初回呼び出しで1回だけ」適用する（VARPTR は不変、コードは
     // HIMEM 直下の固定アドレスで動かないのでパッチ済みバイトは有効）。guardVar でガード。
-    asmReg.set(s, { addrVar: ctx.pool.next("!"), guardVar: r.patches.length ? ctx.pool.next("%") : "", bytes, patches: r.patches });
+    asmReg.set(s, { addrVar: ctx.pool.next("!"), guardVar: r.patches.length ? ctx.pool.next("%") : "", bytes, patches: r.patches, relocs: r.relocs });
   };
   const collectAsm = (stmts: any[]) => {
     for (const s of stmts) {
@@ -1318,7 +1319,28 @@ function finishTransform(ctx: any): TransformResult {
         for (let j = i; j < Math.min(i + 8, b.bytes.length); j++) seg.push(`POKE ${b.addrVar}+${j},${b.bytes[j]}`);
         out.push({ kind: "line", text: seg.join(":") });
       }
+      // JP ラベルの再配置: 実行時の絶対アドレス(基点+ラベルオフセット)を JP オペランドへ書く。
+      // 基点(addrVar)は固定なのでプロローグで1回だけ。位置独立コードでも長距離 JP が使える。
+      for (const rc of b.relocs) {
+        out.push({ kind: "line", text: `${asmPT}=${b.addrVar}+${rc.target}:POKE ${b.addrVar}+${rc.offset},${asmPT}-INT(${asmPT}/256)*256:POKE ${b.addrVar}+${rc.offset + 1},INT(${asmPT}/256)` });
+      }
       off += b.bytes.length;
+    }
+    // ---- VARPTR 安定化: 全単純変数を DIM より前に生成しておく ----
+    // MSX は新しい単純変数を作るたびに配列をメモリ上で後ろへ押し出す。ASM に VARPTR(配列)
+    // を渡す設計では、FAST 関数の内部変数や VARPTR パッチ用一時変数が「初回呼び出し時」に
+    // 生成される→そのとき配列が移動→呼び出し側が先に取った VARPTR(配列) が無効化され、
+    // 古いアドレスへ書き込んでメモリを破壊する（数フレーム後にハング）。CLEAR 直後・ユーザ
+    // の DIM より前にここで全単純変数を触って生成しておけば、以降配列は二度と動かない。
+    // 除外: 配列名（DIM で作る）／addrVar・asmBase（この直前で実アドレスを代入済み。0 で
+    // 潰すと USR が壊れる）。asmPT 等の他の一時変数は 0 化しても直後に再代入されるので安全。
+    const arrayMsx = new Set<string>();
+    for (const a of ctx.arraysGlobal) { const m = ctx.globalMap.get(a); if (m) arrayMsx.add(m); }
+    const keepAssigned = new Set<string>([asmBase, ...[...asmReg.values()].map((b) => b.addrVar)]);
+    const preDecl = ctx.pool.issued.filter((n: string) => !arrayMsx.has(n) && !keepAssigned.has(n));
+    if (preDecl.length) {
+      const asg = preDecl.map((n: string) => (n.endsWith("$") ? `${n}=""` : `${n}=0`));
+      out.push({ kind: "line", text: asg.join(":") }); // 長ければ後段の splitLongLine が分割
     }
     return out;
   };

@@ -12,6 +12,7 @@
 export interface AsmResult {
   bytes: number[];
   patches: { offset: number; name: string }[]; // 16bit オペランドの低位バイト位置と変数名
+  relocs: { offset: number; target: number }[]; // JP ラベル：実行時に (コード基点+target) を offset へ書く
   errors: { line: number; message: string }[];
 }
 
@@ -50,6 +51,7 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
   const errors: { line: number; message: string }[] = [];
   const labels: Record<string, number> = {}; // ラベル名 → バイトオフセット
   const fixups: { at: number; label: string; line: number }[] = []; // 相対ジャンプの後埋め
+  const relocFixups: { at: number; label: string; line: number }[] = []; // JP ラベルの絶対再配置
   const has = (n: string) => vars.has(n.toUpperCase());
 
   const emit = (...bs: number[]) => { for (const b of bs) bytes.push(b & 0xff); };
@@ -145,13 +147,26 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
     }
 
     if (op === "CALL" || op === "JP") {
-      // 条件付き（絶対アドレスのみ。ラベル絶対ジャンプは非対応＝JR を使う）
+      // 条件付き JP cc,X / CALL cc,X
       if (args.length === 2 && A0 in CC) {
         const v = parseNumber(args[1]);
-        if (v == null) { errors.push({ line: ln, message: `${op} ${A0},nn のアドレス: ${args[1]}` }); return; }
-        emit((op === "CALL" ? 0xc4 : 0xc2) | (CC[A0] << 3), v & 0xff, (v >> 8) & 0xff); return;
+        if (v != null) { emit((op === "CALL" ? 0xc4 : 0xc2) | (CC[A0] << 3), v & 0xff, (v >> 8) & 0xff); return; }
+        // JP cc,label：位置独立コードでも動く長距離条件ジャンプ（実行時に基点+ラベルを再配置）。
+        if (op === "JP") {
+          emit(0xc2 | (CC[A0] << 3));
+          relocFixups.push({ at: bytes.length, label: args[1].toUpperCase(), line: ln });
+          emit(0x00, 0x00); return;
+        }
+        errors.push({ line: ln, message: `${op} ${A0},nn のアドレス: ${args[1]}` }); return;
       }
-      const o = parseOperand(args[0] ?? "", ln); if (!o) return;
+      // 無条件 JP/CALL。ラベル(数値でも(...)でもない)なら JP のみ再配置対応。
+      const a0 = args[0] ?? "";
+      if (op === "JP" && parseNumber(a0) == null && memInner(a0) == null) {
+        emit(0xc3);
+        relocFixups.push({ at: bytes.length, label: a0.toUpperCase(), line: ln });
+        emit(0x00, 0x00); return;
+      }
+      const o = parseOperand(a0, ln); if (!o) return;
       emit(op === "CALL" ? 0xcd : 0xc3); emit16(o.kind === "mem" ? o : (o.kind === "imm" ? { kind: "mem", value: o.value } : o)); return;
     }
 
@@ -229,5 +244,14 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
     bytes[f.at] = rel & 0xff;
   }
 
-  return { bytes, patches, errors };
+  // JP ラベルの絶対再配置。ここではラベルのコード内オフセットだけを確定し、実行時に
+  // ローダが「コード基点 + target」を offset の 2 バイトへ書き込む（VARPTR パッチと同じ要領）。
+  const relocs: { offset: number; target: number }[] = [];
+  for (const f of relocFixups) {
+    const target = labels[f.label];
+    if (target == null) { errors.push({ line: f.line, message: `未定義ラベル: ${f.label}` }); continue; }
+    relocs.push({ offset: f.at, target });
+  }
+
+  return { bytes, patches, relocs, errors };
 }

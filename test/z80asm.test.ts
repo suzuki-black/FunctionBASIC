@@ -24,6 +24,38 @@ test("代表命令が正しいバイト列にエンコードされる", () => {
   }
 });
 
+test("JP ラベル / JP cc,ラベル は再配置(relocs)として記録される（位置独立の長距離ジャンプ）", () => {
+  const r = asm(`      LD B,5
+LP:
+      DEC B
+      JP NZ,LP
+      JP DONE
+DONE:
+      RET`);
+  assert.deepEqual(r.errors, [], "エラーなし");
+  assert.equal(r.relocs.length, 2, "reloc 2件");
+  // JP NZ,LP は LP(offset 2) を指す。オペランド位置は 00 00 プレースホルダ。
+  assert.equal(r.relocs[0].target, 2, "JP NZ,LP -> LP(offset2)");
+  assert.equal(r.bytes[r.relocs[0].offset], 0x00);
+  assert.equal(r.bytes[r.relocs[0].offset + 1], 0x00);
+  // JP DONE は前方の DONE を指す。
+  assert.ok(r.relocs[1].target > r.relocs[1].offset, "DONE は前方");
+  // 条件付きJPの opcode は C2|cc<<3 （NZ=0 なので C2）。
+  assert.equal(r.bytes[r.relocs[0].offset - 1], 0xc2, "JP NZ opcode");
+});
+
+test("JP cc,数値 は従来どおり絶対アドレスを直接埋め、reloc は出ない", () => {
+  const r = asm("JP Z,&H1234");
+  assert.deepEqual(r.errors, []);
+  assert.equal(hex(r.bytes), "CA 34 12"); // JP Z = C2|(1<<3)=CA
+  assert.equal(r.relocs.length, 0);
+});
+
+test("JP 未定義ラベル はエラー", () => {
+  const r = asm("JP NOPE");
+  assert.ok(r.errors.some((e) => /未定義ラベル/.test(e.message)), "未定義ラベルを検出");
+});
+
 test("BASIC変数参照 (VAR) は 0000 プレースホルダ＋パッチ情報になる", () => {
   const r = asm("LD A,(player_x)\nINC A\nLD (player_x),A", ["PLAYER_X"]);
   assert.deepEqual(r.errors, []);

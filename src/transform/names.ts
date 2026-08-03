@@ -18,6 +18,9 @@ const outSuffix = (t: TypeSuffix): string => (t === "!" || t === "" ? "" : t);
 // 型ごとに独立した2文字名プール
 export class NamePool {
   private gens: Record<string, Generator<string>> = {};
+  // これまでに発行した全名前（出力表記）。VARPTR 安定化のため、ASM 使用時に
+  // 「全単純変数を DIM より前に生成」する用途で参照する（transformer 側）。
+  readonly issued: string[] = [];
 
   private gen(t: TypeSuffix): Generator<string> {
     const key = t || "!";
@@ -32,7 +35,9 @@ export class NamePool {
       const r = g.next();
       if (r.done) throw new Error("E_VAR_NAMES_EXHAUSTED");
       if (RESERVED_BASES.has(r.value)) continue;
-      return r.value + outSuffix(t);
+      const name = r.value + outSuffix(t);
+      this.issued.push(name);
+      return name;
     }
   }
 }

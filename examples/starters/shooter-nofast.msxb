@@ -19,7 +19,10 @@
 '    Lower MAX_ENEMY% to ~8 and even this no-FAST version plays fine. Changing this
 '    number and re-running is your first step back into BASIC programming!
 '
-'  MSX2以降 / needs MSX2+ (SCREEN 1, 16x16 sprites, SET SCROLL).
+'  MSX turbo R 専用 / needs MSX turbo R.
+'  背景スクロールに SET SCROLL を使う(turbo R 専用命令)。MSX2/MSX2+ では動かない。
+'  Uses SET SCROLL (a turbo R only command); it does NOT run on MSX2/MSX2+.
+'  WebMSX なら機種を turbo R(MSXTR) にして実行する / run with the turbo R machine (MSXTR).
 ' ============================================================
 
 ' ====== 共有CONST(FAST版と同値にすれば同一仕様) / shared CONSTs ======
@@ -50,14 +53,6 @@ FUNCTION DRAW_HUD()
     GLOBAL SCORE%
     LOCATE 0, 0
     PRINT "SCORE"; SCORE%;
-END FUNCTION
-
-' 敵を右端に(再)出現 / (re)spawn an enemy at the right edge with a random height
-FUNCTION SPAWN_ENEMY(I%)
-    GLOBAL EX%
-    GLOBAL EY%
-    EX%(I%) = 248
-    EY%(I%) = TOP_Y% + INT(RND(1) * (BOT_Y% - TOP_Y%))
 END FUNCTION
 
 ' ---------------- MAIN ----------------
@@ -146,7 +141,7 @@ HUD_DIRTY% = 1
 FIRE_TMR% = 0
 SCX% = 0
 FOR I% = 0 TO MAX_ENEMY% - 1
-    EX%(I%) = 40 + I% * 16
+    EX%(I%) = (40 + I% * 16) AND 255
     EY%(I%) = TOP_Y% + INT(RND(1) * (BOT_Y% - TOP_Y%))
 NEXT I%
 FOR I% = 0 TO MAX_SHOT% - 1
@@ -215,7 +210,7 @@ WHILE 1
             FOR E% = 0 TO MAX_ENEMY% - 1
                 IF ABS(SX%(S%) - EX%(E%)) < 16 AND ABS(SY%(S%) - EY%(E%)) < 16 THEN
                     SACT%(S%) = 0
-                    SPAWN_ENEMY(E%)
+                    EX%(E%) = 248
                     SCORE% = SCORE% + 1
                     HUD_DIRTY% = 1
                 END IF

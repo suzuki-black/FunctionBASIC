@@ -18,7 +18,12 @@
 '    Run shooter-nofast.msxb at the same MAX_ENEMY% to feel the difference. Keep both
 '    files' CONSTs equal for the identical game. Change the numbers and experiment!
 '
-'  MSX2以降 / needs MSX2+ (SCREEN 1, 16x16 sprites, SET SCROLL).
+'  MSX turbo R 専用 / needs MSX turbo R.
+'  背景スクロールに SET SCROLL を使う。SET SCROLL は turbo R(BASIC 4.0)専用命令なので
+'  MSX2/MSX2+ では動かない(エラーになる)。turbo R は CPU も速いので体感も軽い。
+'  Uses SET SCROLL for the background, which is a turbo R (BASIC 4.0) only command; it does
+'  NOT run on MSX2/MSX2+. turbo R is also the fastest MSX, so the game feels lighter too.
+'  WebMSX なら機種を turbo R(MSXTR) にして実行する / run with the turbo R machine (MSXTR).
 ' ============================================================
 
 ' ====== 共有CONST(no-fast版と同値なら同一仕様) / shared CONSTs ======
@@ -53,6 +58,24 @@ GLOBAL PSTR%
 GLOBAL STN%
 GLOBAL STD%
 GLOBAL STC%
+' FAST_COLLIDE 用 / for FAST_COLLIDE
+GLOBAL CSN%
+GLOBAL CEN%
+GLOBAL CHIT%
+GLOBAL PSX%
+GLOBAL PSY%
+GLOBAL PSA%
+GLOBAL PEX%
+GLOBAL PEY%
+GLOBAL WSX%
+GLOBAL WSY%
+GLOBAL WSA%
+GLOBAL WEX%
+GLOBAL WEY%
+GLOBAL CSC%
+GLOBAL CEC%
+GLOBAL SXV%
+GLOBAL SYV%
 GLOBAL SCORE%
 GLOBAL HUD_DIRTY%
 
@@ -161,6 +184,143 @@ STLP:
     END ASM
 END FUNCTION
 
+' ------------------------------------------------------------
+'  FAST_COLLIDE: 全弾x全敵の当たり判定を「1回のASM呼び出し」で完結。命中した弾は消え、
+'  当たった敵は同じ高さ(レーン)のまま右端へ復活。命中数を返す(BASICでスコア加算)。
+'  弾ごとのBASIC呼び出しが無いので、撃ち込んでも速度が落ちない。
+'  入れ子ループでジャンプ距離が長くなるため、位置独立でも動く長距離 JP(再配置)を使う。
+'  呼ぶ前に PSX%/PSY%/PSA%(弾のX/Y/生存フラグ), PEX%/PEY%(敵のX/Y)の先頭アドレスを設定。
+'  Resolve ALL shot-vs-enemy collisions in one ASM call: dead shot hidden, hit enemy
+'  respawns at the right edge keeping its lane; returns the hit count. No per-shot BASIC,
+'  so firing does not slow the game. Uses relocatable long JP (position-independent).
+' ------------------------------------------------------------
+FUNCTION FAST_COLLIDE(NS%, NE%)
+    GLOBAL CSN%
+    GLOBAL CEN%
+    GLOBAL CHIT%
+    GLOBAL PSX%
+    GLOBAL PSY%
+    GLOBAL PSA%
+    GLOBAL PEX%
+    GLOBAL PEY%
+    GLOBAL WSX%
+    GLOBAL WSY%
+    GLOBAL WSA%
+    GLOBAL WEX%
+    GLOBAL WEY%
+    GLOBAL CSC%
+    GLOBAL CEC%
+    GLOBAL SXV%
+    GLOBAL SYV%
+    CSN% = NS%
+    CEN% = NE%
+    CHIT% = 0                     ' 命中数(戻り値) / hit count (return value)
+    WSX% = 0                      ' 以降は全てASMが使う作業変数。先に生成しておく(VARPTR対策)。
+    WSY% = 0
+    WSA% = 0
+    WEX% = 0
+    WEY% = 0
+    CSC% = 0
+    CEC% = 0
+    SXV% = 0
+    SYV% = 0
+    ASM
+      DI
+      LD   HL,(PSX%)           ' 作業ポインタを弾配列の先頭に / init working shot pointers
+      LD   (WSX%),HL
+      LD   HL,(PSY%)
+      LD   (WSY%),HL
+      LD   HL,(PSA%)
+      LD   (WSA%),HL
+      LD   A,(CSN%)
+      LD   (CSC%),A            ' 残り弾数 / shots remaining
+CCSHOT:                         ' --- 弾ループ(外側) / outer loop over shots ---
+      LD   A,(CSC%)
+      OR   A
+      JP   Z,CCDONE            ' 全弾終了 / all shots done (long jump)
+      LD   HL,(WSA%)
+      LD   A,(HL)
+      OR   A
+      JP   Z,CCNXTS            ' 非アクティブな弾はスキップ / inactive shot
+      LD   HL,(PEX%)          ' 敵ポインタを先頭にリセット / reset enemy pointers each shot
+      LD   (WEX%),HL
+      LD   HL,(PEY%)
+      LD   (WEY%),HL
+      LD   A,(CEN%)
+      LD   (CEC%),A           ' 残り敵数 / enemies remaining
+      LD   HL,(WSX%)          ' この弾のX,Yを控える / cache this shot's X,Y
+      LD   A,(HL)
+      LD   (SXV%),A
+      LD   HL,(WSY%)
+      LD   A,(HL)
+      LD   (SYV%),A
+CCENE:                          ' --- 敵ループ(内側) / inner loop over enemies ---
+      LD   A,(CEC%)
+      OR   A
+      JP   Z,CCNXTS           ' この弾は命中なし -> 次の弾 / miss -> next shot
+      LD   HL,(WEX%)          ' |SX-EX|<16 ? / X within 16px
+      LD   A,(HL)
+      LD   B,A
+      LD   A,(SXV%)
+      SUB  B
+      ADD  A,15
+      CP   31
+      JP   NC,CCNXTE          ' X遠い / too far in X
+      LD   HL,(WEY%)          ' |SY-EY|<16 ? / Y within 16px
+      LD   A,(HL)
+      LD   B,A
+      LD   A,(SYV%)
+      SUB  B
+      ADD  A,15
+      CP   31
+      JP   NC,CCNXTE          ' Y遠い / too far in Y
+      ' 命中! / HIT
+      LD   HL,(WSA%)
+      LD   (HL),0            ' 弾を非アクティブに / shot inactive
+      LD   HL,(WSY%)
+      LD   (HL),216         ' 弾Yを隠し位置へ / hide the shot
+      LD   HL,(WEX%)
+      LD   (HL),248         ' 敵Xを右端へ(Y=レーン維持) / respawn enemy X (keep Y)
+      LD   A,(CHIT%)
+      INC  A
+      LD   (CHIT%),A        ' 命中数++ / hit count++
+      JP   CCNXTS           ' 弾は消費 -> 次の弾 / shot consumed
+CCNXTE:                         ' 次の敵へ / next enemy
+      LD   HL,(WEX%)
+      INC  HL
+      INC  HL
+      LD   (WEX%),HL
+      LD   HL,(WEY%)
+      INC  HL
+      INC  HL
+      LD   (WEY%),HL
+      LD   A,(CEC%)
+      DEC  A
+      LD   (CEC%),A
+      JP   CCENE
+CCNXTS:                         ' 次の弾へ / next shot
+      LD   HL,(WSX%)
+      INC  HL
+      INC  HL
+      LD   (WSX%),HL
+      LD   HL,(WSY%)
+      INC  HL
+      INC  HL
+      LD   (WSY%),HL
+      LD   HL,(WSA%)
+      INC  HL
+      INC  HL
+      LD   (WSA%),HL
+      LD   A,(CSC%)
+      DEC  A
+      LD   (CSC%),A
+      JP   CCSHOT
+CCDONE:
+      EI
+    END ASM
+    RETURN CHIT%
+END FUNCTION
+
 ' ---------------- MAIN ----------------
 SCREEN 1, 2
 WIDTH 32
@@ -254,7 +414,7 @@ SPP%(0) = PLAYER
 SPC%(0) = 15
 ' 敵(常時表示) / enemies (always active)
 FOR I% = 0 TO MAX_ENEMY% - 1
-    SPX%(ESB% + I%) = 40 + I% * 16
+    SPX%(ESB% + I%) = (40 + I% * 16) AND 255
     SPY%(ESB% + I%) = TOP_Y% + INT(RND(1) * (BOT_Y% - TOP_Y%))
     SPP%(ESB% + I%) = ENEMYP
     SPC%(ESB% + I%) = 8
@@ -323,21 +483,18 @@ WHILE 1
         END IF
     NEXT I%
 
-    ' 6) 当たり判定: 弾x敵 / collision shots x enemies  [BASIC, no-fastと同一]
-    FOR S% = 0 TO MAX_SHOT% - 1
-        IF SACT%(S%) = 1 THEN
-            FOR E% = 0 TO MAX_ENEMY% - 1
-                IF ABS(SPX%(SSB% + S%) - SPX%(ESB% + E%)) < 16 AND ABS(SPY%(SSB% + S%) - SPY%(ESB% + E%)) < 16 THEN
-                    SACT%(S%) = 0
-                    SPY%(SSB% + S%) = HIDE_Y%
-                    SPX%(ESB% + E%) = 248
-                    SPY%(ESB% + E%) = TOP_Y% + INT(RND(1) * (BOT_Y% - TOP_Y%))
-                    SCORE% = SCORE% + 1
-                    HUD_DIRTY% = 1
-                END IF
-            NEXT E%
-        END IF
-    NEXT S%
+    ' 6) 当たり判定: 全弾x全敵を「1回のASM呼び出し」で / all collision in ONE ASM call
+    '    弾ごとのBASIC処理がゼロなので、撃ち込んでも速度が落ちない。命中数だけ受け取る。
+    PSX% = VARPTR(SPX%(SSB%))
+    PSY% = VARPTR(SPY%(SSB%))
+    PSA% = VARPTR(SACT%(0))
+    PEX% = VARPTR(SPX%(ESB%))
+    PEY% = VARPTR(SPY%(ESB%))
+    H% = FAST_COLLIDE(MAX_SHOT%, MAX_ENEMY%)
+    IF H% > 0 THEN
+        SCORE% = SCORE% + H%
+        HUD_DIRTY% = 1
+    END IF
 
     ' 7) 全スプライトを一括描画 / draw ALL sprites in one shot
     FAST_SPRITES(TOT%)

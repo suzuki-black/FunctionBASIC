@@ -197,6 +197,7 @@ const I18N = {
     "dsk.missing": (names) => `※未検出の同梱ファイル: ${names}`,
     "run.toobig": (kb) => `ペイロードが大きすぎます（約${kb}KB > URL上限）。デスクトップ版でディスク(.dsk)にしてください。`,
     "run.toobig.dsk": (kb) => `ペイロードが大きすぎる（約${kb}KB）ためディスク(.dsk)にしました → WebMSXにドラッグ／openMSXで開く： `,
+    "run.riskysize": (kb) => `実行しました。ただし約${kb}KBは WebMSX の URL自動実行が不安定になる領域です（WebMSX側のディスク生成/展開の不具合で、稀にプログラムが化けて構文エラー等になることがあります）。動作がおかしい時は「ディスク(.dsk)を保存」→ WebMSX にドラッグ／openMSX で開いてください（この経路なら化けません）。`,
     "sav.noerr": "エラーがあるため.savを作成できません", "sav.desktoponly": ".sav作成はデスクトップ版で利用できます",
     "sav.cancel": ".sav作成をキャンセルしました",
     "sav.ok": (path, name, backup) =>
@@ -376,6 +377,7 @@ const I18N = {
     "dsk.missing": (names) => `(missing bundled files: ${names})`,
     "run.toobig": (kb) => `Payload too large (~${kb}KB > URL limit). Use Save Disk (.dsk) in the desktop app.`,
     "run.toobig.dsk": (kb) => `Payload too large (~${kb}KB), saved as a disk (.dsk) → drag into WebMSX / open in openMSX: `,
+    "run.riskysize": (kb) => `Started. But ~${kb}KB is in the range where WebMSX's URL auto-run is unreliable (a WebMSX-side disk/decompress bug can rarely corrupt the program, causing syntax errors etc.). If it misbehaves, use Save Disk (.dsk) → drag into WebMSX / open in openMSX (that path never corrupts).`,
     "sav.noerr": "Cannot create .sav: there are errors.", "sav.desktoponly": ".sav creation is available in the desktop app.",
     "sav.cancel": ".sav creation cancelled.",
     "sav.ok": (path, name, backup) =>
@@ -1818,6 +1820,12 @@ function encodeDiskParam(s) {
 // 従属する。超過分は .dsk へフォールバックする。余裕を見て 7800B を上限とする。
 const WEBMSX_URL_MAX = 7800;
 
+// WebMSX の URL自動実行(DISKA_FILES_URL)は、ある程度大きいと WebMSX 側のディスク生成/展開の
+// 不具合で .bas が化ける（実測: URL長 ~2750 まで正常、~2800 以上で化ける/読込失敗）。deflate も
+// 我々の出力文字列も検証済み無罪で、化けは WebMSX の post-inflate 処理段階。これを超えたら実行は
+// 続けつつ「不安定・.dsk推奨」を警告する。詳細は memory: webmsx-url-run-corruption。
+const WEBMSX_SAFE_MAX = 2600;
+
 // BLOAD 以外の非ディスク device（同梱対象外）。
 const BLOAD_DEVICES = /^(CAS|GRP|CRT|LPT|COM|SCRN|KYBD)$/i;
 
@@ -1935,7 +1943,12 @@ async function onPlayWebMSX() {
 
   const miss = missing.length ? " " + t("dsk.missing", missing.join(", ")) : "";
   const note = stripped > 0 ? t("run.note", stripped) : "";
-  setStatus("ok", t("run.ok", name, note) + miss);
+  // 実行は続けつつ、URL自動実行が不安定になる規模なら .dsk 推奨を警告（WebMSX側の化け対策）。
+  if (url.length > WEBMSX_SAFE_MAX) {
+    setStatus("warn", t("run.riskysize", Math.round(url.length / 1024)) + miss);
+  } else {
+    setStatus("ok", t("run.ok", name, note) + miss);
+  }
 }
 
 // WebMSX を「外部ブラウザ」で実行する。デスクトップの WKWebView はクロスオリジン iframe の

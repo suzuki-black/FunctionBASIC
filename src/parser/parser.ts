@@ -368,8 +368,11 @@ export function parse(tokens: Token[]): ParseResult {
           (cmd === "OPEN" && (w === "OUTPUT" || w === "INPUT" || w === "APPEND")) ||
           // PRINT/LPRINT … USING：書式キーワード。先頭でも「#n,」の後でも現れる（位置を問わない）。
           ((cmd === "PRINT" || cmd === "LPRINT") && w === "USING") ||
-          // BLOAD "…",R：読込後に自動実行するフラグ。
-          (cmd === "BLOAD" && w === "R"));
+          // BLOAD "…",R：読込後に自動実行するフラグ。,S：VRAM(画面)へ読み込むフラグ。
+          // どちらも予約された1文字フラグ＝変数化・改名してはならない（例: BLOAD"IMG.SC5",S）。
+          (cmd === "BLOAD" && (w === "R" || w === "S")) ||
+          // BSAVE "…",開始,終了,S：VRAM を対象にする保存フラグ（同上、改名不可）。
+          (cmd === "BSAVE" && w === "S"));
       if (checkOp(";") || checkOp(",")) {
         parts.push({ kind: "sep", sep: advance().value });
       } else if (cur().kind === "KEYWORD" || checkOp("=") || checkOp("#")) {

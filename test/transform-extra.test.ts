@@ -573,6 +573,14 @@ test("PRINT #n, USING の USING をファイル番号の後でも改名しない
 test("BLOAD \"…\",R の実行フラグ R を改名しない", () => {
   assert.match(compile(`BLOAD "CAS:F",R`).msx, /BLOAD "CAS:F",R/);
 });
+// ,S は VRAM(画面)へ読み込む予約フラグ。変数扱いで改名すると絵ロードが壊れる
+// （b.p.s. 系の "BLOAD"IMG.SC5",S" パターン。実測でこのバグを踏んだ回帰テスト）。
+test("BLOAD \"…\",S の VRAM フラグ S を改名しない", () => {
+  assert.match(compile(`BLOAD "PAGE3S.SC5",S`).msx, /BLOAD "PAGE3S\.SC5",S/);
+});
+test("BSAVE \"…\",start,end,S の VRAM フラグ S を改名しない", () => {
+  assert.match(compile(`BSAVE "IMG.SC5",&H0,&H1,S`).msx, /BSAVE "IMG\.SC5",&H0,&H1,S/);
+});
 
 test("変換テーブル: DATASET が名前→RESTORE先行・切替番号として載る", () => {
   const { map, code, diagnostics } = compile(

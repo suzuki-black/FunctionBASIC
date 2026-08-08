@@ -24,6 +24,14 @@ const RP: Record<string, number> = { BC: 0, DE: 1, HL: 2, SP: 3 };
 const RP2: Record<string, number> = { BC: 0, DE: 1, HL: 2, AF: 3 };
 // ALU 演算のベース（A に対する 8bit 演算）。加算系は "ADD A," のように A, を伴う。
 const ALU: Record<string, number> = { ADD: 0, ADC: 1, SUB: 2, SBC: 3, AND: 4, XOR: 5, OR: 6, CP: 7 };
+// CB接頭のシフト/ローテート（group フィールド）。SLL(6)は未定義命令なので除外。
+const CBROT: Record<string, number> = { RLC: 0, RRC: 1, RL: 2, RR: 3, SLA: 4, SRA: 5, SRL: 7 };
+// CB接頭のビット操作（BIT/RES/SET b,r → base | (b<<3) | r）。
+const BITOP: Record<string, number> = { BIT: 0x40, RES: 0x80, SET: 0xc0 };
+// ED接頭のブロック転送/検索（引数なし）。
+const BLOCK: Record<string, number> = {
+  LDI: 0xa0, LDD: 0xa8, LDIR: 0xb0, LDDR: 0xb8, CPI: 0xa1, CPD: 0xa9, CPIR: 0xb1, CPDR: 0xb9,
+};
 
 // 1オペランドを解釈: 数値/16進、または (NAME)/(nnnn)。
 type Operand =
@@ -115,6 +123,25 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
     if (op === "DI") return void emit(0xf3);
     if (op === "HALT") return void emit(0x76);
     if (op === "EXX") return void emit(0xd9);
+    // アキュムレータ回転・補正など（引数なし）。
+    if (op === "RLCA") return void emit(0x07);
+    if (op === "RRCA") return void emit(0x0f);
+    if (op === "RLA") return void emit(0x17);
+    if (op === "RRA") return void emit(0x1f);
+    if (op === "DAA") return void emit(0x27);
+    if (op === "CPL") return void emit(0x2f);
+    if (op === "SCF") return void emit(0x37);
+    if (op === "CCF") return void emit(0x3f);
+    if (op === "NEG") return void emit(0xed, 0x44);
+    // ブロック転送/検索（ED接頭・引数なし）。
+    if (op in BLOCK && !args.length) return void emit(0xed, BLOCK[op]);
+    // EX DE,HL / EX (SP),HL / EX AF,AF'（'はコメント扱いで落ちるため AF,AF も許容）。
+    if (op === "EX") {
+      if (A0 === "DE" && A1 === "HL") return void emit(0xeb);
+      if (A0 === "(SP)" && A1 === "HL") return void emit(0xe3);
+      if (A0 === "AF" && (A1 === "AF" || A1 === "AF'")) return void emit(0x08);
+      errors.push({ line: ln, message: `EX の形が未対応: ${rest}` }); return;
+    }
 
     if (op === "DB" || op === "DEFB") {
       for (const a of args) { const v = parseNumber(a); if (v == null) { errors.push({ line: ln, message: `DB の値: ${a}` }); return; } emit(v); }
@@ -147,6 +174,8 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
     }
 
     if (op === "CALL" || op === "JP") {
+      // JP (HL)：HL への間接ジャンプ（計算ジャンプ）。
+      if (op === "JP" && A0 === "(HL)") return void emit(0xe9);
       // 条件付き JP cc,X / CALL cc,X
       if (args.length === 2 && A0 in CC) {
         const v = parseNumber(args[1]);
@@ -183,6 +212,21 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
 
     // ADD HL,rr（16bit加算）。ALU(8bit)判定より先に捕捉する。
     if (op === "ADD" && A0 === "HL" && A1 in RP) return void emit(0x09 | (RP[A1] << 4));
+    // ADC/SBC HL,rr（16bit・ED接頭）。8bit ALU 判定より先に捕捉する。
+    if (op === "ADC" && A0 === "HL" && A1 in RP) return void emit(0xed, 0x4a | (RP[A1] << 4));
+    if (op === "SBC" && A0 === "HL" && A1 in RP) return void emit(0xed, 0x42 | (RP[A1] << 4));
+
+    // CB系: シフト/ローテート（RLC/RRC/RL/RR/SLA/SRA/SRL） r または (HL)。
+    if (op in CBROT) {
+      if (A0 in R8) return void emit(0xcb, (CBROT[op] << 3) | R8[A0]);
+      errors.push({ line: ln, message: `${op} の対象: ${A0}（r または (HL)）` }); return;
+    }
+    // CB系: BIT/RES/SET b,r（b=0..7、r または (HL)）。
+    if (op in BITOP) {
+      const b = parseNumber(A0);
+      if (b == null || b < 0 || b > 7 || !(A1 in R8)) { errors.push({ line: ln, message: `${op} b,r の形: ${rest}` }); return; }
+      return void emit(0xcb, BITOP[op] | (b << 3) | R8[A1]);
+    }
 
     if (op in ALU) {
       // ADD/ADC/SBC は "A," を伴う場合がある。SUB/AND/OR/XOR/CP は単項。
@@ -210,6 +254,13 @@ export function assembleZ80(lines: string[], vars: Set<string>): AsmResult {
       // LD (nn),A / LD (VAR),A（(HL) は下の LD r,r' に回す）
       if (dst !== "(HL)" && memInner(dst) != null && src === "A") {
         const o = parseOperand(dst, ln); if (!o) return; emit(0x32); emit16(o as Operand); return;
+      }
+      // LD BC/DE/SP,(nn) と LD (nn),BC/DE/SP（ED接頭。HL は下の 0x2A/0x22 を使う）。
+      if ((dst === "BC" || dst === "DE" || dst === "SP") && memInner(srcRaw) != null) {
+        const o = parseOperand(srcRaw, ln); if (!o) return; emit(0xed, 0x4b | (RP[dst] << 4)); emit16(o as Operand); return;
+      }
+      if (memInner(dst) != null && (src === "BC" || src === "DE" || src === "SP")) {
+        const o = parseOperand(dst, ln); if (!o) return; emit(0xed, 0x43 | (RP[src] << 4)); emit16(o as Operand); return;
       }
       // LD rp,nn
       if (dst in RP && memInner(srcRaw) == null) {

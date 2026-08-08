@@ -127,3 +127,49 @@ test("コメント(; ')と空行は無視される", () => {
   assert.deepEqual(r.errors, []);
   assert.equal(hex(r.bytes), "3E 01 C9");
 });
+
+test("拡張命令: EX / 回転 / CB系 / ブロック転送 / 16bit が正しくエンコードされる", () => {
+  const cases: [string, string][] = [
+    // EX（AF,AF' は ' がコメント扱いで落ちるため AF,AF で書く）
+    ["EX DE,HL", "EB"], ["EX (SP),HL", "E3"], ["EX AF,AF", "08"],
+    // アキュムレータ回転・補正
+    ["RLCA", "07"], ["RRCA", "0F"], ["RLA", "17"], ["RRA", "1F"],
+    ["DAA", "27"], ["CPL", "2F"], ["SCF", "37"], ["CCF", "3F"], ["NEG", "ED 44"],
+    // ブロック転送/検索
+    ["LDI", "ED A0"], ["LDD", "ED A8"], ["LDIR", "ED B0"], ["LDDR", "ED B8"],
+    ["CPI", "ED A1"], ["CPIR", "ED B1"],
+    // 16bit ADC/SBC HL,rr
+    ["ADC HL,BC", "ED 4A"], ["ADC HL,DE", "ED 5A"], ["ADC HL,SP", "ED 7A"],
+    ["SBC HL,BC", "ED 42"], ["SBC HL,HL", "ED 62"], ["SBC HL,SP", "ED 72"],
+    // CB系 シフト/ローテート（r と (HL)）
+    ["RLC B", "CB 00"], ["RRC B", "CB 08"], ["RL B", "CB 10"], ["RR B", "CB 18"],
+    ["SLA B", "CB 20"], ["SRA B", "CB 28"], ["SRL B", "CB 38"],
+    ["SLA A", "CB 27"], ["SLA (HL)", "CB 26"], ["SRL (HL)", "CB 3E"],
+    // CB系 BIT/RES/SET b,r
+    ["BIT 0,B", "CB 40"], ["BIT 7,A", "CB 7F"], ["RES 0,A", "CB 87"],
+    ["SET 7,(HL)", "CB FE"], ["BIT 3,(HL)", "CB 5E"],
+    // JP (HL)
+    ["JP (HL)", "E9"],
+    // 16bit メモリ ロード/ストア（ED接頭・BC/DE/SP）
+    ["LD BC,(&H1234)", "ED 4B 34 12"], ["LD DE,(&H1234)", "ED 5B 34 12"], ["LD SP,(&H1234)", "ED 7B 34 12"],
+    ["LD (&H1234),BC", "ED 43 34 12"], ["LD (&H1234),DE", "ED 53 34 12"], ["LD (&H1234),SP", "ED 73 34 12"],
+  ];
+  for (const [src, want] of cases) {
+    const r = asm(src);
+    assert.deepEqual(r.errors, [], `${src} にエラー`);
+    assert.equal(hex(r.bytes), want, src);
+  }
+});
+
+test("拡張命令: LD (VAR),DE / LD DE,(VAR) は VARPTR パッチを残す", () => {
+  const r = asm("LD (SCORE),DE", ["SCORE"]);
+  assert.deepEqual(r.errors, [], "エラーなし");
+  assert.equal(hex(r.bytes), "ED 53 00 00", "ED 53 + プレースホルダ");
+  assert.equal(r.patches.length, 1, "パッチ1件");
+  assert.equal(r.patches[0].offset, 2, "低位バイト位置");
+  assert.equal(r.patches[0].name, "SCORE");
+  const r2 = asm("LD DE,(SCORE)", ["SCORE"]);
+  assert.deepEqual(r2.errors, [], "エラーなし2");
+  assert.equal(hex(r2.bytes), "ED 5B 00 00", "ED 5B + プレースホルダ");
+  assert.equal(r2.patches[0].name, "SCORE");
+});

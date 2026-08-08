@@ -10,3 +10,7 @@ src-tauri/gen/
 
 # 逆変換の評価コーパス（第三者コードは非コミット・ローカル限定）
 corpus/
+
+# 研究用（版権物クローン等・非コミット・ローカル限定）
+# research-only sandbox (e.g. IP-encumbered clones): never commit, local only
+research/

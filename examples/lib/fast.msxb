@@ -1,0 +1,391 @@
+' ============================================================
+'  FAST library  (FunctionBASIC)   INCLUDE "lib/fast.msxb"
+'
+'  ゲーム向けの「バッチ高速化」プリミティブ集（opt-in の逃げ道レイヤ）。
+'  透明で読める MSX-BASIC が既定、これは「速度が要る所だけ」使う道具。
+'  各プリミティブは 1:1 命令置換ではなく「1フレーム分の処理を丸ごと ASM に内包」する
+'  ことで BASIC<->ASM の往復を毎フレーム1回に抑える。%整数配列を渡し、ASM が内部で回す。
+'
+'  A batch-speedup primitive set for games (an opt-in escape hatch).
+'  Readable MSX-BASIC stays the default; reach for these only where speed matters.
+'  Each primitive internalises a whole frame's worth of work in one ASM call.
+'
+'  収録 / included:
+'    FAST_SPRITES(N%) ... 全スプライトの属性(Y/X/絵/色)を OAM へ一括転送
+'    FAST_TILES(N%)   ... 背景タイルN個を(列/行/キャラ配列で指定して)ネームテーブルへ一括転送
+'    FAST_TILEGRID(rows,cols,pitchx) ... 生存マスク配列を直接走査してタイル格子を一括描画
+'                        (詰め替え不要。敵編隊/タイルマップのブロック描画向け)
+'    FAST_COLLIDE(ns,ne) ... 全弾 x 全敵の AABB 当たりを1回のASMで解決(命中数を返す)
+'
+'  依存 / requires: MSX (VDP)。スプライトは SCREEN の指定に従う。
+' ============================================================
+
+' ------------------------------------------------------------
+'  FAST_SPRITES(N%): N枚ぶんのスプライト属性を OAM(&H1B00) へ一括書き込み。
+'  呼ぶ前に下の4配列(0..N-1)を埋めておく:
+'    SPY%()=Y, SPX%()=X, SPP%()=絵番号(16x16は内部で x4), SPC%()=色
+'  純BASICの双子: FOR I=0 TO N-1: PUT SPRITE I,(SPX%(I),SPY%(I)),SPC%(I),SPP%(I): NEXT
+'  ASM は BASIC<->VDP の往復を1回に畳むので、枚数が多いほど効く(実証: 10->27fps)。
+' ------------------------------------------------------------
+FUNCTION FAST_SPRITES(N%)
+    GLOBAL SPY%
+    GLOBAL SPX%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    GLOBAL SPN%
+    GLOBAL PYP%
+    GLOBAL PXP%
+    GLOBAL PPP%
+    GLOBAL PCP%
+    SPN% = N%
+    PYP% = VARPTR(SPY%(0))
+    PXP% = VARPTR(SPX%(0))
+    PPP% = VARPTR(SPP%(0))
+    PCP% = VARPTR(SPC%(0))
+    ASM
+      DI
+      LD   A,&H00               ' OAM &H1B00 へ書込アドレス設定 / point VDP at OAM (write)
+      OUT  (&H99),A
+      LD   A,&H5B               ' &H1B OR &H40 / high byte + write bit
+      OUT  (&H99),A
+      LD   A,(SPN%)             ' 個数 / count
+      LD   B,A
+FSPRLP:
+      LD   HL,(PYP%)            ' Y
+      LD   A,(HL)
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (PYP%),HL
+      LD   HL,(PXP%)            ' X
+      LD   A,(HL)
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (PXP%),HL
+      LD   HL,(PPP%)            ' 絵番号(16x16は x4) / pattern (x4 for 16x16)
+      LD   A,(HL)
+      ADD  A,A
+      ADD  A,A
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (PPP%),HL
+      LD   HL,(PCP%)            ' 色 / colour
+      LD   A,(HL)
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (PCP%),HL
+      DJNZ FSPRLP
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_TILES(N%): 背景タイル N 個をネームテーブルへ一括書き込み。
+'  呼ぶ前に下の配列(0..N-1)と描画先ベースを埋める:
+'    TX%()=列(0..31), TY%()=行(0..23), TC%()=キャラコード, NT%=ネームテーブル先頭(&H1800 等)
+'  ASM が各タイルの VRAM アドレス = NT% + 行*32 + 列 を内部計算して VDP へ流す。
+'  純BASICの双子: FOR I=0 TO N-1: VPOKE NT%+TY%(I)*32+TX%(I), TC%(I): NEXT
+'  タイルが多いほど効く(VPOKE の VDP往復を ASM 1回に畳む)。SCREEN 1/2 のタイル面向け。
+' ------------------------------------------------------------
+FUNCTION FAST_TILES(N%)
+    GLOBAL NT%
+    GLOBAL TX%
+    GLOBAL TY%
+    GLOBAL TC%
+    GLOBAL FTN%
+    GLOBAL FTB%
+    GLOBAL FTXP%
+    GLOBAL FTYP%
+    GLOBAL FTCP%
+    FTN% = N%
+    FTB% = NT%
+    FTXP% = VARPTR(TX%(0))
+    FTYP% = VARPTR(TY%(0))
+    FTCP% = VARPTR(TC%(0))
+    ASM
+      DI
+      LD   A,(FTN%)
+      OR   A
+      JP   Z,FTDONE            ' 0枚なら何もしない(DJNZ の 256 回暴走防止)
+      LD   B,A                 ' B = 枚数カウンタ
+FTLOOP:
+      LD   HL,(FTYP%)          ' HL -> TY(i)
+      LD   A,(HL)              ' A = 行(下位)
+      LD   L,A
+      LD   H,0                 ' HL = 行
+      ADD  HL,HL               ' *2
+      ADD  HL,HL               ' *4
+      ADD  HL,HL               ' *8
+      ADD  HL,HL               ' *16
+      ADD  HL,HL               ' *32  -> HL = 行*32
+      EX   DE,HL               ' DE = 行*32
+      LD   HL,(FTXP%)          ' HL -> TX(i)
+      LD   A,(HL)              ' A = 列
+      LD   L,A
+      LD   H,0                 ' HL = 列
+      ADD  HL,DE               ' HL = 行*32 + 列
+      LD   DE,(FTB%)           ' DE = ベース(NT)
+      ADD  HL,DE               ' HL = VRAM アドレス
+      LD   A,L                 ' VDP 書込アドレス設定(下位)
+      OUT  (&H99),A
+      LD   A,H
+      AND  &H3F
+      OR   &H40                ' 上位 | 書込ビット
+      OUT  (&H99),A
+      LD   HL,(FTCP%)          ' キャラを出力
+      LD   A,(HL)
+      OUT  (&H98),A
+      LD   HL,(FTXP%)          ' 各ポインタを次要素へ(+2)
+      INC  HL
+      INC  HL
+      LD   (FTXP%),HL
+      LD   HL,(FTYP%)
+      INC  HL
+      INC  HL
+      LD   (FTYP%),HL
+      LD   HL,(FTCP%)
+      INC  HL
+      INC  HL
+      LD   (FTCP%),HL
+      DJNZ FTLOOP
+FTDONE:
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_TILEGRID(ROWS%, COLS%, PITCHX%): 生存マスクを直接走査してタイル格子を一括描画。
+'  「詰め替え」不要が肝: 呼ぶ前にゲームは "行ごと"(=ROWS個だけ)の情報を用意する:
+'    TGRA%(r) = 行 r の左端タイルの VRAM アドレス (= NT% + (原点行+r*行間隔)*32 + 原点列)
+'    TGRC%(r) = 行 r に描くキャラコード (消去なら 32)
+'    TGAL%(r*COLS%+c) = 生存フラグ(1/0)  … ゲームの生存配列をそのまま使う
+'  そして各配列先頭の VARPTR を下の3つに入れてから呼ぶ:
+'    TGAP0% = VARPTR(TGAL%(0)), TGRP0% = VARPTR(TGRA%(0)), TGHP0% = VARPTR(TGRC%(0))
+'  ASM が行x列を走査し、生存セルだけ TGRA%(r)+c*PITCHX% へ TGRC%(r) を書く。
+'  BASIC 側の per-cell 詰め替えが無いので、列挙型 FAST_TILES より遥かに軽い。
+' ------------------------------------------------------------
+FUNCTION FAST_TILEGRID(ROWS%, COLS%, PITCHX%)
+    GLOBAL TGAP0%
+    GLOBAL TGRP0%
+    GLOBAL TGHP0%
+    GLOBAL TGRN%
+    GLOBAL TGCN%
+    GLOBAL TGPX%
+    GLOBAL TGAP%
+    GLOBAL TGRP%
+    GLOBAL TGHP%
+    GLOBAL TGRK%
+    GLOBAL TGCK%
+    GLOBAL TGAD%
+    GLOBAL TGCH%
+    TGRN% = ROWS%
+    TGCN% = COLS%
+    TGPX% = PITCHX%
+    TGAP% = TGAP0%
+    TGRP% = TGRP0%
+    TGHP% = TGHP0%
+    ASM
+      DI
+      LD   A,(TGRN%)
+      LD   (TGRK%),A            ' 行カウンタ = ROWS
+GTGROW:
+      LD   A,(TGRK%)
+      OR   A
+      JP   Z,GTGEND
+      LD   HL,(TGRP%)           ' TGAD% <- 行アドレス配列の現要素(word)
+      LD   E,(HL)
+      INC  HL
+      LD   D,(HL)
+      LD   (TGAD%),DE
+      LD   HL,(TGRP%)           ' 行アドレスptr += 2
+      INC  HL
+      INC  HL
+      LD   (TGRP%),HL
+      LD   HL,(TGHP%)           ' TGCH% <- 行キャラ配列の現要素(byte)
+      LD   A,(HL)
+      LD   (TGCH%),A
+      LD   HL,(TGHP%)           ' 行キャラptr += 2
+      INC  HL
+      INC  HL
+      LD   (TGHP%),HL
+      LD   A,(TGCN%)            ' 列カウンタ = COLS
+      LD   (TGCK%),A
+GTGCOL:
+      LD   A,(TGCK%)
+      OR   A
+      JP   Z,GTGNR
+      LD   HL,(TGAP%)           ' if 生存(idx) then 書く
+      LD   A,(HL)
+      OR   A
+      JP   Z,GTGSK
+      LD   HL,(TGAD%)           ' VDP 書込アドレス設定
+      LD   A,L
+      OUT  (&H99),A
+      LD   A,H
+      AND  &H3F
+      OR   &H40
+      OUT  (&H99),A
+      LD   A,(TGCH%)
+      OUT  (&H98),A
+GTGSK:
+      LD   HL,(TGAP%)           ' 生存ptr += 2
+      INC  HL
+      INC  HL
+      LD   (TGAP%),HL
+      LD   HL,(TGAD%)           ' セルアドレス += PITCHX
+      LD   A,(TGPX%)
+      LD   E,A
+      LD   D,0
+      ADD  HL,DE
+      LD   (TGAD%),HL
+      LD   A,(TGCK%)            ' 列カウンタ--
+      DEC  A
+      LD   (TGCK%),A
+      JP   GTGCOL
+GTGNR:
+      LD   A,(TGRK%)            ' 行カウンタ--
+      DEC  A
+      LD   (TGRK%),A
+      JP   GTGROW
+GTGEND:
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_COLLIDE(NS%, NE%): 全弾 x 全敵の AABB(16px)当たりを「1回のASM呼び出し」で解決。
+'  命中した弾は非アクティブ＋Y=216(隠し)、当たった敵は X=248(右端へ復活・Yレーン維持)。命中数を返す。
+'  弾ごとのBASIC処理がゼロなので、撃ち込んでも速度が落ちない(STG/アクションの発射コスト対策)。
+'  呼ぶ前に各配列先頭アドレスを設定する:
+'    PSX%=VARPTR(弾X(0)) PSY%=VARPTR(弾Y(0)) PSA%=VARPTR(弾生存(0))
+'    PEX%=VARPTR(敵X(0)) PEY%=VARPTR(敵Y(0))
+'  例: H% = FAST_COLLIDE(弾数, 敵数)  '命中数
+' ------------------------------------------------------------
+FUNCTION FAST_COLLIDE(NS%, NE%)
+    GLOBAL CSN%
+    GLOBAL CEN%
+    GLOBAL CHIT%
+    GLOBAL PSX%
+    GLOBAL PSY%
+    GLOBAL PSA%
+    GLOBAL PEX%
+    GLOBAL PEY%
+    GLOBAL WSX%
+    GLOBAL WSY%
+    GLOBAL WSA%
+    GLOBAL WEX%
+    GLOBAL WEY%
+    GLOBAL CSC%
+    GLOBAL CEC%
+    GLOBAL SXV%
+    GLOBAL SYV%
+    CSN% = NS%
+    CEN% = NE%
+    CHIT% = 0
+    WSX% = 0
+    WSY% = 0
+    WSA% = 0
+    WEX% = 0
+    WEY% = 0
+    CSC% = 0
+    CEC% = 0
+    SXV% = 0
+    SYV% = 0
+    ASM
+      DI
+      LD   HL,(PSX%)
+      LD   (WSX%),HL
+      LD   HL,(PSY%)
+      LD   (WSY%),HL
+      LD   HL,(PSA%)
+      LD   (WSA%),HL
+      LD   A,(CSN%)
+      LD   (CSC%),A
+CCSHOT:
+      LD   A,(CSC%)
+      OR   A
+      JP   Z,CCDONE
+      LD   HL,(WSA%)
+      LD   A,(HL)
+      OR   A
+      JP   Z,CCNXTS
+      LD   HL,(PEX%)
+      LD   (WEX%),HL
+      LD   HL,(PEY%)
+      LD   (WEY%),HL
+      LD   A,(CEN%)
+      LD   (CEC%),A
+      LD   HL,(WSX%)
+      LD   A,(HL)
+      LD   (SXV%),A
+      LD   HL,(WSY%)
+      LD   A,(HL)
+      LD   (SYV%),A
+CCENE:
+      LD   A,(CEC%)
+      OR   A
+      JP   Z,CCNXTS
+      LD   HL,(WEX%)
+      LD   A,(HL)
+      LD   B,A
+      LD   A,(SXV%)
+      SUB  B
+      ADD  A,15
+      CP   31
+      JP   NC,CCNXTE
+      LD   HL,(WEY%)
+      LD   A,(HL)
+      LD   B,A
+      LD   A,(SYV%)
+      SUB  B
+      ADD  A,15
+      CP   31
+      JP   NC,CCNXTE
+      LD   HL,(WSA%)
+      LD   (HL),0
+      LD   HL,(WSY%)
+      LD   (HL),216
+      LD   HL,(WEX%)
+      LD   (HL),248
+      LD   A,(CHIT%)
+      INC  A
+      LD   (CHIT%),A
+      JP   CCNXTS
+CCNXTE:
+      LD   HL,(WEX%)
+      INC  HL
+      INC  HL
+      LD   (WEX%),HL
+      LD   HL,(WEY%)
+      INC  HL
+      INC  HL
+      LD   (WEY%),HL
+      LD   A,(CEC%)
+      DEC  A
+      LD   (CEC%),A
+      JP   CCENE
+CCNXTS:
+      LD   HL,(WSX%)
+      INC  HL
+      INC  HL
+      LD   (WSX%),HL
+      LD   HL,(WSY%)
+      INC  HL
+      INC  HL
+      LD   (WSY%),HL
+      LD   HL,(WSA%)
+      INC  HL
+      INC  HL
+      LD   (WSA%),HL
+      LD   A,(CSC%)
+      DEC  A
+      LD   (CSC%),A
+      JP   CCSHOT
+CCDONE:
+      EI
+    END ASM
+    RETURN CHIT%
+END FUNCTION

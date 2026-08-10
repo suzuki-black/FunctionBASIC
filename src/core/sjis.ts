@@ -25,7 +25,17 @@ const RANGES: Array<[number, number]> = [
 // （必要になれば encoding_rs の挙動を確認の上で追加する）。
 export const SJIS_UNMAPPABLE: ReadonlyMap<number, string> = new Map([
   // 〜(U+301C) と ～(U+FF5E) は見た目がほぼ同一なので、置換先をコードポイントで明示する。
-  [0x301c, "〜 U+301C → ～ U+FF5E か -"],
+  [0x301c, "〜 U+301C -> ～ U+FF5E か -"],
+  // 近似レンジ [0x2010..0x2312] に入ってしまうが JIS X 0208/CP932 に無い矢印。
+  // ← ↑ → ↓ (U+2190..2193) は JIS X 0208 にあるが、双方向/斜めは無い。混入すると
+  // 実SJISエンコード段(アプリ側)で保存失敗する。範囲判定の見逃しを個別補正する。
+  // ※EMダッシュ U+2014 は既存サンプル多数で使用中のためここでは扱わない（別途要整理）。
+  [0x2194, "↔ U+2194 は Shift-JIS 外。ASCII の <-> か - に置換"],
+  [0x2195, "↕ U+2195 は Shift-JIS 外。ASCII に置換"],
+  [0x2196, "↖ U+2196 は Shift-JIS 外。ASCII に置換"],
+  [0x2197, "↗ U+2197 は Shift-JIS 外。ASCII に置換"],
+  [0x2198, "↘ U+2198 は Shift-JIS 外。ASCII に置換"],
+  [0x2199, "↙ U+2199 は Shift-JIS 外。ASCII に置換"],
 ]);
 
 export function isSjisLikely(cp: number): boolean {

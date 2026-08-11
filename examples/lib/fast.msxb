@@ -12,6 +12,8 @@
 '
 '  収録 / included:
 '    FAST_SPRITES(N%) ... 全スプライトの属性(Y/X/絵/色)を OAM へ一括転送
+'    FAST_DRIFT(base,n,vx,vy,wrapx,wrapy) ... スプライト群を等速で動かしX/Y軸ごとにリングラップ
+'    FAST_STREAM(base,n,vx,vy,xmax,ymax,parky) ... 弾/粒子をactiveだけ流し画面外で自動deactivate(生存数を返す)
 '    FAST_TILES(N%)   ... 背景タイルN個を(列/行/キャラ配列で指定して)ネームテーブルへ一括転送
 '    FAST_TILEGRID(rows,cols,pitchx) ... 生存マスク配列を直接走査してタイル格子を一括描画
 '                        (詰め替え不要。敵編隊/タイルマップのブロック描画向け)
@@ -80,6 +82,269 @@ FSPRLP:
       DJNZ FSPRLP
       EI
     END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_DRIFT(BASE%, N%, VX%, VY%, WRAPX%, WRAPY%): スプライト群 [BASE, BASE+N) を
+'  「一定速度 (VX,VY) で動かす」を1回のASMで。VX/VY は符号つき小整数(例: -2)。
+'  X はリング [0..WRAPX]、Y はリング [0..WRAPY] で自動ラップ(左右/上下どちらの符号でも
+'  正しく巻く)。WRAPX%/WRAPY% に 0 を渡すとその軸はラップ無し(素の加算)。
+'    横スクロール敵/編隊 => WRAPX=248, WRAPY=0
+'    縦スクロール/降る星   => WRAPX=0,   WRAPY=191
+'  座標は FAST_SPRITES と同じ SPX%()/SPY%() を直接更新するので、動かした後そのまま
+'  FAST_SPRITES(...) で描ける。群を"雑にまるごと"流す用途向け。
+'  注意: これは「均一な速度で群を流す」プリミティブ。個別ホーミング等は BASIC 側で。
+'  効くのは "多数を同じ規則で動かす" とき。実測交差点 ~7体(それ未満は素のBASICが速い)。
+' ------------------------------------------------------------
+FUNCTION FAST_DRIFT(BASE%, N%, VX%, VY%, WRAPX%, WRAPY%)
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL DN%
+    GLOBAL DVX%
+    GLOBAL DVY%
+    GLOBAL DWX%
+    GLOBAL DWY%
+    GLOBAL DMX%
+    GLOBAL DMY%
+    GLOBAL DJX%
+    GLOBAL DJY%
+    GLOBAL DXPW%
+    GLOBAL DYPW%
+    DN% = N%
+    DVX% = VX% AND 255
+    DVY% = VY% AND 255
+    IF WRAPX% > 0 THEN
+        DWX% = 1
+        DMX% = WRAPX%
+        IF VX% >= 0 THEN
+            DJX% = WRAPX% + 1
+        ELSE
+            DJX% = 255 - WRAPX%
+        END IF
+    ELSE
+        DWX% = 0
+    END IF
+    IF WRAPY% > 0 THEN
+        DWY% = 1
+        DMY% = WRAPY%
+        IF VY% >= 0 THEN
+            DJY% = WRAPY% + 1
+        ELSE
+            DJY% = 255 - WRAPY%
+        END IF
+    ELSE
+        DWY% = 0
+    END IF
+    DXPW% = VARPTR(SPX%(BASE%))
+    DYPW% = VARPTR(SPY%(BASE%))
+    ASM
+      DI
+      LD   A,(DN%)
+      OR   A
+      JP   Z,DRDONE            ' 0体なら何もしない
+      LD   B,A                 ' B = 体数カウンタ
+DRLP:
+      LD   HL,(DXPW%)          ' --- X ---
+      LD   A,(HL)
+      LD   C,A                 ' C = 現X
+      LD   A,(DVX%)
+      ADD  A,C                 ' newX = X + VX (mod256)
+      LD   C,A
+      LD   A,(DWX%)            ' X ラップ有効?
+      OR   A
+      JR   Z,DRXST
+      LD   A,(DMX%)
+      CP   C                   ' WRAPX - newX ; newX>WRAPX なら carry
+      JR   NC,DRXST
+      LD   A,(DJX%)            ' リング幅で補正
+      LD   E,A
+      LD   A,C
+      SUB  E
+      LD   C,A
+DRXST:
+      LD   HL,(DXPW%)          ' X 書き戻し(下位=newX, 上位=0)
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (DXPW%),HL
+      LD   HL,(DYPW%)          ' --- Y ---
+      LD   A,(HL)
+      LD   C,A                 ' C = 現Y
+      LD   A,(DVY%)
+      ADD  A,C
+      LD   C,A                 ' newY
+      LD   A,(DWY%)            ' Y ラップ有効?
+      OR   A
+      JR   Z,DRYST
+      LD   A,(DMY%)
+      CP   C
+      JR   NC,DRYST
+      LD   A,(DJY%)
+      LD   E,A
+      LD   A,C
+      SUB  E
+      LD   C,A
+DRYST:
+      LD   HL,(DYPW%)          ' Y 書き戻し
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (DYPW%),HL
+      DEC  B                   ' 体数-- (本体が長いので DJNZ でなく JP で戻る)
+      JP   NZ,DRLP
+DRDONE:
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_STREAM(BASE%, N%, VX%, VY%, XMAX%, YMAX%, PARKY%): 弾/粒子など「撃ちっぱなし」
+'  の群を1回のASMで。active な物だけを等速 (VX,VY) で流し、プレイ領域 [0..XMAX]x[0..YMAX]
+'  を出た物は active=0 にして Y=PARKY(画面外)へ退避する。生存(active)数を返す。
+'  呼ぶ前に生存フラグ配列の先頭 VARPTR を設定する: PACT% = VARPTR(active配列(0))。
+'    座標は SPX%()/SPY%() の [BASE..] を、生存は active配列(0..N-1) を使う。
+'  純BASICの双子: FOR I=0 TO N-1: IF act(I) THEN move; IF 画面外 THEN act(I)=0: Y=PARKY
+'  効くのは弾が"多数"のとき(弾幕/粒子)。少数弾(~7以下)は交差点未満なので BASIC で十分。
+'  例: PACT% = VARPTR(SACT%(0)) : L% = FAST_STREAM(BB%, MAXB%, 6, 0, 248, 191, 216)
+' ------------------------------------------------------------
+FUNCTION FAST_STREAM(BASE%, N%, VX%, VY%, XMAX%, YMAX%, PARKY%)
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL PACT%
+    GLOBAL SMN%
+    GLOBAL SMVX%
+    GLOBAL SMVY%
+    GLOBAL SMXS%
+    GLOBAL SMXT%
+    GLOBAL SMYS%
+    GLOBAL SMYT%
+    GLOBAL SMPK%
+    GLOBAL SMXP%
+    GLOBAL SMYP%
+    GLOBAL SMAP%
+    GLOBAL SMLIVE%
+    SMN% = N%
+    SMVX% = VX% AND 255
+    SMVY% = VY% AND 255
+    SMPK% = PARKY%
+    IF VX% > 0 THEN
+        SMXS% = 1
+        SMXT% = XMAX% - VX%
+    ELSEIF VX% < 0 THEN
+        SMXS% = 2
+        SMXT% = 0 - VX%
+    ELSE
+        SMXS% = 0
+    END IF
+    IF VY% > 0 THEN
+        SMYS% = 1
+        SMYT% = YMAX% - VY%
+    ELSEIF VY% < 0 THEN
+        SMYS% = 2
+        SMYT% = 0 - VY%
+    ELSE
+        SMYS% = 0
+    END IF
+    SMLIVE% = 0
+    SMXP% = VARPTR(SPX%(BASE%))
+    SMYP% = VARPTR(SPY%(BASE%))
+    SMAP% = PACT%
+    ASM
+      DI
+      LD   A,(SMN%)
+      OR   A
+      JP   Z,SMDONE
+      LD   B,A                 ' B = 個数カウンタ
+SMLP:
+      LD   HL,(SMAP%)          ' 生存フラグ
+      LD   A,(HL)
+      OR   A
+      JP   Z,SMNEXT            ' 非activeは移動せずスキップ(ポインタは進める)
+      LD   HL,(SMXP%)          ' C = 現X
+      LD   A,(HL)
+      LD   C,A
+      LD   A,(SMXS%)           ' X の画面外判定
+      OR   A
+      JR   Z,SMXOK
+      DEC  A
+      JR   NZ,SMXLT            ' SMXS=2 -> "< SMXT" 判定
+      LD   A,(SMXT%)           ' SMXS=1 -> "> SMXT" なら kill
+      CP   C
+      JR   NC,SMXOK
+      JP   SMKILL
+SMXLT:
+      LD   A,(SMXT%)
+      LD   E,A
+      LD   A,C
+      CP   E                   ' oldX - SMXT ; carry(oldX<SMXT)なら kill
+      JR   NC,SMXOK
+      JP   SMKILL
+SMXOK:
+      LD   HL,(SMYP%)          ' D = 現Y
+      LD   A,(HL)
+      LD   D,A
+      LD   A,(SMYS%)           ' Y の画面外判定
+      OR   A
+      JR   Z,SMYOK
+      DEC  A
+      JR   NZ,SMYLT
+      LD   A,(SMYT%)
+      CP   D
+      JR   NC,SMYOK
+      JP   SMKILL
+SMYLT:
+      LD   A,(SMYT%)
+      LD   E,A
+      LD   A,D
+      CP   E
+      JR   NC,SMYOK
+      JP   SMKILL
+SMYOK:
+      LD   A,(SMVX%)           ' 生存 -> 移動して格納
+      ADD  A,C
+      LD   HL,(SMXP%)
+      LD   (HL),A
+      INC  HL
+      LD   (HL),0
+      LD   A,(SMVY%)
+      ADD  A,D
+      LD   HL,(SMYP%)
+      LD   (HL),A
+      INC  HL
+      LD   (HL),0
+      LD   A,(SMLIVE%)         ' 生存数++
+      INC  A
+      LD   (SMLIVE%),A
+      JP   SMNEXT
+SMKILL:
+      LD   HL,(SMAP%)          ' 画面外 -> active=0, Y=PARKY 退避
+      LD   (HL),0
+      LD   A,(SMPK%)
+      LD   HL,(SMYP%)
+      LD   (HL),A
+      INC  HL
+      LD   (HL),0
+SMNEXT:
+      LD   HL,(SMXP%)          ' 3ポインタを +2
+      INC  HL
+      INC  HL
+      LD   (SMXP%),HL
+      LD   HL,(SMYP%)
+      INC  HL
+      INC  HL
+      LD   (SMYP%),HL
+      LD   HL,(SMAP%)
+      INC  HL
+      INC  HL
+      LD   (SMAP%),HL
+      DEC  B
+      JP   NZ,SMLP
+SMDONE:
+      EI
+    END ASM
+    RETURN SMLIVE%
 END FUNCTION
 
 ' ------------------------------------------------------------

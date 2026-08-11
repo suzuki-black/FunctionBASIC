@@ -210,9 +210,17 @@ export function inlineConsts(program: Program): Diagnostic[] {
   // 1) トップレベル＝グローバル定数
   const globalEnv = buildEnv(collectConsts(program.toplevel), empty, diags, strict);
   program.toplevel = rewriteStmts(program.toplevel, globalEnv, diags);
-  // 2) 各関数＝グローバル＋関数ローカル定数（ローカルが優先）
+  // 2) 各関数＝グローバル＋関数ローカル定数（ローカルが優先）。
+  //    ただし関数パラメータは同名グローバル CONST をシャドウする（関数内ではパラメータが優先）。
+  //    これをしないと、呼び出し側の CONST（例 XMAX%）が同名パラメータを const-inline で潰し、
+  //    関数が実引数を無視して CONST 値で動く静かな誤変換になる。ライブラリ作者と呼び出し側は
+  //    名前を調整できないので、衝突はエラーにせず正しくシャドウする（正当なプログラムを壊さない）。
   for (const fn of program.functions) {
-    const env = buildEnv(collectConsts(fn.body), globalEnv, diags, strict);
+    const params = new Set(fn.params.map((p) => p.name));
+    const base = params.size
+      ? new Map([...globalEnv].filter(([k]) => !params.has(k)))
+      : globalEnv;
+    const env = buildEnv(collectConsts(fn.body), base, diags, strict);
     fn.body = rewriteStmts(fn.body, env, diags);
   }
   return diags;

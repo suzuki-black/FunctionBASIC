@@ -93,3 +93,37 @@ test("関数内CONSTは関数内でインライン（グローバルCONSTも参�
   assert.deepEqual(errs, []);
   assert.match(msx, /=7\+3|=10/); // K+G がインライン（畳み込みは加算のみなので 7+3）
 });
+
+// 回帰: 呼び出し側スコープの CONST が同名の FUNCTION パラメータを const-inline で潰す
+// スコープバグ（FAST_STREAM の XMAX%/PARKY% で実際に発生）。関数パラメータは同名グローバル
+// CONST をシャドウし、関数は実引数で動くべき。バグ時は本体が CONST 値に畳まれ実引数が死ぬ。
+test("グローバルCONSTと同名の関数パラメータは衝突せずパラメータが優先（シャドウ）", () => {
+  const src = [
+    "CONST XMAX% = 240",
+    "GLOBAL Q%",
+    "FUNCTION LIMIT(XMAX%)",
+    "    RETURN XMAX% - 5",
+    "END FUNCTION",
+    "Q% = LIMIT(0)",
+  ].join("\n");
+  const { msx, errs } = compile(src);
+  assert.deepEqual(errs, []);
+  // バグ時は本体 XMAX%-5 が 240-5=235 に畳まれてパラメータが死ぬ。修正後はパラメータを使う＝235は出ない。
+  assert.ok(!msx.includes("235"), "パラメータがCONST(240)で潰され 235 に畳まれている");
+});
+
+// 回帰の裏返し: 関数の"外"では従来どおりグローバル CONST がインラインされる（シャドウで壊さない）。
+test("同名パラメータがあってもグローバルCONSTは関数外では従来どおりインライン", () => {
+  const src = [
+    "CONST XMAX% = 240",
+    "GLOBAL W%",
+    "W% = XMAX% + 1",
+    "FUNCTION LIMIT(XMAX%)",
+    "    RETURN XMAX%",
+    "END FUNCTION",
+  ].join("\n");
+  const { msx, errs } = compile(src);
+  assert.deepEqual(errs, []);
+  // 関数外の W% = XMAX%+1 は CONST が 240 にインラインされる（畳み込みは別パスなので 240+1 のまま）。
+  assert.ok(/240\s*\+\s*1/.test(msx), "関数外のグローバルCONST参照が 240 にインラインされていない");
+});

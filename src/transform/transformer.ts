@@ -24,6 +24,7 @@ import { NamePool } from "./names.ts";
 import { assembleZ80 } from "../asm/z80asm.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
+import { checkForRanges } from "./check-for-range.ts";
 import { checkNameCollisions } from "./check-names.ts";
 import { checkNameRegistry } from "./check-name-registry.ts";
 import { foldProgram } from "./fold-expr.ts";
@@ -413,6 +414,10 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
 
   // CONST のインライン展開（名前解決より前。定数参照はリテラル化し CONST 文は消える）。
   diagnostics.push(...inlineConsts(program));
+
+  // 定数で空と確定する FOR 範囲を警告（MSX は空範囲でも本体1回実行＝静かなバグの元）。
+  // CONST 展開後に走らせ、CONST 由来の定数境界も対象にする。コード生成は変えない。
+  diagnostics.push(...checkForRanges(program));
 
   // 定数畳み込み最適化（オプトイン）。CONST 展開後に走らせ、生じた定数式も畳む。
   if (opts.optimize) foldProgram(program);

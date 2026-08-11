@@ -242,6 +242,11 @@ const CATALOG: Record<string, Entry> = {
     ja: () => "8×8 と 16×16 のスプライトが混在しています。MSX のスプライトサイズは SCREEN で画面全体に一つだけ選べます（どちらかに揃えてください）",
     en: () => "You mix 8×8 and 16×16 sprites; MSX has one global sprite size per SCREEN (use a single size)",
   },
+  W_FOR_EMPTY_RANGE: {
+    code: "W_FOR_EMPTY_RANGE",
+    ja: (p) => `FOR ${p.range} は範囲が空です。MSX-BASIC は空範囲でも本体を1回実行します（意図せず1回走る/範囲外アクセスの恐れ）。境界を見直すか IF でガードしてください`,
+    en: (p) => `FOR ${p.range} has an empty range; MSX-BASIC still runs the body once (may run unexpectedly or access out of range). Fix the bounds or guard with IF`,
+  },
   E_EVENT_KIND: {
     code: "E_EVENT_KIND",
     ja: (p) => `EVENT の種別が不明です: ${p.v}（EVENT TIMER n … END EVENT）`,

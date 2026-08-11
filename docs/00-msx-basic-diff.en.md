@@ -248,6 +248,7 @@ This part **doesn't change**, so your MSX-BASIC knowledge carries over directly.
 - **Truth values**: true = `-1`, false = `0` (`IF A%` means `A% <> 0`).
 - **Literals**: decimal, `&H` (hex), `&O` (octal), `&B` (binary). Strings are `"..."`.
 - **Arrays are base 0** (`DIM A(10)` = 11 elements, 0..10).
+- **`FOR` tests at the bottom (an empty range still runs the body once)**: `FOR I=a TO b` with `a>b` (positive step), or `a<b` (negative step), **still executes the body once** (the limit is checked at `NEXT` — MSX-BASIC semantics), unlike the "zero iterations" of structured languages. Guard loops whose bounds can invert at runtime (e.g. variable-count clears) with `IF a<=b THEN … END IF`. Ranges **provably empty at compile time** (`FOR I=32 TO 31` etc.) get a `W_FOR_EMPTY_RANGE` warning (codegen is unchanged).
 - **Built-in commands/functions pass through** (`PRINT` `LOCATE` `CLS` `VPOKE`/`VPEEK`
   `PEEK`/`POKE` `PUT SPRITE` `SET SCROLL` `SOUND` `STICK` `STRIG` `MID$` `CHR$` `RND` `USR` …).
   Behavior and arguments follow MSX-BASIC.
@@ -265,6 +266,7 @@ Traps hit in practice. Follow these when generating code and it won't blow up.
 | `E_SYNTAX` (IF line) | single-line `IF X% > 0 THEN Y% = 1` | use a block IF (`IF …` / newline `Y% = 1` / newline `END IF`) |
 | `E_SYNTAX` (`:`) | multiple statements on a line (`A=1 : B=2`) | one statement per line |
 | a global reads as 0/undefined in a function | forgot `GLOBAL name` in the function | declare every global used at the function top (arrays too: `GLOBAL A`) |
+| `Illegal function call` / out-of-range (runtime) | empty `FOR` (`FOR I=32 TO 31` etc.) still runs the body once (MSX bottom-test) | guard invertible bounds with `IF a<=b THEN … NEXT … END IF`; constant empty ranges get a `W_FOR_EMPTY_RANGE` warning |
 | `Illegal function call` (runtime) | `STRING$(300,0)` etc. > 255-byte string | keep strings ≤ 255 bytes; long machine code → `ASM` + HIMEM placement |
 | `Illegal function call` (`VARPTR`) | `VARPTR` on an unassigned variable | assign it first (`=0` etc.) before `VARPTR` |
 | `E_NAME_IS_BUILTIN` | function name equals a built-in (`DRAW` `SWAP` `PLAY` `LINE` …) | rename it (`RENDER`, `EXCHANGE`, …) |

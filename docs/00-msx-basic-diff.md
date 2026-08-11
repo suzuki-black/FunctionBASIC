@@ -213,6 +213,7 @@ INCLUDE "lib/math.msxb"
 - **真偽値**：真 = `-1`、偽 = `0`（`IF A%` は `A% <> 0`）。
 - **リテラル**：10進、`&H`(16進)、`&O`(8進)、`&B`(2進)。文字列は `"..."`。
 - **配列は base 0**（`DIM A(10)` は 0〜10 の11要素）。
+- **`FOR` は下側判定（空範囲でも本体を1回実行）**：`FOR I=a TO b`（正ステップ）で `a>b`、負ステップで `a<b` の**空範囲でも本体が必ず1回走る**（限界判定が `NEXT` 側＝MSX-BASIC仕様）。構造化言語の「0回」とは違う。境界が実行時に反転し得るループ（可変個数のクリア等）は `IF a<=b THEN … END IF` でガードする。**定数で空と確定するもの**（`FOR I=32 TO 31` 等）はコンパイラが `W_FOR_EMPTY_RANGE` 警告を出す（コード生成は変えない）。
 - **組み込み命令・関数はそのまま**（`PRINT` `LOCATE` `CLS` `VPOKE`/`VPEEK` `PEEK`/`POKE` `PUT SPRITE` `SET SCROLL` `SOUND` `STICK` `STRIG` `MID$` `CHR$` `RND` `USR` …）。挙動・引数はMSX-BASIC準拠。
 - **コメント** `'` と `REM`（大文字化・変換の対象外。中身は原文のまま保持）。
 - **文字列は最大255バイト**（全MSX共通）。
@@ -228,6 +229,7 @@ INCLUDE "lib/math.msxb"
 | `E_SYNTAX`（IF行） | 単行 `IF X% > 0 THEN Y% = 1` | ブロックIFにする（`IF …` 改行 `Y% = 1` 改行 `END IF`） |
 | `E_SYNTAX`（`:`） | 1行に複数文（`A=1 : B=2`） | 1文ずつ改行 |
 | 関数内でグローバルが0/未定義に見える | 関数で `GLOBAL 名` を宣言し忘れ | 使う全グローバルを関数先頭で `GLOBAL` 宣言（配列も `GLOBAL A`） |
+| `Illegal function call`／範囲外（実行時） | 空範囲 `FOR`（`FOR I=32 TO 31` 等）でも本体が1回走る（MSX下側判定） | 空になり得る境界は `IF a<=b THEN … NEXT … END IF` でガード。定数空範囲は `W_FOR_EMPTY_RANGE` 警告 |
 | `Illegal function call`（実行時） | `STRING$(300,0)` 等 >255バイト文字列 | 文字列は255バイト以内。長い機械語は`ASM`＋HIMEM配置 |
 | `Illegal function call`（`VARPTR`） | 未代入変数に `VARPTR` | 先に `=0` 等で代入してから `VARPTR` |
 | `E_NAME_IS_BUILTIN` | 関数名が組み込み命令と同名（`DRAW` `SWAP` `PLAY` `LINE` 等） | 別名にする（`RENDER` `EXCHANGE` 等） |

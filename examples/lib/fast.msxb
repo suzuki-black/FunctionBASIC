@@ -13,6 +13,7 @@
 '  収録 / included:
 '    FAST_SPRITES(N%) ... 全スプライトの属性(Y/X/絵/色)を OAM へ一括転送
 '    FAST_DRIFT(base,n,vx,vy,wrapx,wrapy) ... スプライト群を等速で動かしX/Y軸ごとにリングラップ
+'    FAST_MOVEV(base,n,wrapx,wrapy) ... スプライト群を各自の速度(SVX%/SVY%)で動かしリングラップ(per-object)
 '    FAST_STREAM(base,n,vx,vy,xmax,ymax,parky) ... 弾/粒子をactiveだけ流し画面外で自動deactivate(生存数を返す)
 '    FAST_TILES(N%)   ... 背景タイルN個を(列/行/キャラ配列で指定して)ネームテーブルへ一括転送
 '    FAST_TILEGRID(rows,cols,pitchx) ... 生存マスク配列を直接走査してタイル格子を一括描画
@@ -195,6 +196,141 @@ DRYST:
       DEC  B                   ' 体数-- (本体が長いので DJNZ でなく JP で戻る)
       JP   NZ,DRLP
 DRDONE:
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_MOVEV(BASE%, N%, WRAPX%, WRAPY%): スプライト群 [BASE, BASE+N) を「各自の速度」で
+'  動かす per-object 版（FAST_DRIFT は群一律・こちらは1体ずつ別ベクトル）。散る破片・多方向弾・
+'  個別に動く敵など、一律移動では表せない動きを1回のASMで。X/Y はリング [0..WRAP] で自動ラップ
+'  （WRAP=0 でその軸はラップ無し）。呼ぶ前に位置＋速度の4配列を [BASE..] で揃える:
+'    SPX%()/SPY%()=位置（FAST_SPRITES と共用）, SVX%()/SVY%()=各自の速度（符号つき小整数, 例 -2）
+'  純BASICの双子: FOR I: SPX%(I)=(SPX%(I)+SVX%(I))ラップ: SPY%(I)=(SPY%(I)+SVY%(I))ラップ: NEXT
+'  速度は |v|<128 かつ WRAP 未満を前提（符号ビットで巻き向きを判定）。動かした後そのまま
+'  FAST_SPRITES(...) で描ける。効くのは多数を動かすとき（交差点 ~8体, fast-guide.md 参照）。
+' ------------------------------------------------------------
+FUNCTION FAST_MOVEV(BASE%, N%, WRAPX%, WRAPY%)
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL SVX%
+    GLOBAL SVY%
+    GLOBAL MVN%
+    GLOBAL MVWX%
+    GLOBAL MVWY%
+    GLOBAL MVMX%
+    GLOBAL MVMY%
+    GLOBAL MVAXP%
+    GLOBAL MVAXN%
+    GLOBAL MVAYP%
+    GLOBAL MVAYN%
+    GLOBAL MVPX%
+    GLOBAL MVPY%
+    GLOBAL MVVX%
+    GLOBAL MVVY%
+    MVN% = N%
+    IF WRAPX% > 0 THEN
+        MVWX% = 1
+        MVMX% = WRAPX%
+        MVAXP% = WRAPX% + 1
+        MVAXN% = 255 - WRAPX%
+    ELSE
+        MVWX% = 0
+    END IF
+    IF WRAPY% > 0 THEN
+        MVWY% = 1
+        MVMY% = WRAPY%
+        MVAYP% = WRAPY% + 1
+        MVAYN% = 255 - WRAPY%
+    ELSE
+        MVWY% = 0
+    END IF
+    MVPX% = VARPTR(SPX%(BASE%))
+    MVPY% = VARPTR(SPY%(BASE%))
+    MVVX% = VARPTR(SVX%(BASE%))
+    MVVY% = VARPTR(SVY%(BASE%))
+    ASM
+      DI
+      LD   A,(MVN%)
+      OR   A
+      JP   Z,MVDONE
+      LD   B,A                 ' B = 体数カウンタ
+MVLP:
+      LD   HL,(MVPX%)          ' --- X ---
+      LD   A,(HL)
+      LD   C,A                 ' C = 現X
+      LD   HL,(MVVX%)
+      LD   A,(HL)
+      LD   E,A                 ' E = 各自の VX(符号つきバイト。符号判定に保持)
+      ADD  A,C                 ' newX = X + VX (mod256)
+      LD   C,A
+      LD   A,(MVWX%)           ' X ラップ有効?
+      OR   A
+      JR   Z,MVXST
+      LD   A,(MVMX%)
+      CP   C                   ' WRAPX - newX ; newX>WRAPX なら carry(範囲外)
+      JR   NC,MVXST
+      BIT  7,E                 ' VX の符号で巻き向きを選ぶ(per-object)
+      JR   Z,MVXPOS
+      LD   A,(MVAXN%)          ' VX<0(左へ) の補正
+      JR   MVXADJ
+MVXPOS:
+      LD   A,(MVAXP%)          ' VX>=0(右へ) の補正
+MVXADJ:
+      LD   D,A
+      LD   A,C
+      SUB  D
+      LD   C,A
+MVXST:
+      LD   HL,(MVPX%)          ' X 書き戻し
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (MVPX%),HL
+      LD   HL,(MVVX%)          ' VX ポインタ += 2
+      INC  HL
+      INC  HL
+      LD   (MVVX%),HL
+      LD   HL,(MVPY%)          ' --- Y ---
+      LD   A,(HL)
+      LD   C,A
+      LD   HL,(MVVY%)
+      LD   A,(HL)
+      LD   E,A
+      ADD  A,C
+      LD   C,A
+      LD   A,(MVWY%)
+      OR   A
+      JR   Z,MVYST
+      LD   A,(MVMY%)
+      CP   C
+      JR   NC,MVYST
+      BIT  7,E
+      JR   Z,MVYPOS
+      LD   A,(MVAYN%)
+      JR   MVYADJ
+MVYPOS:
+      LD   A,(MVAYP%)
+MVYADJ:
+      LD   D,A
+      LD   A,C
+      SUB  D
+      LD   C,A
+MVYST:
+      LD   HL,(MVPY%)          ' Y 書き戻し
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (MVPY%),HL
+      LD   HL,(MVVY%)          ' VY ポインタ += 2
+      INC  HL
+      INC  HL
+      LD   (MVVY%),HL
+      DEC  B
+      JP   NZ,MVLP
+MVDONE:
       EI
     END ASM
 END FUNCTION

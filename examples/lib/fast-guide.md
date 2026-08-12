@@ -73,6 +73,7 @@ HWスクロールが 0 コスト）はどの機種でも成立。絶対値は CP
 
 - **毎フレーム多数のスプライトを更新する** → `FAST_SPRITES`（OAM一括）。枚数が多いほど効く。
 - **敵群/編隊/星を一定方向に流す**（横/縦スクロール、リングラップ） → `FAST_DRIFT`（等速移動＋X/Y軸ラップ）。
+- **1体ずつ別方向に動かす**（散る破片・多方向弾・個別ベクトルの敵） → `FAST_MOVEV`（各自の速度 SVX%/SVY% で移動＋X/Y軸ラップ）。
 - **弾/粒子を撃ちっぱなしで飛ばし、画面外で消す** → `FAST_STREAM`（activeだけ移動＋画面外で自動deactivate）。
 - **弾×敵など「集合×集合」の当たりを毎フレームやる** → `FAST_COLLIDE`（発射で落ちる問題の特効薬）。
 - **BGタイルを毎フレーム大量に描き替える**（編隊・スクロール背景の列供給・全面書換） →
@@ -112,13 +113,14 @@ FORループ vs `FAST_DRIFT` で実測した交差点:
 |---|---|---|
 | `FAST_SPRITES(N)` | 全スプライト属性を OAM へ一括 | STG / アクション |
 | `FAST_DRIFT(base,n,vx,vy,wrapx,wrapy)` | スプライト群を等速移動＋X/Y軸ごとリングラップ（0=ラップ無し） | 横/縦スクロール敵・編隊・星 |
+| `FAST_MOVEV(base,n,wrapx,wrapy)` | スプライト群を各自の速度（SVX%/SVY%）で移動＋X/Y軸リングラップ（per-object） | 散る破片・多方向弾・個別移動の敵 |
 | `FAST_STREAM(base,n,vx,vy,xmax,ymax,parky)` | activeな物だけ等速移動、画面外で自動deactivate＋退避（生存数を返す） | 弾幕・粒子 |
 | `FAST_TILES(N)` | BGタイルN個を列/行/キャラ配列で一括 | 汎用（スクロール背景の列供給等） |
 | `FAST_TILEGRID(rows,cols,pitchx)` | 生存マスクを直接走査してタイル格子を一括（詰め替え不要） | 敵編隊/タイルマップの面描画 |
 | `FAST_COLLIDE(ns,ne)` | 全弾×全敵の AABB 当たりを1回のASMで解決（命中数を返す） | STG / アクション |
 
-「描く（SPRITES/TILES/TILEGRID）・動かす（DRIFT/STREAM）・当てる（COLLIDE）」の3系統が
-1フレーム分のバッチとして揃った。いずれも交差点 N≒8 以上で効く（§4）。
+「描く（SPRITES/TILES/TILEGRID）・動かす（DRIFT/MOVEV/STREAM）・当てる（COLLIDE）」の3系統が
+1フレーム分のバッチとして揃った（DRIFT=群一律／MOVEV=各自別ベクトル）。いずれも交差点 N≒8 以上で効く（§4）。
 
 **設計の結論**：3ジャンルの共通項は「フレーム同期・入力・HWスクロール・スプライト/タイルの
 一括描画・集合当たり」に収まり、**単一の `fast.msxb`（Core + FASTバッチ一族）で足りる**。

@@ -1605,7 +1605,11 @@ function finishTransform(ctx: any): TransformResult {
   // MAIN
   // ASM ブロックを事前収集（コード配置はプロローグで1回）＋共有一時変数を確保。
   collectAsm(program.toplevel);
-  for (const f of program.functions) collectAsm(f.body);
+  // 呼ばれない FUNCTION の ASM はプロローグへ POKE しない（本体も variantKeys が空で未出力
+  // なので、その ASM を HIMEM へ展開するのは純粋な無駄＝INCLUDE ライブラリの未使用関数が
+  // 丸ごと載る主因）。variantKeys は scanCalls（全文種＋ネスト式を網羅）が確定した
+  // 「1回でも呼ばれる関数」集合＝安全な到達判定。
+  for (const f of program.functions) if (variantKeys.has(f.name)) collectAsm(f.body);
   if (asmReg.size) { asmPT = ctx.pool.next("!"); asmQ = ctx.pool.next("!"); asmLo = ctx.pool.next("%"); asmHi = ctx.pool.next("%"); asmBase = ctx.pool.next("!"); }
 
   const mainItems: Item[] = [{ kind: "line", text: "' === MAIN ===" }];

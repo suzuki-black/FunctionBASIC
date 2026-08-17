@@ -1086,7 +1086,14 @@ function finishTransform(ctx: any): TransformResult {
   // else無し・本体が全てインライン可 → 1行IF
   const tryOneLineIf = (s: any, sc: any): string | null => {
     if (s.else) return null;
-    for (const t of s.then) if (stmtHasUserCall(t)) return null; // ネスト呼び出しはGOTO形式へ
+    for (const t of s.then) {
+      if (stmtHasUserCall(t)) return null; // ネスト呼び出しはGOTO形式へ
+      // 本体にコメントがあれば1行化しない。":" で "'コメント" を挟むと MSX では以降が全部コメント
+      // 扱いになり後続の文が消える（＆長いコメントで行が255超になる）。ブロック形式にしてコメントを
+      // 独立行へ出す。/ never inline a THEN-body containing a comment: a ":'comment" swallows every
+      // following statement in MSX-BASIC (and can overflow 255 bytes); emit the block form instead.
+      if (t.type === "Comment") return null;
+    }
     const parts: string[] = [];
     for (const t of s.then) {
       const txt = stmtToInline(t, sc);

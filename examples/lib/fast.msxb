@@ -12,6 +12,7 @@
 '
 '  収録 / included:
 '    FAST_SPRITES(N%) ... 全スプライトの属性(Y/X/絵/色)を OAM へ一括転送
+'    FAST_BIGSPRITES(base,n) ... 32x32合成物体(4枚1組)をplane baseからN個一括描画(大型敵/ボス/膨張用)
 '    FAST_DRIFT(base,n,vx,vy,wrapx,wrapy) ... スプライト群を等速で動かしX/Y軸ごとにリングラップ
 '    FAST_MOVEV(base,n,wrapx,wrapy) ... スプライト群を各自の速度(SVX%/SVY%)で動かしリングラップ(per-object)
 '    FAST_STREAM(base,n,vx,vy,xmax,ymax,parky) ... 弾/粒子をactiveだけ流し画面外で自動deactivate(生存数を返す)
@@ -81,6 +82,125 @@ FSPRLP:
       INC  HL
       LD   (PCP%),HL
       DJNZ FSPRLP
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_BIGSPRITES(BASE%, N%): 32x32 の合成物体 N 個を OAM の plane BASE から一括描画。
+'  MSX の 16x16 スプライトでは大きな物体(大型敵/ボス/膨張)が作れないので、4枚を 2x2 に
+'  組んで1つの大きな絵にする(ハード倍率は全体倍率なので選択的大型化に使えない、の回避)。
+'  1物体につきスプライト4枚を消費(planes BASE..BASE+4N-1)。BASE を空けておけば通常の
+'  PUT SPRITE / FAST_SPRITES(plane 0 から)と混在できる。N は最大 (32-BASE)/4。
+'  呼ぶ前に下の4配列(0..N-1)を用意する:
+'    BSY%()=左上Y, BSX%()=左上X, BSP%()=左上象限の絵番号, BSC%()=色
+'  絵は 4連番(TL=BSP, TR=BSP+1, BL=BSP+2, BR=BSP+3)= 32x32像を4分割した順。
+'  純BASICの双子: 各物体で PUT SPRITE を4回(左上/右上/左下/右下)呼ぶのを1回に畳む。
+' ------------------------------------------------------------
+FUNCTION FAST_BIGSPRITES(BASE%, N%)
+    GLOBAL BSY%
+    GLOBAL BSX%
+    GLOBAL BSP%
+    GLOBAL BSC%
+    GLOBAL BSN%
+    GLOBAL BSLO%
+    GLOBAL BSYP%
+    GLOBAL BSXP%
+    GLOBAL BSPP%
+    GLOBAL BSCP%
+    GLOBAL BSYV%
+    GLOBAL BSXV%
+    GLOBAL BSPV%
+    GLOBAL BSCV%
+    BSN% = N%
+    BSLO% = BASE% * 4          ' OAM 開始オフセット(1スプライト=4バイト)。plane BASE から書く
+    BSYP% = VARPTR(BSY%(0))
+    BSXP% = VARPTR(BSX%(0))
+    BSPP% = VARPTR(BSP%(0))
+    BSCP% = VARPTR(BSC%(0))
+    ASM
+      DI
+      LD   A,(BSLO%)            ' OAM &H1B00 + BASE*4 へ書込アドレス設定(他スプライトと混在可)
+      OUT  (&H99),A
+      LD   A,&H5B
+      OUT  (&H99),A
+      LD   A,(BSN%)
+      OR   A
+      JP   Z,BSDONE
+      LD   B,A                  ' B = 物体数
+BSLP:
+      LD   HL,(BSYP%)           ' 左上 Y/X/絵(*4)/色 を作業変数へ
+      LD   A,(HL)
+      LD   (BSYV%),A
+      LD   HL,(BSXP%)
+      LD   A,(HL)
+      LD   (BSXV%),A
+      LD   HL,(BSPP%)
+      LD   A,(HL)
+      ADD  A,A                  ' 16x16 は絵番号 x4
+      ADD  A,A
+      LD   (BSPV%),A
+      LD   HL,(BSCP%)
+      LD   A,(HL)
+      LD   (BSCV%),A
+      LD   A,(BSYV%)            ' --- TL ---
+      OUT  (&H98),A
+      LD   A,(BSXV%)
+      OUT  (&H98),A
+      LD   A,(BSPV%)
+      OUT  (&H98),A
+      LD   A,(BSCV%)
+      OUT  (&H98),A
+      LD   A,(BSYV%)            ' --- TR (X+16, 絵+1) ---
+      OUT  (&H98),A
+      LD   A,(BSXV%)
+      ADD  A,16
+      OUT  (&H98),A
+      LD   A,(BSPV%)
+      ADD  A,4
+      OUT  (&H98),A
+      LD   A,(BSCV%)
+      OUT  (&H98),A
+      LD   A,(BSYV%)            ' --- BL (Y+16, 絵+2) ---
+      ADD  A,16
+      OUT  (&H98),A
+      LD   A,(BSXV%)
+      OUT  (&H98),A
+      LD   A,(BSPV%)
+      ADD  A,8
+      OUT  (&H98),A
+      LD   A,(BSCV%)
+      OUT  (&H98),A
+      LD   A,(BSYV%)            ' --- BR (X+16,Y+16, 絵+3) ---
+      ADD  A,16
+      OUT  (&H98),A
+      LD   A,(BSXV%)
+      ADD  A,16
+      OUT  (&H98),A
+      LD   A,(BSPV%)
+      ADD  A,12
+      OUT  (&H98),A
+      LD   A,(BSCV%)
+      OUT  (&H98),A
+      LD   HL,(BSYP%)           ' 各ポインタ += 2
+      INC  HL
+      INC  HL
+      LD   (BSYP%),HL
+      LD   HL,(BSXP%)
+      INC  HL
+      INC  HL
+      LD   (BSXP%),HL
+      LD   HL,(BSPP%)
+      INC  HL
+      INC  HL
+      LD   (BSPP%),HL
+      LD   HL,(BSCP%)
+      INC  HL
+      INC  HL
+      LD   (BSCP%),HL
+      DEC  B                    ' 本体が長いので DJNZ でなく JP で戻る
+      JP   NZ,BSLP
+BSDONE:
       EI
     END ASM
 END FUNCTION

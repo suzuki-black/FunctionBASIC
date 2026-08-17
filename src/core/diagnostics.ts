@@ -247,6 +247,16 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `FOR ${p.range} は範囲が空です。MSX-BASIC は空範囲でも本体を1回実行します（意図せず1回走る/範囲外アクセスの恐れ）。境界を見直すか IF でガードしてください`,
     en: (p) => `FOR ${p.range} has an empty range; MSX-BASIC still runs the body once (may run unexpectedly or access out of range). Fix the bounds or guard with IF`,
   },
+  W_SPRITE_BEFORE_SCREEN: {
+    code: "W_SPRITE_BEFORE_SCREEN",
+    ja: () => "SPRITE 定義がこの後の SCREEN より前にあります。SCREEN はスプライトのパターンテーブルを初期化するため、このパターンは最初の SCREEN で消えて表示されません。SPRITE の定義は SCREEN の後で行ってください（また、定義後に SCREEN を呼び直すと再び消えます）",
+    en: () => "This SPRITE is defined before a later SCREEN. SCREEN clears the sprite pattern table, so this pattern is wiped by the first SCREEN and will not show. Define sprites AFTER SCREEN (and note that re-running SCREEN after defining them clears them again)",
+  },
+  W_TEXT_IN_BITMAP_SCREEN: {
+    code: "W_TEXT_IN_BITMAP_SCREEN",
+    ja: (p) => `SCREEN ${p.mode}（ビットマップ画面）では素の PRINT / LOCATE の文字は画面に表示されません。文字を出すには OPEN "GRP:" AS #1 を開いて PRESET(x,y) で位置を決め PRINT #1 で描いてください`,
+    en: (p) => `In SCREEN ${p.mode} (a bitmap screen) plain PRINT / LOCATE text is not shown on screen. To draw text, OPEN "GRP:" AS #1, position with PRESET(x,y) and use PRINT #1`,
+  },
   E_EVENT_KIND: {
     code: "E_EVENT_KIND",
     ja: (p) => `EVENT の種別が不明です: ${p.v}（EVENT TIMER n … END EVENT）`,

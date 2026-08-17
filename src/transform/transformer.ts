@@ -25,6 +25,7 @@ import { assembleZ80 } from "../asm/z80asm.ts";
 import { typeCheck } from "./typecheck.ts";
 import { inlineConsts } from "./const-inline.ts";
 import { checkForRanges } from "./check-for-range.ts";
+import { checkScreen } from "./check-screen.ts";
 import { checkNameCollisions } from "./check-names.ts";
 import { checkNameRegistry } from "./check-name-registry.ts";
 import { foldProgram } from "./fold-expr.ts";
@@ -400,6 +401,9 @@ export function transform(program: Program, opts: TransformOptions = {}): Transf
   // MACRO 呼び出しを本体式へインライン展開（lowerStruct より前。展開結果の STRUCT フィールドも
   // 後段で処理される）。展開後は関数/配列呼び出しだけが残る。
   diagnostics.push(...expandMacros(program));
+  // SCREEN まわりの静的な落とし穴を警告（lowerSprite より前＝SpriteDef が残っている段階で見る）。
+  // (1) SPRITE 定義が後続 SCREEN で消える (2) ビットマップ画面で素の PRINT は表示されない。
+  diagnostics.push(...checkScreen(program));
   // SPRITE ドット絵定義を CONST（パターン番号）＋ SPRITE$ 代入へ desugar。checkExplicit より前に
   // 走らせ、注入した CONST でパターン名が「宣言済み」扱いになる（PUT SPRITE …, name が通る）。
   const spriteResult = lowerSprite(program);

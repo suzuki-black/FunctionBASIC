@@ -456,6 +456,171 @@ MVDONE:
 END FUNCTION
 
 ' ------------------------------------------------------------
+'  FAST_MOVEDRAW(BASE%, N%, WRAPX%, WRAPY%): FAST_MOVEV(移動) と FAST_SPRITES(描画) を
+'  1回のASMに融合。各面を各自の速度(SVX%/SVY%)で動かし、その場で OAM(plane BASE から)へ
+'  一括書き込みまで済ませる。毎フレームの「移動→描画」を USR 1回にまとめ、VARPTR 段取りと
+'  USR 往復のオーバヘッドを半減する(スプライトが少ない~多い規模で 60fps を守りやすくする)。
+'  X/Y はリング [0..WRAP] で自動ラップ(WRAP=0 でその軸はラップ無し=素直に加算)。
+'  呼ぶ前に位置＋速度＋絵＋色の6配列を [BASE..] で揃える:
+'    SPX%()/SPY%()=位置, SVX%()/SVY%()=各自の速度, SPP%()=絵番号(16x16は内部で x4), SPC%()=色
+'  純BASICの双子: FAST_MOVEV(...) の直後に FAST_SPRITES(...) を呼ぶのと同じ結果(を1回で)。
+' ------------------------------------------------------------
+FUNCTION FAST_MOVEDRAW(BASE%, N%, WRAPX%, WRAPY%)
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    GLOBAL SVX%
+    GLOBAL SVY%
+    GLOBAL MDN%
+    GLOBAL MDWX%
+    GLOBAL MDWY%
+    GLOBAL MDMX%
+    GLOBAL MDMY%
+    GLOBAL MDAXP%
+    GLOBAL MDAXN%
+    GLOBAL MDAYP%
+    GLOBAL MDAYN%
+    GLOBAL MDOL%
+    GLOBAL MDPX%
+    GLOBAL MDPY%
+    GLOBAL MDPP%
+    GLOBAL MDPC%
+    GLOBAL MDVX%
+    GLOBAL MDVY%
+    MDN% = N%
+    IF WRAPX% > 0 THEN
+        MDWX% = 1
+        MDMX% = WRAPX%
+        MDAXP% = WRAPX% + 1
+        MDAXN% = 255 - WRAPX%
+    ELSE
+        MDWX% = 0
+    END IF
+    IF WRAPY% > 0 THEN
+        MDWY% = 1
+        MDMY% = WRAPY%
+        MDAYP% = WRAPY% + 1
+        MDAYN% = 255 - WRAPY%
+    ELSE
+        MDWY% = 0
+    END IF
+    MDOL% = (BASE% * 4) AND 255
+    MDPX% = VARPTR(SPX%(BASE%))
+    MDPY% = VARPTR(SPY%(BASE%))
+    MDPP% = VARPTR(SPP%(BASE%))
+    MDPC% = VARPTR(SPC%(BASE%))
+    MDVX% = VARPTR(SVX%(BASE%))
+    MDVY% = VARPTR(SVY%(BASE%))
+    ASM
+      DI
+      LD   A,(MDOL%)           ' OAM &H1B00+BASE*4 へ書込アドレス設定 / point VDP at OAM (write)
+      OUT  (&H99),A
+      LD   A,&H5B              ' &H1B OR &H40 (high byte + write bit)
+      OUT  (&H99),A
+      LD   A,(MDN%)
+      OR   A
+      JP   Z,MDDONE
+      LD   B,A                 ' B = 体数 / plane counter
+MDLP:
+      LD   HL,(MDPY%)          ' --- Y: 移動 ---
+      LD   A,(HL)
+      LD   C,A
+      LD   HL,(MDVY%)
+      LD   A,(HL)
+      LD   E,A                 ' E = VY(符号ビットで巻き向き)
+      ADD  A,C
+      LD   C,A                 ' C = newY
+      LD   A,(MDWY%)
+      OR   A
+      JR   Z,MDYST
+      LD   A,(MDMY%)
+      CP   C
+      JR   NC,MDYST
+      BIT  7,E
+      JR   Z,MDYPOS
+      LD   A,(MDAYN%)
+      JR   MDYADJ
+MDYPOS:
+      LD   A,(MDAYP%)
+MDYADJ:
+      LD   D,A
+      LD   A,C
+      SUB  D
+      LD   C,A
+MDYST:
+      LD   HL,(MDPY%)          ' Y 書き戻し(高位バイト0)＋ポインタ+2
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (MDPY%),HL
+      LD   HL,(MDVY%)
+      INC  HL
+      INC  HL
+      LD   (MDVY%),HL
+      LD   A,C                 ' OAM へ Y / write Y to OAM
+      OUT  (&H98),A
+      LD   HL,(MDPX%)          ' --- X: 移動 ---
+      LD   A,(HL)
+      LD   C,A
+      LD   HL,(MDVX%)
+      LD   A,(HL)
+      LD   E,A
+      ADD  A,C
+      LD   C,A                 ' C = newX
+      LD   A,(MDWX%)
+      OR   A
+      JR   Z,MDXST
+      LD   A,(MDMX%)
+      CP   C
+      JR   NC,MDXST
+      BIT  7,E
+      JR   Z,MDXPOS
+      LD   A,(MDAXN%)
+      JR   MDXADJ
+MDXPOS:
+      LD   A,(MDAXP%)
+MDXADJ:
+      LD   D,A
+      LD   A,C
+      SUB  D
+      LD   C,A
+MDXST:
+      LD   HL,(MDPX%)          ' X 書き戻し＋ポインタ+2
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (MDPX%),HL
+      LD   HL,(MDVX%)
+      INC  HL
+      INC  HL
+      LD   (MDVX%),HL
+      LD   A,C                 ' OAM へ X / write X to OAM
+      OUT  (&H98),A
+      LD   HL,(MDPP%)          ' --- 絵番号(16x16は x4) ---
+      LD   A,(HL)
+      ADD  A,A
+      ADD  A,A
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (MDPP%),HL
+      LD   HL,(MDPC%)          ' --- 色 ---
+      LD   A,(HL)
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (MDPC%),HL
+      DEC  B
+      JP   NZ,MDLP
+MDDONE:
+      EI
+    END ASM
+END FUNCTION
+
+' ------------------------------------------------------------
 '  FAST_STREAM(BASE%, N%, VX%, VY%, XMAX%, YMAX%, PARKY%): 弾/粒子など「撃ちっぱなし」
 '  の群を1回のASMで。active な物だけを等速 (VX,VY) で流し、プレイ領域 [0..XMAX]x[0..YMAX]
 '  を出た物は active=0 にして Y=PARKY(画面外)へ退避する。生存(active)数を返す。

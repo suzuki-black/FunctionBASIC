@@ -4,6 +4,37 @@
 バージョンは `editor/app.js` の `APP_VERSION` と `src-tauri/tauri.conf.json` の `version` に一致させる。
 0.1.44 以前の詳細は git 履歴を参照。
 
+## [0.1.45] - 2026-08-20
+
+### Added
+- **車よけレース例（`examples/highway-nofast.msxb` / `examples/highway-fast.msxb`）**:
+  FAST ライブラリの有用性を「同じゲームの before/after」で見せる題材。
+  - nofast＝純BASIC：OAM へ Y だけ `VPOKE` 直書き、路面マーカーが共有する1文字の8バイト
+    パターンを毎フレームずらして路面全体をスクロール、敵車はスロット別6色。低fpsでも大きく
+    飛ばして「スピード感」を出す割り切り。
+  - fast＝全ASMホットループ `HWFRAME`：移動＋OAM描画＋画面端の折返し＋乱数レーン＋当たり＋
+    路面スクロールを1本のASMに畳み、配列 `VARPTR` は起動時に1回だけキャッシュ。BASIC は入力と
+    スコアだけ。真の60fps・ピクセル単位のぬるぬる、2枚重ねの2色カラフルな車。
+- **ブロック崩し例（`examples/blocks.msxb`）**: 10面（DATA）＋ブロック耐久度（1〜3）＋壊れない
+  金ブロック（クリア条件は金を除外）＋文字エンディング。SCREEN 2 ＋グラフィック文字（`OPEN "GRP:"`）。
+- **`FAST_MOVEDRAW`（`examples/lib/fast.msxb`）**: 移動（`FAST_MOVEV`）と描画（`FAST_SPRITES`）を
+  1パスに束ねたプリミティブ。
+- **`FAST_BIGSPRITES`（32x32合成スプライト）** / **`FAST_MOVEV`（per-object 速度の一括移動）**。
+- **`W_SPRITE_BEFORE_SCREEN` / `W_TEXT_IN_BITMAP_SCREEN` 警告**: (1) トップレベルで `SCREEN` より
+  前の `SPRITE` 定義（後続 `SCREEN` がパターンテーブルを消す）、(2) ビットマップ画面（`SCREEN>=2`）
+  での素の `PRINT`（表示されない）を検出。誤検知ほぼゼロ狙いの高確度ケースのみ。コード生成は無変更。
+- **ドキュメント（`docs/fast-library.md`）**: FAST ライブラリの有用性を車よけレースで測る英日ガイド。
+  速度化の2段階（差し込むバッチ命令 → ホットループ丸ごとASM）と使い分けを解説。README からリンク。
+
+### Fixed
+- **1行IF化（tryOneLineIf）のコメント破壊**: `THEN` 本体にコメントを含むネスト `IF` を `:` 連結で
+  1行化すると、`:'コメント` 以降が全部コメント扱いになり後続の文が消える／長い日本語コメントで
+  物理255バイト超（`E_LINE_TOO_LONG`）になる不具合を修正（本体にコメントがあればブロック形式で出力）。
+
+### Perf
+- **DCE**: 呼ばれない `FUNCTION` の ASM をプロローグに出力しない（未使用の FAST 関数が `INCLUDE` で
+  全展開される無駄を解消）。
+
 ## [0.1.44] - 2026-08-11
 
 ### Added

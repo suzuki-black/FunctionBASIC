@@ -1,0 +1,765 @@
+' ============================================================
+'  BLOCKS - オリジナルのブロック崩し(完全オリジナル / 公開サンプル)
+'  BLOCKS - an original block-breaker (100% original, public sample)
+'
+'  FAST ライブラリ不使用の「オールBASIC」。それでもヌルヌル動く。
+'  No FAST library - pure BASIC, and it still runs smoothly.
+'
+'  ヌルヌルの秘訣 / why it is smooth:
+'    ブロックはビットマップ(LINE BF)で「一度だけ」描く静止背景。ボールとパドルは
+'    スプライト。スプライトは背景と別プレーンなので、毎フレーム背景を描き直さずに
+'    ピクセル単位で滑らせられる(ちらつき無し)。1フレームの仕事はボール1個+パドル
+'    移動+当たり判定だけなので、純BASICでも軽い。
+'    Bricks are a static bitmap drawn once. Ball and paddle are sprites on a separate
+'    plane, so they glide pixel-by-pixel without redrawing the background (no flicker).
+'
+'  流れ / flow: TITLE -> PLAY(全10面) -> ENDING(全クリア) / GAME OVER (ちゃんと一周する)
+'  ブロック / bricks: 1..3=耐久(ヒットで色が変わる) / 9=金(壊せない・跳ね返るだけ)。
+'                     金は数えず、壊せるブロックを全部消せばその面クリア。
+'  音 / sound : BGMなし・効果音のみ(PLAYのMMLで発音。PLAYは割り込み再生で非ブロッキング)
+'               No BGM, SFX only (MML via PLAY; PLAY is interrupt-driven, non-blocking).
+'
+'  そうさ / CONTROLS: 左右=パドル / left-right = move paddle, スペース=発射・開始 / SPACE = launch, start
+'
+'  対応機種 / MACHINE: どの MSX でも動く(SCREEN 2 + スプライト + PLAY は MSX1 から)。
+'                      Runs on any MSX (SCREEN 2 + sprites + PLAY exist since MSX1).
+' ============================================================
+
+' ---- 盤面の定数 / playfield constants ----
+CONST LEFTW% = 8                  ' 左の内壁X / left inner wall X
+CONST RIGHTW% = 248               ' 右の内壁X / right inner wall X
+CONST TOPW% = 16                  ' 上の内壁Y / top inner wall Y
+CONST BR% = 4                     ' ボール半径 / ball radius
+CONST PADY% = 168                 ' パドルのY(固定) / paddle Y (fixed)
+CONST PSPD% = 4                   ' パドル速度 / paddle speed
+CONST VYS% = 3                    ' ボールの縦速度 / ball vertical speed
+
+' ---- ブロック格子の定数 / brick grid constants ----
+CONST COLS% = 10                  ' 列数 / columns
+CONST ROWS% = 6                   ' 行数 / rows
+CONST BW% = 24                    ' ブロック幅 / brick width
+CONST BH% = 12                    ' ブロック高 / brick height
+CONST BTOP% = 26                  ' ブロック上端Y / brick top Y
+CONST GOLD% = 9                   ' 壊せない金ブロックの印 / marker for the unbreakable gold brick
+CONST NLEVELS% = 10               ' 総ステージ数 / total stages
+
+' ---- 状態(SELECT CASE が無いので数値+IF連鎖) / states ----
+CONST ST_TITLE% = 0
+CONST ST_SERVE% = 1               ' 発射待ち(ボールはパドル上) / waiting to launch
+CONST ST_PLAY% = 2
+CONST ST_OVER% = 3
+CONST ST_ENDING% = 4              ' 全10面クリアの文字エンディング / text ending after all 10 stages
+
+GLOBAL BCX%                       ' ボール中心X / ball center X
+GLOBAL BCY%                       ' ボール中心Y / ball center Y
+GLOBAL VX%                        ' ボール速度X / ball velocity X
+GLOBAL VY%                        ' ボール速度Y / ball velocity Y
+GLOBAL PX%                        ' パドル左端X / paddle left X
+GLOBAL STATE%                     ' 現在の状態 / current state
+GLOBAL SCORE%
+GLOBAL LIVES%
+GLOBAL LEVEL%
+GLOBAL REMAIN%                    ' 残りの「壊せる」ブロック数(金は数えない) / breakable bricks left
+GLOBAL PTRG%                      ' 前フレームのトリガ(エッジ検出) / prev trigger
+GLOBAL BRICK%                     ' 各セルの状態 0=空/1..3=耐久/9=金 / per-cell 0=empty,1..3=HP,9=gold
+GLOBAL HPCOL%                     ' 耐久→色 / HP -> colour
+GLOBAL LVROW$                     ' 全10面の行レイアウト文字列 / row layout strings for all 10 stages
+GLOBAL BSFX$                      ' 行ごとの破壊音MML / break SFX per row
+
+' ============================================================
+'  効果音 / sound effects (BGMなし)
+' ============================================================
+FUNCTION SFXWALL()
+    PLAY "V10O5L64C"
+END FUNCTION
+
+FUNCTION SFXPAD()
+    PLAY "V13O5L48E"
+END FUNCTION
+
+FUNCTION SFXLAUNCH()
+    PLAY "V13O5L48CO6C"
+END FUNCTION
+
+' 上の行(小さいR%)ほど高い音 / higher rows play higher pitch
+FUNCTION SFXBRICK(R%)
+    GLOBAL BSFX$
+    PLAY BSFX$(R%)
+END FUNCTION
+
+FUNCTION SFXLOSE()
+    PLAY "V13O4L16CO3L16GO3L8C"
+END FUNCTION
+
+FUNCTION SFXCLEAR()
+    PLAY "V13O5L32CEGO6C"
+END FUNCTION
+
+FUNCTION SFXOVER()
+    PLAY "V13O4L8CO3L8AL8FL4C"
+END FUNCTION
+
+' 金ブロックに当たった(壊れず跳ね返る)= 金属的な高い一撃 / hit gold: metallic clink
+FUNCTION SFXGOLD()
+    PLAY "V12O6L64C"
+END FUNCTION
+
+' 耐久ブロックにダメージ(まだ壊れない)= 鈍い一撃 / damaged but not destroyed
+FUNCTION SFXHIT()
+    PLAY "V11O5L64C"
+END FUNCTION
+
+' 全10面クリアのファンファーレ(短いSE。BGMループではない) / short victory fanfare
+FUNCTION SFXENDING()
+    PLAY "V13O5L16CEGO6CEGO7L4C"
+END FUNCTION
+
+' ============================================================
+'  描画 / drawing
+' ============================================================
+' 内壁を1回だけ描く(静止背景) / draw the walls once (static)
+FUNCTION DRAWWALLS()
+    LINE (5, TOPW% - 3)-(250, TOPW% - 3), 14
+    LINE (5, TOPW% - 3)-(5, 191), 14
+    LINE (250, TOPW% - 3)-(250, 191), 14
+END FUNCTION
+
+' ブロック1個を描く。色は状態で決まる(耐久=HP色 / 金=灰=鋼)。値は BRICK% から読む。
+' Draw one brick; colour comes from its state (HP colour, or grey for the unbreakable gold brick).
+FUNCTION DRAWBRICK(C%, R%)
+    GLOBAL BRICK%
+    GLOBAL HPCOL%
+    V% = BRICK%(R% * COLS% + C%)
+    X0% = LEFTW% + C% * BW%
+    Y0% = BTOP% + R% * BH%
+    CO% = 14                       ' 金/壊せない = 灰(鋼) / gold-unbreakable = grey (steel)
+    IF V% <> GOLD% THEN
+        CO% = HPCOL%(V%)           ' 1..3 の耐久色 / colour for HP 1..3
+    END IF
+    LINE (X0%, Y0%)-(X0% + BW% - 2, Y0% + BH% - 2), CO%, BF
+END FUNCTION
+
+' ブロック1個を消す(黒で塗る) / erase one brick (paint black)
+FUNCTION ERASEBRICK(C%, R%)
+    X0% = LEFTW% + C% * BW%
+    Y0% = BTOP% + R% * BH%
+    LINE (X0%, Y0%)-(X0% + BW% - 2, Y0% + BH% - 2), 1, BF
+END FUNCTION
+
+' 現在の面(LEVEL)のレイアウトを LVROW$ から読んで格子を組み、描く。
+' 各セル: 0=空 / 1..3=耐久 / 9=金。REMAIN% は「壊せる(1..3)」ブロックだけ数える。
+' Build the current stage from LVROW$; REMAIN% counts only breakable (1..3) bricks.
+FUNCTION BUILDBRICKS()
+    GLOBAL BRICK%
+    GLOBAL REMAIN%
+    GLOBAL LVROW$
+    GLOBAL LEVEL%
+    REMAIN% = 0
+    BASE% = (LEVEL% - 1) * ROWS%   ' この面の先頭行インデックス / first row of this stage
+    FOR R% = 0 TO ROWS% - 1
+        ROW$ = LVROW$(BASE% + R%)
+        FOR C% = 0 TO COLS% - 1
+            V% = VAL(MID$(ROW$, C% + 1, 1))
+            BRICK%(R% * COLS% + C%) = V%
+            IF V% > 0 THEN
+                DRAWBRICK(C%, R%)
+            END IF
+            IF V% > 0 THEN
+                IF V% <> GOLD% THEN
+                    REMAIN% = REMAIN% + 1
+                END IF
+            END IF
+        NEXT C%
+    NEXT R%
+END FUNCTION
+
+' ブロック領域だけを消す(次の面へ移る前に。金ブロックは自然には消えず残るため) /
+' Clear the brick area before loading the next stage (gold bricks never disappear on their own).
+FUNCTION CLEARFIELD()
+    LINE (LEFTW%, BTOP%)-(RIGHTW%, BTOP% + ROWS% * BH%), 1, BF
+END FUNCTION
+
+' パドルを2枚のスプライトで描く(32px幅) / draw paddle as two sprites (32px wide)
+FUNCTION DRAWPADDLE()
+    GLOBAL PX%
+    PUT SPRITE 0, (PX%, PADY%), 7, PADL
+    PUT SPRITE 1, (PX% + 16, PADY%), 7, PADR
+END FUNCTION
+
+' 全スプライトを画面外へ退避(タイトル/ゲームオーバー用) / park all sprites off-screen
+FUNCTION HIDESPRITES()
+    PUT SPRITE 0, (0, 210), 1, PADL
+    PUT SPRITE 1, (0, 210), 1, PADR
+    PUT SPRITE 2, (0, 210), 1, BALL
+END FUNCTION
+
+' HUD 全体(ラベル＋3数値)を描く。ゲーム開始時に一度だけ呼ぶ(重いので毎回は呼ばない)。
+' Draw the whole HUD (labels + 3 numbers) once at game start.
+FUNCTION DRAWHUD()
+    LINE (0, 0)-(255, 7), 1, BF
+    PRESET (0, 0)
+    PRINT #1, "SCORE"
+    PRESET (112, 0)
+    PRINT #1, "LV"
+    PRESET (160, 0)
+    PRINT #1, "BALL"
+    DRAWSCORE()
+    DRAWLEVEL()
+    DRAWLIVES()
+END FUNCTION
+
+' スコアの数字だけを小さく描き直す。グラフィック文字は遅いので、ブロック破壊毎はここだけ呼ぶ
+' (帯全体22文字の描き直しをやめ約6文字に=一瞬止まる問題の解消)。
+' Redraw only the score number. Graphic text is slow, so on each brick hit we redraw just this
+' small field (~6 chars) instead of the whole 22-char HUD line (fixes the per-brick stutter).
+FUNCTION DRAWSCORE()
+    GLOBAL SCORE%
+    LINE (48, 0)-(107, 7), 1, BF
+    PRESET (48, 0)
+    PRINT #1, SCORE%
+END FUNCTION
+
+FUNCTION DRAWLEVEL()
+    GLOBAL LEVEL%
+    LINE (136, 0)-(155, 7), 1, BF
+    PRESET (136, 0)
+    PRINT #1, LEVEL%
+END FUNCTION
+
+FUNCTION DRAWLIVES()
+    GLOBAL LIVES%
+    LINE (200, 0)-(219, 7), 1, BF
+    PRESET (200, 0)
+    PRINT #1, LIVES%
+END FUNCTION
+
+' ============================================================
+'  操作対象の移動 / movement
+' ============================================================
+' パドル: 左右キーで動かして描く / paddle: move with left-right and draw
+FUNCTION MOVEPADDLE()
+    GLOBAL PX%
+    J% = STICK(0)
+    IF J% = 2 OR J% = 3 OR J% = 4 THEN
+        PX% = PX% + PSPD%
+    END IF
+    IF J% = 6 OR J% = 7 OR J% = 8 THEN
+        PX% = PX% - PSPD%
+    END IF
+    IF PX% < LEFTW% THEN
+        PX% = LEFTW%
+    END IF
+    IF PX% > RIGHTW% - 32 THEN
+        PX% = RIGHTW% - 32
+    END IF
+    DRAWPADDLE()
+END FUNCTION
+
+' 発射待ち: ボールをパドル中央の上に乗せて描く / rest ball on paddle center
+FUNCTION SERVEBALL()
+    GLOBAL BCX%
+    GLOBAL BCY%
+    GLOBAL PX%
+    BCX% = PX% + 16
+    BCY% = PADY% - BR% - 1
+    PUT SPRITE 2, (BCX% - 8, BCY% - 8), 15, BALL
+END FUNCTION
+
+' 発射: 上向きへ。左右は気分で(RND) / launch upward, random horizontal
+FUNCTION LAUNCH()
+    GLOBAL VX%
+    GLOBAL VY%
+    GLOBAL STATE%
+    VY% = 0 - VYS%
+    VX% = 2
+    IF RND(1) < 0.5 THEN
+        VX% = 0 - 2
+    END IF
+    STATE% = ST_PLAY%
+    SFXLAUNCH()
+END FUNCTION
+
+' パドルに当たった: 当てた位置で反射角を変える(アーケードの操作感) / angle by hit position
+FUNCTION PADHIT()
+    GLOBAL BCX%
+    GLOBAL BCY%
+    GLOBAL VX%
+    GLOBAL VY%
+    GLOBAL PX%
+    OFF% = BCX% - (PX% + 16)
+    IF OFF% < 0 - 10 THEN
+        VX% = 0 - 3
+    END IF
+    IF OFF% >= 0 - 10 THEN
+        IF OFF% < 0 - 3 THEN
+            VX% = 0 - 2
+        END IF
+    END IF
+    IF OFF% >= 0 - 3 THEN
+        IF OFF% <= 3 THEN
+            IF VX% >= 0 THEN
+                VX% = 1
+            END IF
+            IF VX% < 0 THEN
+                VX% = 0 - 1
+            END IF
+        END IF
+    END IF
+    IF OFF% > 3 THEN
+        IF OFF% <= 10 THEN
+            VX% = 2
+        END IF
+    END IF
+    IF OFF% > 10 THEN
+        VX% = 3
+    END IF
+    VY% = 0 - VYS%
+    BCY% = PADY% - BR% - 1
+    SFXPAD()
+END FUNCTION
+
+' ボール直下の格子セルを調べ、ブロックがあれば当たり処理へ / hit-test the cell under the ball
+FUNCTION CHECKBRICK()
+    GLOBAL BCX%
+    GLOBAL BCY%
+    GLOBAL BRICK%
+    CX% = (BCX% - LEFTW%) \ BW%
+    CY% = (BCY% - BTOP%) \ BH%
+    IF CY% >= 0 THEN
+        IF CY% < ROWS% THEN
+            IF CX% >= 0 THEN
+                IF CX% < COLS% THEN
+                    IDX% = CY% * COLS% + CX%
+                    V% = BRICK%(IDX%)
+                    IF V% > 0 THEN
+                        HITBRICK(CX%, CY%, IDX%, V%)
+                    END IF
+                END IF
+            END IF
+        END IF
+    END IF
+END FUNCTION
+
+' セル(CX,CY / IDX)のブロックに当たった。V=現在値。どの当たりでも縦反射する。
+'  金(9): 壊れず跳ね返るだけ。耐久(1..3): 1減らし、0で破壊(得点・残数減・クリア判定)、
+'  残れば色替え(ダメージ表示)。/ Handle a brick hit: gold just bounces; HP bricks lose 1
+'  and break at 0 (score, count, clear check), otherwise change colour to show damage.
+FUNCTION HITBRICK(CX%, CY%, IDX%, V%)
+    GLOBAL BRICK%
+    GLOBAL REMAIN%
+    GLOBAL SCORE%
+    GLOBAL VY%
+    VY% = 0 - VY%
+    IF V% = GOLD% THEN
+        SFXGOLD()
+    END IF
+    IF V% <> GOLD% THEN
+        HP% = V% - 1
+        BRICK%(IDX%) = HP%
+        SCORE% = SCORE% + 10
+        DRAWSCORE()
+        IF HP% = 0 THEN
+            ERASEBRICK(CX%, CY%)
+            REMAIN% = REMAIN% - 1
+            SFXBRICK(CY%)
+            IF REMAIN% <= 0 THEN
+                NEXTLEVEL()
+            END IF
+        END IF
+        IF HP% > 0 THEN
+            DRAWBRICK(CX%, CY%)
+            SFXHIT()
+        END IF
+    END IF
+END FUNCTION
+
+' ボール1個ぶんの1フレーム更新 / advance the ball by one frame
+FUNCTION MOVEBALL()
+    GLOBAL BCX%
+    GLOBAL BCY%
+    GLOBAL VX%
+    GLOBAL VY%
+    GLOBAL PX%
+    GLOBAL STATE%
+    BCX% = BCX% + VX%
+    BCY% = BCY% + VY%
+    ' 壁で反射 / bounce off walls
+    IF BCX% - BR% <= LEFTW% THEN
+        BCX% = LEFTW% + BR%
+        VX% = 0 - VX%
+        SFXWALL()
+    END IF
+    IF BCX% + BR% >= RIGHTW% THEN
+        BCX% = RIGHTW% - BR%
+        VX% = 0 - VX%
+        SFXWALL()
+    END IF
+    IF BCY% - BR% <= TOPW% THEN
+        BCY% = TOPW% + BR%
+        VY% = 0 - VY%
+        SFXWALL()
+    END IF
+    ' パドルで反射(下降中のみ) / bounce off paddle (only while descending)
+    IF VY% > 0 THEN
+        IF BCY% + BR% >= PADY% THEN
+            IF BCY% <= PADY% + 8 THEN
+                IF BCX% >= PX% THEN
+                    IF BCX% <= PX% + 31 THEN
+                        PADHIT()
+                    END IF
+                END IF
+            END IF
+        END IF
+    END IF
+    ' ブロック当たり / brick collision
+    CHECKBRICK()
+    ' 下へ落ちたらミス / fell below: lose a ball
+    IF BCY% - BR% > 190 THEN
+        LOSELIFE()
+    END IF
+    ' まだプレイ中なら描画(状態が変わっていたら次フレームに任せる) / draw if still playing
+    IF STATE% = ST_PLAY% THEN
+        PUT SPRITE 2, (BCX% - 8, BCY% - 8), 15, BALL
+    END IF
+END FUNCTION
+
+' ============================================================
+'  進行 / progression
+' ============================================================
+FUNCTION LOSELIFE()
+    GLOBAL LIVES%
+    GLOBAL STATE%
+    LIVES% = LIVES% - 1
+    SFXLOSE()
+    DRAWLIVES()
+    IF LIVES% <= 0 THEN
+        GAMEOVERSCREEN()
+    END IF
+    IF LIVES% > 0 THEN
+        STATE% = ST_SERVE%
+    END IF
+END FUNCTION
+
+' 壊せるブロックを全消し: 最終面なら文字エンディング、そうでなければ次の面へ。
+' All breakable bricks cleared: show the ending on the last stage, otherwise load the next stage.
+FUNCTION NEXTLEVEL()
+    GLOBAL LEVEL%
+    GLOBAL STATE%
+    IF LEVEL% >= NLEVELS% THEN
+        ENDINGSCREEN()
+    END IF
+    IF LEVEL% < NLEVELS% THEN
+        LEVEL% = LEVEL% + 1
+        SFXCLEAR()
+        CLEARFIELD()               ' 前の面の金ブロック等を消してから組み直す
+        BUILDBRICKS()
+        DRAWLEVEL()
+        STATE% = ST_SERVE%
+    END IF
+END FUNCTION
+
+' ============================================================
+'  画面遷移 / screen transitions
+' ============================================================
+FUNCTION GOTITLE()
+    GLOBAL STATE%
+    ' SCREEN はスプライトのパターンを消すので、ここでは呼ばない(初回のMAINで1回だけ)。
+    ' Do NOT call SCREEN here; it would wipe the sprite patterns (done once in MAIN).
+    COLOR 15, 1, 1
+    CLS
+    HIDESPRITES()
+    ' 飾りのブロック列 / a decorative brick row
+    FOR C% = 0 TO COLS% - 1
+        LINE (LEFTW% + C% * BW%, 40)-(LEFTW% + C% * BW% + BW% - 2, 50), 8 + (C% AND 3), BF
+    NEXT C%
+    PRESET (60, 72)
+    PRINT #1, "== B L O C K S =="
+    PRESET (52, 90)
+    PRINT #1, "CLEAR ALL 10 STAGES"
+    PRESET (24, 108)
+    PRINT #1, "LEFT / RIGHT : MOVE PADDLE"
+    PRESET (24, 124)
+    PRINT #1, "SPACE       : LAUNCH BALL"
+    PRESET (52, 156)
+    PRINT #1, "PUSH SPACE TO START"
+    STATE% = ST_TITLE%
+END FUNCTION
+
+FUNCTION STARTGAME()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    GLOBAL LIVES%
+    GLOBAL LEVEL%
+    GLOBAL PX%
+    ' SCREEN は呼ばない(パターン保持のため)。CLS で画面だけ消す。
+    ' No SCREEN here (keep sprite patterns); CLS clears only the screen.
+    COLOR 15, 1, 1
+    CLS
+    SCORE% = 0
+    LIVES% = 3
+    LEVEL% = 1
+    PX% = 112
+    DRAWWALLS()
+    BUILDBRICKS()
+    DRAWHUD()
+    DRAWPADDLE()
+    STATE% = ST_SERVE%
+END FUNCTION
+
+FUNCTION GAMEOVERSCREEN()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    HIDESPRITES()
+    PRESET (68, 80)
+    PRINT #1, "G A M E   O V E R"
+    PRESET (92, 108)
+    PRINT #1, "SCORE"; SCORE%
+    PRESET (48, 140)
+    PRINT #1, "PUSH SPACE TO RETURN"
+    STATE% = ST_OVER%
+    SFXOVER()
+END FUNCTION
+
+' 全10面クリアの文字エンディング / text ending after clearing all 10 stages
+FUNCTION ENDINGSCREEN()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    HIDESPRITES()
+    CLS
+    PRESET (64, 56)
+    PRINT #1, "CONGRATULATIONS!"
+    PRESET (20, 88)
+    PRINT #1, "YOU CLEARED ALL 10 STAGES!"
+    PRESET (92, 116)
+    PRINT #1, "SCORE"; SCORE%
+    PRESET (48, 152)
+    PRINT #1, "PUSH SPACE TO RETURN"
+    STATE% = ST_ENDING%
+    SFXENDING()
+END FUNCTION
+
+' ============================================================
+'  メイン / MAIN
+' ============================================================
+SCREEN 2, 2
+' SCREEN 2 では素の PRINT/LOCATE の文字は画面に出ない(テキスト面が非表示)。
+' 画面へ文字を出すには GRP: を開いて PRINT #1(グラフィック文字)を使う。
+' In SCREEN 2 plain PRINT is invisible; open GRP: and use PRINT #1 for on-screen text.
+OPEN "GRP:" AS #1
+KEY OFF
+COLOR 15, 1, 1
+CLS
+
+' --- スプライト定義は SCREEN の「後」で(SCREEN はパターンテーブルを初期化するため) ---
+' --- Define sprites AFTER SCREEN: the SCREEN statement clears the sprite pattern table ---
+' ボール(8px球を16x16の中央に) / ball (8px ball centered in 16x16)
+SPRITE BALL
+    "................"
+    "................"
+    "................"
+    "................"
+    ".....######....."
+    "....########...."
+    "....########...."
+    "....########...."
+    "....########...."
+    "....########...."
+    ".....######....."
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+' パドル左半分(左端は丸め、右端は詰めて右半分と連結) / paddle left half
+SPRITE PADL
+    "................"
+    "................"
+    "................"
+    "................"
+    ".....###########"
+    "...#############"
+    "..##############"
+    "..##############"
+    "...#############"
+    ".....###########"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+' パドル右半分(左端は詰め、右端は丸め) / paddle right half
+SPRITE PADR
+    "................"
+    "................"
+    "................"
+    "................"
+    "###########....."
+    "#############..."
+    "##############.."
+    "##############.."
+    "#############..."
+    "###########....."
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+    "................"
+END SPRITE
+
+DIM BRICK%(COLS% * ROWS% - 1)
+DIM HPCOL%(3)
+DIM BSFX$(ROWS% - 1)
+DIM LVROW$(NLEVELS% * ROWS% - 1)
+
+' 耐久→色(3=赤→2=薄赤→1=黄。ダメージで暖色が薄くなる) / HP -> colour (3 red .. 1 yellow)
+HPCOL%(1) = 11
+HPCOL%(2) = 9
+HPCOL%(3) = 8
+
+' 行ごとの破壊音(上ほど高音) / break SFX per row (higher rows = higher pitch)
+BSFX$(0) = "V14O6L48G"
+BSFX$(1) = "V14O6L48E"
+BSFX$(2) = "V14O6L48C"
+BSFX$(3) = "V14O5L48A"
+BSFX$(4) = "V14O5L48G"
+BSFX$(5) = "V14O5L48E"
+
+' 全10面のレイアウトを読み込む(6行 x 10面 = 60行) / read all 10 stage layouts (6 rows x 10)
+FOR I% = 0 TO NLEVELS% * ROWS% - 1
+    READ LVROW$(I%)
+NEXT I%
+
+PTRG% = 0
+GOTITLE()
+
+WHILE 1
+    ' 1) フレーム同期(これでヌルヌル) / frame sync (this is what makes it smooth)
+    FR = TIME
+    DO WHILE TIME = FR
+    LOOP
+
+    ' 2) トリガのエッジ検出(押した瞬間だけ1) / rising-edge of the trigger
+    TRG% = 0
+    IF STRIG(0) THEN
+        TRG% = 1
+    END IF
+    NEWT% = 0
+    IF TRG% = 1 THEN
+        IF PTRG% = 0 THEN
+            NEWT% = 1
+        END IF
+    END IF
+    PTRG% = TRG%
+
+    ' 3) フレーム頭の状態で分岐(途中で状態が変わっても今フレームは1ブロックだけ) /
+    '    dispatch on the state captured at frame start (no fall-through when it changes)
+    ST% = STATE%
+    IF ST% = ST_TITLE% THEN
+        IF NEWT% = 1 THEN
+            STARTGAME()
+        END IF
+    END IF
+    IF ST% = ST_SERVE% THEN
+        MOVEPADDLE()
+        SERVEBALL()
+        IF NEWT% = 1 THEN
+            LAUNCH()
+        END IF
+    END IF
+    IF ST% = ST_PLAY% THEN
+        MOVEPADDLE()
+        MOVEBALL()
+    END IF
+    IF ST% = ST_OVER% THEN
+        IF NEWT% = 1 THEN
+            GOTITLE()
+        END IF
+    END IF
+    IF ST% = ST_ENDING% THEN
+        IF NEWT% = 1 THEN
+            GOTITLE()
+        END IF
+    END IF
+WEND
+
+' ============================================================
+'  面レイアウト / stage layouts  (6行 x 10列, 上から順に STAGE 1..10)
+'  記号 / legend: 0=空 empty  1..3=耐久 HP(3が一番硬い)  9=金 unbreakable
+'  ※金(9)は数えない。壊せる(1..3)を全部消せばその面クリア。
+' ============================================================
+' --- STAGE 1 (やさしい / intro) ---
+DATA "1111111111"
+DATA "1111111111"
+DATA "1111111111"
+DATA "0111111110"
+DATA "0011111100"
+DATA "0000000000"
+' --- STAGE 2 (上段が硬い / tougher top) ---
+DATA "2222222222"
+DATA "1111111111"
+DATA "1111111111"
+DATA "1111111111"
+DATA "0111111110"
+DATA "0000000000"
+' --- STAGE 3 (市松 / checker) ---
+DATA "1010101010"
+DATA "0101010101"
+DATA "1010101010"
+DATA "0101010101"
+DATA "1010101010"
+DATA "0101010101"
+' --- STAGE 4 (金の柱と床 / gold pillars & floor) ---
+DATA "9111111119"
+DATA "9122222219"
+DATA "9111111119"
+DATA "9122222219"
+DATA "9111111119"
+DATA "9999999999"
+' --- STAGE 5 (ピラミッド / pyramid) ---
+DATA "0000000000"
+DATA "0000110000"
+DATA "0001221000"
+DATA "0012222100"
+DATA "0122222210"
+DATA "1222222221"
+' --- STAGE 6 (金の要塞 / gold fortress) ---
+DATA "9999999999"
+DATA "9122222219"
+DATA "9121111219"
+DATA "9121111219"
+DATA "9122222219"
+DATA "9999999999"
+' --- STAGE 7 (金の仕切り柱 / gold dividers) ---
+DATA "1119111911"
+DATA "1119111911"
+DATA "2229222922"
+DATA "1119111911"
+DATA "1119111911"
+DATA "2229222922"
+' --- STAGE 8 (総硬化 / all tough) ---
+DATA "3333333333"
+DATA "2222222222"
+DATA "1111111111"
+DATA "1111111111"
+DATA "2222222222"
+DATA "3333333333"
+' --- STAGE 9 (金のダイヤ / gold diamond) ---
+DATA "0000990000"
+DATA "0009229000"
+DATA "0092112900"
+DATA "0921111290"
+DATA "0092112900"
+DATA "0009229000"
+' --- STAGE 10 (最終関門 / final gauntlet) ---
+DATA "9333333339"
+DATA "3222222223"
+DATA "3211111123"
+DATA "3211111123"
+DATA "3222222223"
+DATA "9333333339"

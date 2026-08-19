@@ -1,0 +1,779 @@
+' ============================================================
+'  HIGHWAY (FAST) - 車よけ / FAST ライブラリ使用版
+'  HIGHWAY (FAST) - car dodging, using the FAST library
+'
+'  highway-nofast.msxb と対の「ライブラリ使用版」。純BASICでは重くて諦める演出を、
+'  FAST ライブラリ(INCLUDE "lib/fast.msxb")で載せる:
+'    - 敵車・自機を「2枚のスプライト」で構成(16x16 を縦2枚=背の高い車)。
+'    - 敵も自機も「ピクセル単位でぬるぬる」動く(グリッド飛びではない)。
+'    - 道路が高速に流れて見える(路面パターンを毎フレーム縦スクロール)。
+'
+'  速さとぬるぬるの鍵 = 「移動も描画も ASM に任せる」:
+'    FAST_MOVEV ... 全スプライトを各自の速度(SVX%/SVY%)で1回のASMで動かす(移動をASM化)。
+'    FAST_SPRITES... 全スプライト属性(Y/X/絵/色)を1回のASMバーストで OAM へ一括(描画をASM化)。
+'    → BASIC は「入力・端の折返し・当たり」だけ。毎フレーム座標を配列に書く重い処理が消えて
+'      多数スプライトでも 60fps を保てる。純BASICの nofast 版が重くなるのと対照的。
+'    The trick is to run BOTH movement and drawing in ASM: FAST_MOVEV moves every sprite by its own
+'    velocity in one pass, FAST_SPRITES flushes the whole table to OAM in one burst. BASIC only does
+'    input / recycling / collision, so it stays at 60fps even with many sprites.
+'
+'  ※ INCLUDE で fast.msxb を取り込むが、DCE により実際に呼ぶ関数の ASM だけが載る。
+'  そうさ / CONTROLS: 左右=移動(なめらか) / left-right = move (smooth), スペース=開始 / SPACE
+'  対応機種 / MACHINE: どの MSX でも(FAST は Z80 ASM = MSX1 から)。ライブラリのおかげで
+'                      turbo R 以外(MSX1/MSX2)でも滑らか。any MSX; FAST keeps it smooth on a Z80.
+' ============================================================
+
+INCLUDE "lib/fast.msxb"
+
+' ---- 定数 / constants ----
+CONST LANES% = 4                  ' レーン数 / lanes
+CONST MAXE% = 4                   ' 敵車の数。横1ライン8スプライト制限のちらつき対策で控えめ / cars (kept low for the 8-sprites/line limit)
+CONST NPLANE% = 10                ' スプライト面数 = 自機2 + 敵4*2 / total planes
+CONST XBASE% = 72                 ' レーン0の車のX / car X of lane 0
+CONST XSTEP% = 32                 ' レーン間隔(px) / lane spacing
+CONST PLAYERY% = 140              ' 自機のY(上半分) / player Y (top half)
+CONST PSPD% = 4                   ' 自機の左右速度(px/フレーム) / player smooth speed
+CONST PXMIN% = 64                 ' 自機Xの左端 / player X min
+CONST PXMAX% = 176                ' 自機Xの右端 / player X max
+CONST HITX% = 14                  ' 当たりのX許容 / horizontal hit tolerance
+CONST HITYC% = 22                 ' 当たりのY許容(中心距離) / vertical hit tolerance
+CONST RECY% = 192                 ' これを越えたらトップへ戻す(得点) / recycle to top past this Y
+CONST TOPY% = 8                   ' 戻す先のY(上半分) / recycle target Y
+CONST SCRSPD% = 2                 ' 路面スクロール速度(px/フレーム。8pxセルで大きすぎるとジャギる) / road scroll speed
+
+' SCREEN 1 の VRAM 配置 / SCREEN 1 VRAM layout
+CONST NAMEBASE% = &H1800
+CONST STRIPE% = 255
+CONST PATSTRIPE% = 2040
+
+' ---- 状態 / states ----
+CONST ST_TITLE% = 0
+CONST ST_PLAY% = 1
+CONST ST_OVER% = 2
+
+' FAST_SPRITES/FAST_MOVEV 用の配列 / arrays for FAST_SPRITES & FAST_MOVEV
+GLOBAL SPY%                       ' Y位置 / Y
+GLOBAL SPX%                       ' X位置 / X
+GLOBAL SPP%                       ' 絵番号 / pattern
+GLOBAL SPC%                       ' 色 / colour
+GLOBAL SVX%                       ' 各自のX速度 / per-plane X velocity
+GLOBAL SVY%                       ' 各自のY速度 / per-plane Y velocity
+GLOBAL TOPC%                      ' 車ごとの上半分の色 / per-car top-half colour
+GLOBAL BOTC%                      ' 車ごとの下半分の色 / per-car bottom-half colour
+
+GLOBAL SCORE%
+GLOBAL BEST%
+GLOBAL VY%                        ' 落下速度の基準(得点で上がる) / base fall speed (ramps)
+GLOBAL STATE%
+GLOBAL SCROFF%                    ' 路面スクロールの位相 / road scroll phase
+GLOBAL PTRG%
+
+' --- HWFRAME(全ASMホットループ)用 / for the all-ASM hot loop ---
+' 配列先頭の VARPTR は起動時に1回だけキャッシュ(毎フレーム計算しない)。ASMはこれを読む。
+GLOBAL HWPX%                      ' &SPX%(0)
+GLOBAL HWPY%                      ' &SPY%(0)
+GLOBAL HWPP%                      ' &SPP%(0)
+GLOBAL HWPC%                      ' &SPC%(0)
+GLOBAL HWVX%                      ' &SVX%(0)
+GLOBAL HWVY%                      ' &SVY%(0)
+GLOBAL HWN%                       ' 面数 / plane count
+GLOBAL WKPX%                      ' ASM作業ポインタ(毎フレーム base からコピー) / working pointers
+GLOBAL WKPY%
+GLOBAL WKPP%
+GLOBAL WKPC%
+GLOBAL WKVX%
+GLOBAL WKVY%
+GLOBAL WKCX%                      ' 敵車走査用ポインタ / car-scan pointers
+GLOBAL WKCY%
+GLOBAL WKCVY%                     ' 敵車の速度(SVY)走査ポインタ / car SVY scan pointer
+GLOBAL HWCR%                      ' ASM出力: クラッシュ(1) / crash flag out
+GLOBAL HWSC%                      ' ASM出力: 通過台数カウンタ(=スコア) / cars-passed counter (score)
+GLOBAL HWSEED%                    ' ASM内の簡易乱数の種(レーン抽選用) / RNG seed (lane pick)
+GLOBAL HWVYV%                     ' 現在の落下速度(折返し時に新SVYへ入れる) / current fall speed for recycled cars
+
+' ============================================================
+'  効果音 / sound effects
+'  毎フレーム重いASM(HWFRAME・DI付き)を回すので、割り込み駆動の PLAY より、直接 PSG を叩く
+'  SOUND(即時発音・ハードエンベロープで自動減衰)の方がタイミングに左右されず堅実。R7 のミキサは
+'  上位2ビット(bit6=0/bit7=1=I/Oポート方向)を保つ値にしてあるのでジョイスティック入力も無事。
+'  SFX use SOUND (direct PSG, immediate) rather than interrupt-driven PLAY, which is more robust in a
+'  tight per-frame ASM (DI) loop. The R7 values keep bit6=0/bit7=1 (I/O-port dir); joystick unaffected.
+' ============================================================
+' 開始のビープ(中音) / start beep
+FUNCTION SFXSTART()
+    SOUND 0, 110
+    SOUND 1, 0
+    SOUND 7, &HBE                  ' Ch.A トーンのみON(I/Oビット保持) / tone A only, I/O bits kept
+    SOUND 8, 16                    ' 音量=エンベロープ / volume = envelope
+    SOUND 11, 0
+    SOUND 12, 8                    ' 減衰の長さ / decay length
+    SOUND 13, 0                    ' 形状0=一度だけ減衰(トリガ) / shape 0 = decay once
+END FUNCTION
+
+' 速度上昇のビープ(高音・短い) / speed-up beep (higher, short)
+FUNCTION SFXSPEED()
+    SOUND 0, 70
+    SOUND 1, 0
+    SOUND 7, &HBE
+    SOUND 8, 16
+    SOUND 11, 0
+    SOUND 12, 5
+    SOUND 13, 0
+END FUNCTION
+
+' クラッシュ(ノイズのバースト) / crash (a noise burst)
+FUNCTION SFXCRASH()
+    SOUND 6, 25                    ' ノイズ周期 / noise period
+    SOUND 7, &HB7                  ' ノイズAのみON(I/Oビット保持) / noise A only, I/O bits kept
+    SOUND 8, 16
+    SOUND 11, 0
+    SOUND 12, 24                   ' 長めの減衰 / longer decay
+    SOUND 13, 0
+END FUNCTION
+
+' ============================================================
+'  描画 / drawing
+' ============================================================
+FUNCTION DRAWROAD()
+    VPOKE &H201F, &HF1
+    FOR R% = 1 TO 23
+        VPOKE NAMEBASE% + R% * 32 + 7, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 12, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 16, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 20, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 24, STRIPE%
+    NEXT R%
+END FUNCTION
+
+' 路面パターンを縦に流す(STRIPE 文字の 8x8 を毎フレームずらす=道路が高速に流れて見える)。
+FUNCTION SCROLLROAD()
+    GLOBAL SCROFF%
+    SCROFF% = (SCROFF% + SCRSPD%) AND 7
+    FOR R% = 0 TO 7
+        B% = 0
+        IF ((R% - SCROFF%) AND 7) < 4 THEN
+            B% = 24
+        END IF
+        VPOKE PATSTRIPE% + R%, B%
+    NEXT R%
+END FUNCTION
+
+' HUD 全体(ラベル＋数値)を1回だけ描く。得点毎はここを呼ばない(重いので)。
+' Draw the whole HUD once. Do NOT call this every score (it is the ~20-char PRINT that stuttered).
+FUNCTION DRAWHUD()
+    LOCATE 0, 0
+    PRINT "SCORE";
+    LOCATE 12, 0
+    PRINT "BEST";
+    LOCATE 22, 0
+    PRINT "SPD";
+    DRAWSCORE()
+    DRAWBEST()
+    DRAWSPD()
+END FUNCTION
+
+' スコアの数字だけ小さく描き直す(得点毎=軽い) / redraw only the score number (per score = cheap)
+FUNCTION DRAWSCORE()
+    GLOBAL SCORE%
+    LOCATE 6, 0
+    PRINT SCORE%; "  ";
+END FUNCTION
+
+FUNCTION DRAWBEST()
+    GLOBAL BEST%
+    LOCATE 17, 0
+    PRINT BEST%; "  ";
+END FUNCTION
+
+FUNCTION DRAWSPD()
+    GLOBAL VY%
+    LOCATE 26, 0
+    PRINT VY%; " ";
+END FUNCTION
+
+' ============================================================
+'  自機(2枚スプライトの背の高い車。左右になめらか) / player: two-sprite tall car
+' ============================================================
+' 入力で自機の「速度」だけ決める(位置は FAST_MOVEV がまとめて動かす)。
+' Set only the player's velocity from input; FAST_MOVEV moves the position (with all the cars).
+FUNCTION READINPUT()
+    GLOBAL SVX%
+    J% = STICK(0)
+    D% = 0
+    IF J% = 6 OR J% = 7 OR J% = 8 THEN
+        D% = 0 - PSPD%
+    END IF
+    IF J% = 2 OR J% = 3 OR J% = 4 THEN
+        D% = PSPD%
+    END IF
+    SVX%(0) = D%
+    SVX%(1) = D%
+END FUNCTION
+
+' 移動後、自機を道路内へ収める(2面とも) / after moving, clamp the player onto the road
+FUNCTION CLAMPPLAYER()
+    GLOBAL SPX%
+    IF SPX%(0) < PXMIN% THEN
+        SPX%(0) = PXMIN%
+        SPX%(1) = PXMIN%
+    END IF
+    IF SPX%(0) > PXMAX% THEN
+        SPX%(0) = PXMAX%
+        SPX%(1) = PXMAX%
+    END IF
+END FUNCTION
+
+' ============================================================
+'  敵車(常時 MAXE 台が流れる。落下は FAST_MOVEV=ASM、端の折返しと当たりだけ BASIC)
+' ============================================================
+' 敵車1台をトップへ戻す(新しいレーン・新しい速度)。X/絵/色/速度をここで1回だけ設定。
+' Recycle one car to the top (new lane, new speed); set X/pattern/colour/velocity once here.
+' 初期配置のみ(折返しはASMがやる)。色は上半分/下半分を別色にし、車ごとに配色を変える
+' =追加スプライト0で2色＆カラフルに(色は折返し後も保持される=ASMは色を触らない)。
+FUNCTION PLACECAR(I%)
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    GLOBAL SVX%
+    GLOBAL SVY%
+    GLOBAL VY%
+    GLOBAL TOPC%
+    GLOBAL BOTC%
+    TI% = 2 + I% * 2
+    LX% = XBASE% + INT(RND(1) * LANES%) * XSTEP%
+    S% = VY% + INT(RND(1) * 3)              ' 少し個体差 / a little per-car variety
+    SPX%(TI%) = LX%
+    SPY%(TI%) = TOPY%
+    SPP%(TI%) = CARTOP
+    SPC%(TI%) = TOPC%(I%)                   ' 上半分の色 / top-half colour
+    SVX%(TI%) = 0
+    SVY%(TI%) = S%
+    SPX%(TI% + 1) = LX%
+    SPY%(TI% + 1) = TOPY% + 16
+    SPP%(TI% + 1) = CARBOT
+    SPC%(TI% + 1) = BOTC%(I%)               ' 下半分の色 / bottom-half colour
+    SVX%(TI% + 1) = 0
+    SVY%(TI% + 1) = S%
+END FUNCTION
+
+' ============================================================
+'  HWFRAME - 1フレーム丸ごと1本のASM(=真の60fpsの肝)
+'  move(SPX+=SVX / SPY+=SVY) → OAMへ一括描画 → 敵の折返し検出 → 自機当たり検出、を全部ASMで。
+'  VARPTR は起動時キャッシュ(HW*)を毎フレーム作業ポインタ(WK*)へコピーして使う。
+'  出力: HWCR%=クラッシュ(1) / HWRC%=折返しビットマスク(bit i=敵iが画面外)。
+'  BASIC は「入力を書く→これを1回呼ぶ→出力フラグを見る」だけ=毎フレームのBASICが激小→60fps。
+'  ※定数は当たり判定のためASM内リテラル: 敵先頭=plane2, 敵数=6, 折返し=Y>192, 自機Y=140,
+'    当たり |dx|<14 かつ |dy|<22。SCREEN やレイアウトを変えたらここも合わせる。
+' ============================================================
+FUNCTION HWFRAME()
+    GLOBAL HWPX%
+    GLOBAL HWPY%
+    GLOBAL HWPP%
+    GLOBAL HWPC%
+    GLOBAL HWVX%
+    GLOBAL HWVY%
+    GLOBAL HWN%
+    GLOBAL WKPX%
+    GLOBAL WKPY%
+    GLOBAL WKPP%
+    GLOBAL WKPC%
+    GLOBAL WKVX%
+    GLOBAL WKVY%
+    GLOBAL WKCX%
+    GLOBAL WKCY%
+    GLOBAL WKCVY%
+    GLOBAL HWCR%
+    GLOBAL HWSC%
+    GLOBAL HWSEED%
+    GLOBAL HWVYV%
+    GLOBAL SCROFF%
+    ASM
+      LD   HL,(HWPY%)          ' base ポインタを作業ポインタへコピー / cache base -> working
+      LD   (WKPY%),HL
+      LD   HL,(HWPX%)
+      LD   (WKPX%),HL
+      LD   HL,(HWPP%)
+      LD   (WKPP%),HL
+      LD   HL,(HWPC%)
+      LD   (WKPC%),HL
+      LD   HL,(HWVY%)
+      LD   (WKVY%),HL
+      LD   HL,(HWVX%)
+      LD   (WKVX%),HL
+      LD   HL,0                ' クラッシュ出力を16bitでクリア / clear crash flag (both bytes)
+      LD   (HWCR%),HL
+      DI
+      LD   A,(SCROFF%)         ' --- 道路スクロール: STRIPE のパターンを縦にずらす(VBLANK窓で) ---
+      ADD  A,3                 ' スクロール速度(8px周期で下向きに見える上限=3。4以上は逆流して見える)
+      AND  7
+      LD   (SCROFF%),A
+      LD   C,A                 ' C = ずらし量 / offset
+      LD   A,&HF8              ' VDP書込アドレス=char255のパターン(2040=&H07F8) / pattern of char 255
+      OUT  (&H99),A
+      LD   A,&H47              ' &H07 | 書込ビット&H40
+      OUT  (&H99),A
+      LD   B,8                 ' 8行 / 8 rows
+      LD   E,0                 ' E = 行 / row
+HWRDLP:
+      LD   A,E
+      SUB  C
+      AND  7
+      CP   4
+      LD   A,0
+      JR   NC,HWRDW            ' (行-ずらし)&7 >= 4 → 空 / 0
+      LD   A,24                ' それ以外 → 縦線 &H18 / bar
+HWRDW:
+      OUT  (&H98),A
+      INC  E
+      DEC  B
+      JP   NZ,HWRDLP
+      XOR  A                   ' OAM &H1B00 へ書込アドレス / point VDP at OAM (write)
+      OUT  (&H99),A
+      LD   A,&H5B
+      OUT  (&H99),A
+      LD   A,(HWN%)            ' --- 移動＋描画ループ / move + draw ---
+      LD   B,A
+HWMVLP:
+      LD   HL,(WKPY%)          ' Y += VY
+      LD   A,(HL)
+      LD   C,A
+      LD   HL,(WKVY%)
+      LD   A,(HL)
+      ADD  A,C
+      LD   C,A
+      LD   HL,(WKPY%)
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (WKPY%),HL
+      LD   HL,(WKVY%)
+      INC  HL
+      INC  HL
+      LD   (WKVY%),HL
+      LD   A,C
+      OUT  (&H98),A            ' OAM Y
+      LD   HL,(WKPX%)          ' X += VX
+      LD   A,(HL)
+      LD   C,A
+      LD   HL,(WKVX%)
+      LD   A,(HL)
+      ADD  A,C
+      LD   C,A
+      LD   HL,(WKPX%)
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      INC  HL
+      LD   (WKPX%),HL
+      LD   HL,(WKVX%)
+      INC  HL
+      INC  HL
+      LD   (WKVX%),HL
+      LD   A,C
+      OUT  (&H98),A            ' OAM X
+      LD   HL,(WKPP%)          ' 絵番号(16x16は x4)
+      LD   A,(HL)
+      ADD  A,A
+      ADD  A,A
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (WKPP%),HL
+      LD   HL,(WKPC%)          ' 色
+      LD   A,(HL)
+      OUT  (&H98),A
+      INC  HL
+      INC  HL
+      LD   (WKPC%),HL
+      DEC  B
+      JP   NZ,HWMVLP
+      EI
+      LD   HL,(HWPY%)          ' --- 敵の折返し＋当たり(全部ASM) / recycle + collision (all ASM) ---
+      INC  HL                  ' &SPY%(2) = &SPY%(0)+4
+      INC  HL
+      INC  HL
+      INC  HL
+      LD   (WKCY%),HL
+      LD   HL,(HWPX%)          ' &SPX%(2)
+      INC  HL
+      INC  HL
+      INC  HL
+      INC  HL
+      LD   (WKCX%),HL
+      LD   HL,(HWVY%)          ' &SVY%(2)
+      INC  HL
+      INC  HL
+      INC  HL
+      INC  HL
+      LD   (WKCVY%),HL
+      LD   HL,(HWPX%)          ' E = 自機X(SPX%(0))
+      LD   A,(HL)
+      LD   E,A
+      LD   B,4                 ' 敵の台数(MAXE と一致させる) / car count (keep in sync with MAXE)
+HWCARLP:
+      LD   HL,(WKCY%)
+      LD   A,(HL)
+      LD   D,A                 ' D = 敵Y
+      CP   193                 ' 敵Y > 192 なら折返し / recycle if car went off bottom
+      JR   C,HWCOLL
+      ' --- 折返し(ASM内): 新SVY=現速度 / 乱数レーンで上へ戻す / 通過カウント++ ---
+      LD   A,(HWVYV%)          ' 新しい落下速度 / new fall speed
+      LD   HL,(WKCVY%)         ' SVY%(TI) = VY
+      LD   (HL),A
+      INC  HL
+      LD   (HL),0
+      LD   HL,(WKCVY%)         ' SVY%(TI+1) = VY
+      INC  HL
+      INC  HL
+      LD   (HL),A
+      INC  HL
+      LD   (HL),0
+      LD   A,(HWSEED%)         ' 簡易乱数: seed = seed*5 + 1 / a tiny LCG for the lane
+      LD   C,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,C
+      INC  A
+      LD   (HWSEED%),A
+      AND  &HC0                ' 上位2ビット → レーン 0..3 / top 2 bits = lane
+      RLCA
+      RLCA
+      ADD  A,A                 ' レーン*32 / lane*32
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,72                ' newX = 72 + レーン*32
+      LD   C,A                 ' C = newX
+      LD   HL,(WKCY%)          ' SPY%(TI) = 8(上端)
+      LD   (HL),8
+      INC  HL
+      LD   (HL),0
+      LD   HL,(WKCX%)          ' SPX%(TI) = newX
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      LD   HL,(WKCY%)          ' SPY%(TI+1) = 24
+      INC  HL
+      INC  HL
+      LD   (HL),24
+      INC  HL
+      LD   (HL),0
+      LD   HL,(WKCX%)          ' SPX%(TI+1) = newX
+      INC  HL
+      INC  HL
+      LD   (HL),C
+      INC  HL
+      LD   (HL),0
+      LD   HL,(HWSC%)          ' 通過カウント++ / cars-passed++
+      INC  HL
+      LD   (HWSC%),HL
+      JR   HWNEXT
+HWCOLL:
+      LD   HL,(WKCX%)          ' dx = 敵X - 自機X, |dx|
+      LD   A,(HL)
+      SUB  E
+      BIT  7,A
+      JR   Z,HWDXP
+      NEG
+HWDXP:
+      CP   14                  ' |dx| < 14 ?
+      JR   NC,HWNEXT
+      LD   A,D                 ' dy = 敵Y - 140, |dy|
+      SUB  140
+      BIT  7,A
+      JR   Z,HWDYP
+      NEG
+HWDYP:
+      CP   22                  ' |dy| < 22 ?
+      JR   NC,HWNEXT
+      LD   A,1                 ' 当たり! crash=1
+      LD   (HWCR%),A
+HWNEXT:
+      LD   HL,(WKCY%)          ' 次の敵へ(3ポインタ +4)
+      INC  HL
+      INC  HL
+      INC  HL
+      INC  HL
+      LD   (WKCY%),HL
+      LD   HL,(WKCX%)
+      INC  HL
+      INC  HL
+      INC  HL
+      INC  HL
+      LD   (WKCX%),HL
+      LD   HL,(WKCVY%)
+      INC  HL
+      INC  HL
+      INC  HL
+      INC  HL
+      LD   (WKCVY%),HL
+      DEC  B
+      JP   NZ,HWCARLP
+    END ASM
+END FUNCTION
+
+' 得点表示の更新(毎フレームではなく間引いて呼ぶ)。ASMの通過カウンタ HWSC を読んでスコアへ。
+' Update the score display, called throttled (not every frame). Reads the ASM counter HWSC.
+FUNCTION UPDSCORE()
+    GLOBAL HWSC%
+    GLOBAL SCORE%
+    GLOBAL VY%
+    GLOBAL HWVYV%
+    IF HWSC% <> SCORE% THEN
+        SCORE% = HWSC%
+        OV% = VY%
+        VY% = 4 + SCORE% \ 5
+        IF VY% > 9 THEN
+            VY% = 9
+        END IF
+        HWVYV% = VY%               ' 折返し時に敵へ入る速度を更新 / new speed for recycled cars
+        DRAWSCORE()
+        IF VY% <> OV% THEN
+            SFXSPEED()
+            DRAWSPD()
+        END IF
+    END IF
+END FUNCTION
+
+' ============================================================
+'  進行 / progression
+' ============================================================
+FUNCTION CRASH()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    GLOBAL BEST%
+    SFXCRASH()
+    IF SCORE% > BEST% THEN
+        BEST% = SCORE%
+    END IF
+    LOCATE 9, 10
+    PRINT "*** CRASH ***"
+    LOCATE 8, 12
+    PRINT "SCORE"; SCORE%; " BEST"; BEST%
+    LOCATE 6, 15
+    PRINT "PUSH SPACE TO RETRY"
+    STATE% = ST_OVER%
+END FUNCTION
+
+' ============================================================
+'  画面遷移 / screen transitions
+' ============================================================
+FUNCTION PARKALL()
+    GLOBAL SPY%
+    FOR P% = 0 TO NPLANE% - 1
+        SPY%(P%) = 210
+    NEXT P%
+    FAST_SPRITES(NPLANE%)
+END FUNCTION
+
+FUNCTION GOTITLE()
+    GLOBAL STATE%
+    COLOR 15, 1, 1
+    CLS
+    PARKALL()
+    LOCATE 9, 5
+    PRINT "HIGHWAY (FAST)"
+    LOCATE 9, 9
+    PRINT "DODGE THE CARS!"
+    LOCATE 6, 12
+    PRINT "LEFT / RIGHT : MOVE"
+    LOCATE 8, 16
+    PRINT "PUSH SPACE TO START"
+    STATE% = ST_TITLE%
+END FUNCTION
+
+' 自機と全敵車を初期配置(自機=2面固定, 敵=縦にばらけさせて落下開始)。
+FUNCTION SETUPACTORS()
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    GLOBAL SVX%
+    GLOBAL SVY%
+    GLOBAL VY%
+    ' 自機 plane 0/1 / player planes 0,1
+    SPX%(0) = 120
+    SPY%(0) = PLAYERY%
+    SPP%(0) = CARTOP
+    SPC%(0) = 15                   ' 自機の上半分=白 / player top = white
+    SVX%(0) = 0
+    SVY%(0) = 0
+    SPX%(1) = 120
+    SPY%(1) = PLAYERY% + 16
+    SPP%(1) = CARBOT
+    SPC%(1) = 7                    ' 自機の下半分=シアン / player bottom = cyan
+    SVX%(1) = 0
+    SVY%(1) = 0
+    ' 敵車を縦にばらけて配置(いきなり自機の高さに出ないよう上寄せ) / stagger cars above the player
+    FOR I% = 0 TO MAXE% - 1
+        PLACECAR(I%)
+        TI% = 2 + I% * 2
+        SPY%(TI%) = TOPY% + I% * 24
+        SPY%(TI% + 1) = TOPY% + I% * 24 + 16
+    NEXT I%
+END FUNCTION
+
+FUNCTION STARTGAME()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    GLOBAL VY%
+    GLOBAL SCROFF%
+    GLOBAL SPX%
+    GLOBAL SPY%
+    GLOBAL SPP%
+    GLOBAL SPC%
+    GLOBAL SVX%
+    GLOBAL SVY%
+    GLOBAL HWPX%
+    GLOBAL HWPY%
+    GLOBAL HWPP%
+    GLOBAL HWPC%
+    GLOBAL HWVX%
+    GLOBAL HWVY%
+    GLOBAL HWN%
+    GLOBAL HWSC%
+    GLOBAL HWSEED%
+    GLOBAL HWVYV%
+    COLOR 15, 1, 1
+    CLS
+    SCORE% = 0
+    VY% = 4
+    HWSC% = 0                          ' ASM通過カウンタ / ASM cars-passed counter
+    HWSEED% = 73                       ' 乱数の種(0以外) / RNG seed (nonzero)
+    HWVYV% = 4                          ' 折返し時に敵へ入る速度 / speed for recycled cars
+    SCROFF% = 0
+    SETUPACTORS()
+    ' 配列先頭アドレスを1回だけキャッシュ(SETUPACTORS で全要素代入済み=VARPTR 有効)。
+    ' Cache array base addresses once (all elements were assigned in SETUPACTORS, so VARPTR is valid).
+    HWPX% = VARPTR(SPX%(0))
+    HWPY% = VARPTR(SPY%(0))
+    HWPP% = VARPTR(SPP%(0))
+    HWPC% = VARPTR(SPC%(0))
+    HWVX% = VARPTR(SVX%(0))
+    HWVY% = VARPTR(SVY%(0))
+    HWN% = NPLANE%
+    DRAWROAD()
+    DRAWHUD()
+    SFXSTART()
+    STATE% = ST_PLAY%
+END FUNCTION
+
+' ============================================================
+'  スプライト(16x16 を縦2枚で背の高い車) / a tall car from two 16x16 sprites
+' ============================================================
+SCREEN 1, 2
+WIDTH 32
+KEY OFF
+COLOR 15, 1, 1
+CLS
+
+' 車の上半分(前) / car top half (front)
+SPRITE CARTOP
+    "................"
+    "................"
+    "...##########..."
+    "..############.."
+    "..############.."
+    "..#..####..#...."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+END SPRITE
+
+' 車の下半分(後) / car bottom half (rear)
+SPRITE CARBOT
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..#..####..#...."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "...##########..."
+    "................"
+    "................"
+END SPRITE
+
+DIM SPY%(NPLANE% - 1)
+DIM SPX%(NPLANE% - 1)
+DIM SPP%(NPLANE% - 1)
+DIM SPC%(NPLANE% - 1)
+DIM SVX%(NPLANE% - 1)
+DIM SVY%(NPLANE% - 1)
+
+' 車ごとの2色配色(上半分/下半分)。追加スプライト0でカラフルに。/ per-car 2-tone colours
+DIM TOPC%(MAXE% - 1)
+DIM BOTC%(MAXE% - 1)
+TOPC%(0) = 9
+BOTC%(0) = 8                       ' 赤系 / reds
+TOPC%(1) = 11
+BOTC%(1) = 10                      ' 黄系 / yellows
+TOPC%(2) = 5
+BOTC%(2) = 4                       ' 青系 / blues
+TOPC%(3) = 3
+BOTC%(3) = 12                      ' 緑系 / greens
+
+BEST% = 0
+PTRG% = 0
+GOTITLE()
+
+WHILE 1
+    FR = TIME
+    DO WHILE TIME = FR
+    LOOP
+
+    TRG% = 0
+    IF STRIG(0) THEN
+        TRG% = 1
+    END IF
+    NEWT% = 0
+    IF TRG% = 1 THEN
+        IF PTRG% = 0 THEN
+            NEWT% = 1
+        END IF
+    END IF
+    PTRG% = TRG%
+
+    ST% = STATE%
+    IF ST% = ST_TITLE% THEN
+        IF NEWT% = 1 THEN
+            STARTGAME()
+        END IF
+    END IF
+    IF ST% = ST_PLAY% THEN
+        READINPUT()                    ' 自機の速度だけ設定 / set player velocity
+        HWFRAME()                      ' 移動＋描画＋折返し＋当たりを1本のASMで(毎フレーム同一)
+        CLAMPPLAYER()                  ' 自機を道路内に(2面) / clamp player
+        IF HWCR% = 1 THEN
+            CRASH()
+        END IF
+        ' 得点表示は間引いて更新(毎フレームの PRINT を避ける) / update score display throttled
+        FCT% = FCT% + 1
+        IF FCT% >= 12 THEN
+            FCT% = 0
+            UPDSCORE()
+        END IF
+        ' SCROLLROAD()
+    END IF
+    IF ST% = ST_OVER% THEN
+        IF NEWT% = 1 THEN
+            GOTITLE()
+        END IF
+    END IF
+WEND

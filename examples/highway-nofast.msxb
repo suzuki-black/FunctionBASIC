@@ -1,0 +1,420 @@
+' ============================================================
+'  HIGHWAY (NO-FAST) - 車よけ / 純BASIC版(ライブラリ不使用の基準)
+'  HIGHWAY (NO-FAST) - car dodging, pure BASIC (the no-library baseline)
+'
+'  FAST ライブラリを使わない素の純BASIC。highway-fast.msxb と対にして「ライブラリで
+'  何がどう変わるか」を体で比べるための基準(shooter-nofast/fast と同じ狙い)。
+'  Pure BASIC without the FAST library. Pair it with highway-fast.msxb to feel what the
+'  library buys (same idea as shooter-nofast/fast).
+'
+'  純BASICで少しでも軽くする工夫 / the pure-BASIC tricks used here:
+'    - 車は下に落ちるだけ=Yしか変わらないので、OAM(スプライト属性)へ Y を1バイト VPOKE
+'      直書き(PUT SPRITE より速い)。SCREEN 1 は描画が軽く PRINT の文字もそのまま出る。
+'    - 敵車はスロットごとに別色(赤/黄/水/緑/マゼンタ/シアン)。色は出現時に1回設定するだけ。
+'    - 路面は全マーカーが同じ文字を共有 → その8バイトパターンを毎フレームずらすだけで路面
+'      全体がまとめて流れる(8 VPOKE/フレーム)。カクッと大きい車の動きでもスピード感が出る。
+'    - 動いた物だけ描く。スピード感は「グリッド的にカクッと落として、だんだんペースアップ」。
+'    Cars only fall (Y changes), so we poke just the Y byte into OAM (faster than PUT SPRITE).
+'    Enemies get a distinct colour per slot; the whole road scrolls via one shared char pattern.
+'
+'  そうさ / CONTROLS: 左右=レーン移動 / left-right = change lane, スペース=開始 / SPACE = start
+'  対応機種 / MACHINE: どの MSX でも(SCREEN 1 + スプライト + VPOKE + PLAY は MSX1 から)。
+'                      turbo R なら滑らか。MSX1/MSX2 では純BASICの限界で重くなる(=fast版の出番)。
+' ============================================================
+
+' ---- 定数 / constants ----
+CONST LANES% = 4                  ' レーン数 / lanes
+CONST MAXE% = 6                   ' 敵車の最大数 / max enemy cars
+CONST XBASE% = 72                 ' レーン0の車のX / sprite X of lane 0
+CONST XSTEP% = 32                 ' レーン間隔(px) / lane spacing
+CONST PLAYERY% = 160              ' 自機のY(固定) / player Y (fixed)
+CONST EYTOP% = 8                  ' 敵車の出現Y / enemy spawn Y
+CONST EYMAX% = 178                ' これを越えたら通過(得点) / passed the bottom -> scored
+CONST HITY% = 14                  ' 当たりのY許容 / vertical hit tolerance
+
+' SCREEN 1 の VRAM 配置 / SCREEN 1 VRAM layout
+CONST NAMEBASE% = &H1800          ' ネームテーブル / name table
+CONST STRIPE% = 255               ' 路面マーカーの文字コード / road-marker char code
+CONST PATSTRIPE% = 2040           ' STRIPE のパターン先頭(=255*8) / STRIPE pattern address
+
+' ---- 状態 / states ----
+CONST ST_TITLE% = 0
+CONST ST_PLAY% = 1
+CONST ST_OVER% = 2
+
+GLOBAL PLANE%                     ' 自機のレーン / player lane
+GLOBAL PCD%                       ' レーン移動のクールダウン / lane-change cooldown
+GLOBAL EL%                        ' 敵車のレーン / enemy lane
+GLOBAL EY%                        ' 敵車のY / enemy Y
+GLOBAL EACT%                      ' 敵車が有効か / enemy active flag
+GLOBAL EOAM%                      ' 敵車のOAM Yアドレス / OAM Y address per enemy
+GLOBAL SCORE%
+GLOBAL BEST%
+GLOBAL VY%                        ' 敵車の落下速度(px/フレーム) / enemy fall speed
+GLOBAL SPWN%                      ' 出現カウンタ / spawn frame counter
+GLOBAL SPFR%                      ' 出現間隔(フレーム) / spawn interval
+GLOBAL STATE%
+GLOBAL PTRG%                      ' 前フレームのトリガ / prev trigger (edge)
+GLOBAL ROFF%                      ' 路面パターンのスクロール量(0..7) / road pattern scroll offset
+GLOBAL ECOL%                      ' 敵車スロットごとの色 / per-slot enemy colour
+
+' ============================================================
+'  効果音 / sound effects
+' ============================================================
+FUNCTION SFXSTART()
+    PLAY "V13O5L32CEG"
+END FUNCTION
+
+FUNCTION SFXSPEED()
+    PLAY "V12O6L32CE"
+END FUNCTION
+
+FUNCTION SFXCRASH()
+    PLAY "V13O4L16CO3L16GL8C"
+END FUNCTION
+
+' ============================================================
+'  描画 / drawing
+' ============================================================
+' 道路を一度だけ敷く(静止マーカー)。左右の縁と車線の区切りに STRIPE 文字を置く。
+' Lay the road once (static markers): edges and lane dividers use the STRIPE char.
+FUNCTION DRAWROAD()
+    VPOKE &H201F, &HF1                 ' STRIPE(群31)の色を白/黒 / marker colour = white on black
+    FOR R% = 0 TO 7
+        B% = 0
+        IF R% < 4 THEN
+            B% = 24                    ' &H18 = 縦の破線 / dashed vertical bar
+        END IF
+        VPOKE PATSTRIPE% + R%, B%
+    NEXT R%
+    FOR R% = 1 TO 23
+        VPOKE NAMEBASE% + R% * 32 + 7, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 12, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 16, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 20, STRIPE%
+        VPOKE NAMEBASE% + R% * 32 + 24, STRIPE%
+    NEXT R%
+END FUNCTION
+
+' 路面を流す(見た目だけ・軽い): 全マーカーは同じ文字コード STRIPE を共有するので、その
+' パターン8バイトを毎フレーム下へずらして書くだけで、路面全体の破線がまとめて下へ流れる。
+' スプライト移動はカクッと大きいが、路面が流れるだけで「走っている」感が段違いに出る。
+' Flow the road cheaply: every stripe cell shares one char, so shifting that single 8-byte
+' pattern down each frame scrolls the whole road at once (8 VPOKE/frame, all-BASIC).
+FUNCTION SCROLLROAD()
+    GLOBAL ROFF%
+    ROFF% = (ROFF% + 2) AND 7
+    FOR R% = 0 TO 7
+        B% = 0
+        IF ((R% - ROFF% + 8) AND 7) < 4 THEN
+            B% = 24                    ' &H18 = 破線の"点灯"行 / dash "on" row
+        END IF
+        VPOKE PATSTRIPE% + R%, B%
+    NEXT R%
+END FUNCTION
+
+FUNCTION DRAWHUD()
+    GLOBAL SCORE%
+    GLOBAL BEST%
+    GLOBAL VY%
+    LOCATE 0, 0
+    PRINT "SCORE"; SCORE%; " BEST"; BEST%; " SPD"; VY% - 6; "  ";
+END FUNCTION
+
+' 自機スプライトを現在のレーンへ / draw the player at its lane
+FUNCTION DRAWPLAYER()
+    GLOBAL PLANE%
+    PUT SPRITE 0, (XBASE% + PLANE% * XSTEP%, PLAYERY%), 15, CAR
+END FUNCTION
+
+' 全スプライトを画面外へ / park all sprites off-screen
+FUNCTION HIDESPRITES()
+    PUT SPRITE 0, (0, 210), 1, CAR
+    FOR I% = 0 TO MAXE% - 1
+        PUT SPRITE 1 + I%, (0, 210), 1, CAR
+    NEXT I%
+END FUNCTION
+
+' ============================================================
+'  自機 / player  (レーン単位=離散移動)
+' ============================================================
+FUNCTION MOVEPLAYER()
+    GLOBAL PLANE%
+    GLOBAL PCD%
+    IF PCD% > 0 THEN
+        PCD% = PCD% - 1
+    END IF
+    J% = STICK(0)
+    IF PCD% = 0 THEN
+        IF J% = 6 OR J% = 7 OR J% = 8 THEN
+            IF PLANE% > 0 THEN
+                PLANE% = PLANE% - 1
+                PCD% = 4
+                DRAWPLAYER()
+            END IF
+        END IF
+        IF J% = 2 OR J% = 3 OR J% = 4 THEN
+            IF PLANE% < LANES% - 1 THEN
+                PLANE% = PLANE% + 1
+                PCD% = 4
+                DRAWPLAYER()
+            END IF
+        END IF
+    END IF
+END FUNCTION
+
+' ============================================================
+'  ワールド(敵車) / the world (enemy cars)
+' ============================================================
+' 空きスロットを1つ探して敵車を出す(ランダムなレーン)。X・絵・色はここで1回だけ設定。
+' Spawn one enemy in a random lane; set X/pattern/colour once here.
+FUNCTION SPAWNCAR()
+    GLOBAL EL%
+    GLOBAL EY%
+    GLOBAL EACT%
+    GLOBAL ECOL%
+    DONE% = 0
+    FOR I% = 0 TO MAXE% - 1
+        IF DONE% = 0 THEN
+            IF EACT%(I%) = 0 THEN
+                EACT%(I%) = 1
+                EL%(I%) = INT(RND(1) * LANES%)
+                EY%(I%) = EYTOP%
+                ' スロットごとに違う色(コスト増なし=ここで1回設定するだけ) / distinct colour per slot
+                PUT SPRITE 1 + I%, (XBASE% + EL%(I%) * XSTEP%, EYTOP%), ECOL%(I%), CAR
+                DONE% = 1
+            END IF
+        END IF
+    NEXT I%
+END FUNCTION
+
+FUNCTION BUMPSPEED()
+    GLOBAL VY%
+    GLOBAL SPFR%
+    GLOBAL SCORE%
+    VY% = 8 + SCORE% \ 3
+    IF VY% > 12 THEN
+        VY% = 12
+    END IF
+    SPFR% = 9 - SCORE% \ 2
+    IF SPFR% < 4 THEN
+        SPFR% = 4
+    END IF
+    IF SCORE% MOD 3 = 0 THEN
+        SFXSPEED()
+    END IF
+END FUNCTION
+
+' 全敵車を更新(1台ずつ MOVECAR)。クラッシュ後は STATE で止める。
+FUNCTION UPDATECARS()
+    GLOBAL EACT%
+    GLOBAL STATE%
+    FOR I% = 0 TO MAXE% - 1
+        IF STATE% = ST_PLAY% THEN
+            IF EACT%(I%) = 1 THEN
+                MOVECAR(I%)
+            END IF
+        END IF
+    NEXT I%
+END FUNCTION
+
+' 敵車1台の1フレーム: 落下 → 通過(得点)か 描画＋衝突判定。Yだけ VPOKE 直書き。
+FUNCTION MOVECAR(I%)
+    GLOBAL EL%
+    GLOBAL EY%
+    GLOBAL EACT%
+    GLOBAL EOAM%
+    GLOBAL SCORE%
+    GLOBAL PLANE%
+    GLOBAL VY%
+    EY%(I%) = EY%(I%) + VY%
+    IF EY%(I%) > EYMAX% THEN
+        EACT%(I%) = 0
+        VPOKE EOAM%(I%), 210
+        SCORE% = SCORE% + 1
+        DRAWHUD()
+        BUMPSPEED()
+    END IF
+    IF EACT%(I%) = 1 THEN
+        VPOKE EOAM%(I%), EY%(I%)
+        CHECKHIT(I%)
+    END IF
+END FUNCTION
+
+' 自機と同じレーンで縦位置が重なったらクラッシュ / crash if same lane and overlapping
+FUNCTION CHECKHIT(I%)
+    GLOBAL EL%
+    GLOBAL EY%
+    GLOBAL PLANE%
+    IF EL%(I%) = PLANE% THEN
+        IF EY%(I%) > PLAYERY% - HITY% THEN
+            IF EY%(I%) < PLAYERY% + HITY% THEN
+                CRASH()
+            END IF
+        END IF
+    END IF
+END FUNCTION
+
+' ============================================================
+'  進行 / progression
+' ============================================================
+FUNCTION CRASH()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    GLOBAL BEST%
+    SFXCRASH()
+    IF SCORE% > BEST% THEN
+        BEST% = SCORE%
+    END IF
+    HIDESPRITES()
+    LOCATE 9, 10
+    PRINT "*** CRASH ***"
+    LOCATE 8, 12
+    PRINT "SCORE"; SCORE%; " BEST"; BEST%
+    LOCATE 6, 15
+    PRINT "PUSH SPACE TO RETRY"
+    STATE% = ST_OVER%
+END FUNCTION
+
+' ============================================================
+'  画面遷移 / screen transitions
+' ============================================================
+FUNCTION GOTITLE()
+    GLOBAL STATE%
+    COLOR 15, 1, 1
+    CLS
+    HIDESPRITES()
+    LOCATE 8, 5
+    PRINT "HIGHWAY (NO-FAST)"
+    LOCATE 9, 9
+    PRINT "DODGE THE CARS!"
+    LOCATE 6, 12
+    PRINT "LEFT / RIGHT : MOVE LANE"
+    LOCATE 8, 16
+    PRINT "PUSH SPACE TO START"
+    STATE% = ST_TITLE%
+END FUNCTION
+
+FUNCTION STARTGAME()
+    GLOBAL STATE%
+    GLOBAL SCORE%
+    GLOBAL PLANE%
+    GLOBAL PCD%
+    GLOBAL EACT%
+    GLOBAL VY%
+    GLOBAL SPWN%
+    GLOBAL SPFR%
+    GLOBAL ROFF%
+    COLOR 15, 1, 1
+    CLS
+    SCORE% = 0
+    PLANE% = 1
+    PCD% = 0
+    VY% = 8
+    SPFR% = 9
+    SPWN% = 0
+    ROFF% = 0
+    FOR I% = 0 TO MAXE% - 1
+        EACT%(I%) = 0
+    NEXT I%
+    DRAWROAD()
+    DRAWHUD()
+    DRAWPLAYER()
+    SFXSTART()
+    STATE% = ST_PLAY%
+END FUNCTION
+
+' ============================================================
+'  メイン / MAIN
+' ============================================================
+SCREEN 1, 2
+WIDTH 32
+KEY OFF
+COLOR 15, 1, 1
+CLS
+
+' --- スプライト定義は SCREEN の後で / define sprites AFTER SCREEN ---
+' 上から見た車(色で自機=白 / 敵=スロット別色 を区別) / top-down car; colour separates player from enemies
+SPRITE CAR
+    "................"
+    "...##########..."
+    "..############.."
+    "..#..####..#...."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..############.."
+    "..#..####..#...."
+    "..############.."
+    "..############.."
+    "...##########..."
+    "................"
+END SPRITE
+
+DIM EL%(MAXE% - 1)
+DIM EY%(MAXE% - 1)
+DIM EACT%(MAXE% - 1)
+' 敵車ごとの OAM(スプライト属性)Yバイト位置。毎フレームここへ Y を1バイト VPOKE する。
+' Sprite N attribute is at &H1B00 + N*4 = [Y, X, pattern, colour].
+DIM EOAM%(MAXE% - 1)
+FOR I% = 0 TO MAXE% - 1
+    EOAM%(I%) = &H1B00 + (1 + I%) * 4
+NEXT I%
+
+' 敵車スロットごとの色(6色・鮮やかで互いに見分けやすい) / vivid, distinct colour per enemy slot
+DIM ECOL%(MAXE% - 1)
+ECOL%(0) = 8                          ' 赤 / red
+ECOL%(1) = 11                         ' 明るい黄 / light yellow
+ECOL%(2) = 5                          ' 明るい青 / light blue
+ECOL%(3) = 3                          ' 明るい緑 / light green
+ECOL%(4) = 13                         ' マゼンタ / magenta
+ECOL%(5) = 7                          ' シアン / cyan
+
+BEST% = 0
+PTRG% = 0
+GOTITLE()
+
+WHILE 1
+    FR = TIME
+    DO WHILE TIME = FR
+    LOOP
+
+    TRG% = 0
+    IF STRIG(0) THEN
+        TRG% = 1
+    END IF
+    NEWT% = 0
+    IF TRG% = 1 THEN
+        IF PTRG% = 0 THEN
+            NEWT% = 1
+        END IF
+    END IF
+    PTRG% = TRG%
+
+    ST% = STATE%
+    IF ST% = ST_TITLE% THEN
+        IF NEWT% = 1 THEN
+            STARTGAME()
+        END IF
+    END IF
+    IF ST% = ST_PLAY% THEN
+        SCROLLROAD()
+        MOVEPLAYER()
+        UPDATECARS()
+        IF STATE% = ST_PLAY% THEN
+            SPWN% = SPWN% + 1
+            IF SPWN% >= SPFR% THEN
+                SPWN% = 0
+                SPAWNCAR()
+            END IF
+        END IF
+    END IF
+    IF ST% = ST_OVER% THEN
+        IF NEWT% = 1 THEN
+            GOTITLE()
+        END IF
+    END IF
+WEND

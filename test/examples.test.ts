@@ -172,3 +172,48 @@ test("例: msx2-coverage.msxb はMSX2 命令を保持してエラーなしで変
   ])
     assert.match(msx, re, `保持されるべき: ${re}`);
 });
+
+// レースゲーム（FAST 有用性の題材 / docs/fast-library.md）。純BASIC版と FAST 版を対で検証する。
+test("例: highway-nofast.msxb（純BASIC・VPOKE直書き・共有文字の路面スクロール）はエラーなしで変換される", () => {
+  assert.deepEqual(errorsOf("highway-nofast.msxb"), []);
+});
+
+test("例: highway-fast.msxb（INCLUDE fast.msxb・全ASMホットループ HWFRAME）はエラーなしで変換される", () => {
+  const { diagnostics } = compileWithIncludes("examples/highway-fast.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+});
+
+test("例: blocks.msxb（10面・耐久ブロック・SCREEN2 グラフィック文字）はエラーなしで変換される", () => {
+  assert.deepEqual(errorsOf("blocks.msxb"), []);
+});
+
+// FAST_MOVEDRAW は既存の例からは呼ばれない（highway-fast は HWFRAME を使う）ため、DCE で
+// アセンブルされない盲点になりうる。呼び出す最小ソースを組み、ASM が実際に組み上がることを固定する。
+test("ライブラリ: FAST_MOVEDRAW は呼び出すと ASM がエラーなく組み上がる", () => {
+  const lib = readFileSync(join(examplesDir, "lib/fast.msxb"), "utf8");
+  const src =
+    lib +
+    [
+      "",
+      "GLOBAL SPY%",
+      "GLOBAL SPX%",
+      "GLOBAL SPP%",
+      "GLOBAL SPC%",
+      "GLOBAL SVX%",
+      "GLOBAL SVY%",
+      "DIM SPY%(7)",
+      "DIM SPX%(7)",
+      "DIM SPP%(7)",
+      "DIM SPC%(7)",
+      "DIM SVX%(7)",
+      "DIM SVY%(7)",
+      "FAST_MOVEDRAW(0, 4, 0, 0)",
+    ].join("\n");
+  const { tokens, diagnostics: ld } = tokenize(src);
+  const { program, diagnostics: pd } = parse(tokens);
+  const r = transform(program);
+  assert.deepEqual(
+    [...ld, ...pd, ...r.diagnostics].filter((d) => d.severity === "error"),
+    [],
+  );
+});

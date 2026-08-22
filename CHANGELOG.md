@@ -4,6 +4,23 @@
 バージョンは `editor/app.js` の `APP_VERSION` と `src-tauri/tauri.conf.json` の `version` に一致させる。
 0.1.44 以前の詳細は git 履歴を参照。
 
+## [0.1.46] - 2026-08-22
+
+### Added
+- **静的コストプロファイラ（`src/analyze/cost.ts` / CLI `cost.mjs` / エディタ統合）**:
+  MSX BASIC を実行せずに「毎フレームの重い所」を推定する静的解析。
+  - 実機較正した turbo R (R800) の命令別コスト（`research/calib.msxb` で計測。整数/配列/実数/
+    文字列/制御/数学/VDP/描画/GRP出力）を AST に付与して積算。
+  - 関数の self / inclusive、ループ反復数の畳み込み（CONST＋単一定数グローバル）、
+    到達可能性（DCE 集合＝変換後に出る関数）判定、インライン ASM の Z80 T-state 概算＋
+    後方分岐ループ検出。トップレベル WHILE をツリー化し状態分岐を分離表示。
+  - エディタ「実行 → コスト解析（重い所）… / Run → Cost analysis (hotspots)…」：毎フレーム木・
+    関数順位・未使用(DCE)・関数ドリルダウンをモーダル表示、突出箇所は `◆` 注記、
+    テキストコピー / JSON 保存。文法エラー時・フレームループ無し時・内部例外は安全表示。
+  - FAST ライブラリ対応：`INCLUDE` を既存の解決経路で展開し、未使用のライブラリ関数は
+    「DCE 除去」と明示して計上しない。
+  - 仕様書 `docs/15-cost-analyzer.md`、テスト `test/cost.test.ts`（6件）、README 英日に追記。
+
 ## [0.1.45] - 2026-08-20
 
 ### Added

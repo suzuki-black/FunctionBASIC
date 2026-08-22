@@ -83,6 +83,7 @@
         <div class="mi" data-act="reverse"><span data-i18n="reverse">MSX→構造化に逆変換</span></div>
         <div class="sep"></div>
         <div class="mi" data-act="errest"><span data-i18n="m.errest">エラー箇所を推測…</span></div>
+        <div class="mi" data-act="cost"><span data-i18n="m.cost">コスト解析（重い所）…</span></div>
       </div>
     </div>
     <div class="menu" data-menu="help">
@@ -218,6 +219,21 @@
       <div id="eeResult" class="ee-result"></div>
       <div class="modal-actions">
         <button id="eeClose" data-i18n="ee.close">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- コスト解析（静的プロファイラ） -->
+  <div id="costPanel" hidden>
+    <div class="modal-box errest-box">
+      <div class="modal-title" data-i18n="cost.title">コスト解析（重い所）</div>
+      <div class="ee-desc" data-i18n="cost.desc">実機較正コスト(turbo R)でソースを静的解析し、毎フレームの重い箇所を推定します（実行なし・上限見積り）。</div>
+      <div id="costSummary" class="cost-summary"></div>
+      <div id="costResult" class="ee-result"></div>
+      <div class="modal-actions">
+        <button id="costCopy" data-i18n="cost.copy">📋 コピー(テキスト)</button>
+        <button id="costJson" data-i18n="cost.json">💾 JSON保存</button>
+        <button id="costClose" data-i18n="cost.close">閉じる</button>
       </div>
     </div>
   </div>

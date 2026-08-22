@@ -15,6 +15,7 @@ import { findDataBlobs } from "./core/disasm/detect.js";
 import { buildAnnotationLines, stripMnemonicComments } from "./core/disasm/annotate.js";
 import { MSX_BIOS } from "./core/disasm/msx-bios.js";
 import { estimateError } from "./core/analyze/error-estimate.js";
+import { analyzeCost } from "./core/analyze/cost.js";
 
 const $ = (id) => document.getElementById(id);
 const srcEl = $("src");
@@ -39,6 +40,13 @@ const I18N = {
     "title": "構造化BASIC エディタ — MSX-BASIC 変換",
     "m.file": "ファイル", "m.edit": "編集", "m.view": "表示", "m.run": "実行", "m.help": "ヘルプ",
     "m.errest": "エラー箇所を推測…",
+    "m.cost": "コスト解析（重い所）…",
+    "cost.title": "コスト解析（重い所）", "cost.copy": "📋 コピー(テキスト)", "cost.json": "💾 JSON保存", "cost.close": "閉じる",
+    "cost.desc": "実機較正コスト(turbo R)でソースを静的解析し、毎フレームの重い箇所を推定します（実行なし・上限見積り。絶対値より順位を見る）。",
+    "cost.err": "解析できません。先に文法エラーを修正してください:",
+    "cost.noframe": "トップレベルの WHILE ループ（毎フレーム）が見つかりません。関数一覧のみ表示します。",
+    "cost.perframe": "毎フレーム経路（状態分岐は別枝で表示）", "cost.funcs": "関数（自己コスト順・到達可能）",
+    "cost.unused": "未使用（DCEで変換後に出ない）", "cost.drill": "関数の木を見る:",
     "ee.title": "エラー箇所を推測", "ee.kind": "エラー種別", "ee.line": "MSXの行番号", "ee.run": "推測する", "ee.close": "閉じる",
     "ee.desc": "MSXで出たエラーの「種別」と「行番号」を入れると、その行にある“原因になりうる命令・引数”をアルゴリズムで洗い出します（AIなし・あくまで推測）。",
     "ee.needline": "MSXの行番号を入力してください。",
@@ -219,6 +227,13 @@ const I18N = {
     "title": "Structured BASIC Editor — MSX-BASIC",
     "m.file": "File", "m.edit": "Edit", "m.view": "View", "m.run": "Run", "m.help": "Help",
     "m.errest": "Estimate error location…",
+    "m.cost": "Cost analysis (hotspots)…",
+    "cost.title": "Cost analysis (hotspots)", "cost.copy": "📋 Copy (text)", "cost.json": "💾 Save JSON", "cost.close": "Close",
+    "cost.desc": "Static analysis using measured turbo-R costs; estimates per-frame hotspots (no execution; upper bound - read the ranking, not absolutes).",
+    "cost.err": "Cannot analyze. Fix syntax errors first:",
+    "cost.noframe": "No top-level WHILE (frame loop) found. Showing functions only.",
+    "cost.perframe": "Per-frame path (state branches split)", "cost.funcs": "Functions (by self cost, reachable)",
+    "cost.unused": "Unused (removed by DCE; not in output)", "cost.drill": "Show function tree:",
     "ee.title": "Estimate error location", "ee.kind": "Error kind", "ee.line": "MSX line number", "ee.run": "Estimate", "ee.close": "Close",
     "ee.desc": "Enter the MSX error kind and the reported line; the tool algorithmically lists the statements/arguments on that line that could cause it (no AI — a heuristic guess).",
     "ee.needline": "Please enter the MSX line number.",
@@ -608,6 +623,118 @@ function runErrEstimate() {
     }),
   );
 }
+
+// ===== コスト解析（静的プロファイラ）=====
+let costLast = null; // { rep }
+// 現在の編集内容を INCLUDE 解決してパース（変換と同じ解決経路＝LIBS/プロジェクト）。
+function costParseCurrent() {
+  let source = srcEl.value;
+  let incDiags = [];
+  if (/\bINCLUDE\b/i.test(source)) {
+    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, source));
+    source = inc.source;
+    incDiags = inc.diagnostics || [];
+  }
+  const { tokens, diagnostics: ld } = tokenize(source);
+  const { program, diagnostics: pd } = parse(tokens);
+  return { program, diags: [...incDiags, ...(ld || []), ...(pd || [])] };
+}
+const costTk = (n) => (n / 2000).toFixed(2);
+function costTreeHtml(node, depth, parentIncl) {
+  const tk = node.incl / 2000;
+  if (tk < 0.03 && !node.children.length) return "";
+  const pct = parentIncl > 0 ? `<span class="cost-pct">${Math.round((100 * node.incl) / parentIncl)}%</span>` : "";
+  const iters = node.iters ? ` <span class="cost-it">[x${node.iters}]</span>` : "";
+  const hot = node.hot ? ` <span class="cost-hot">◆${esc(String(node.hot))}</span>` : "";
+  let h = `<div class="cost-node" style="padding-left:${depth * 14}px"><span class="cost-tk">${costTk(node.incl)}</span> ${esc(node.label)}${iters} ${pct}${hot}</div>`;
+  const kids = [...node.children].sort((a, b) => b.incl - a.incl);
+  let restI = 0, restN = 0, shown = 0;
+  for (const c of kids) {
+    if (c.incl / 2000 >= 0.03 && shown < 14) { h += costTreeHtml(c, depth + 1, node.incl); shown++; }
+    else { restI += c.incl; restN++; }
+  }
+  if (restN && restI / 2000 >= 0.02) h += `<div class="cost-node cost-minor" style="padding-left:${(depth + 1) * 14}px"><span class="cost-tk">${costTk(restI)}</span> … (${restN} minor)</div>`;
+  return h;
+}
+function renderCostReport(rep) {
+  const parts = [];
+  parts.push(`<div class="cost-head">${esc(t("cost.perframe"))}</div>`);
+  if (rep.frameTree) parts.push(`<div class="cost-tree">${costTreeHtml(rep.frameTree, 0, 0)}</div>`);
+  else parts.push(`<div class="ee-empty">${esc(t("cost.noframe"))}</div>`);
+  const reach = rep.functions.filter((f) => f.reachable);
+  parts.push(`<div class="cost-head">${esc(t("cost.funcs"))}</div>`);
+  parts.push('<div class="cost-flat">');
+  for (const f of [...reach].sort((a, b) => b.self - a.self).slice(0, 18))
+    parts.push(`<div class="cost-node"><span class="cost-tk">${costTk(f.self)}</span> self / ${costTk(f.inclusive)} incl &nbsp; ${esc(f.name)}</div>`);
+  parts.push("</div>");
+  const unused = rep.functions.filter((f) => !f.reachable);
+  if (unused.length) parts.push(`<div class="cost-unused">${esc(t("cost.unused"))}: ${esc(unused.map((f) => f.name).join(", "))}</div>`);
+  // 関数ドリルダウン
+  const opts = [...reach].sort((a, b) => b.inclusive - a.inclusive).map((f) => `<option value="${esc(f.name)}">${esc(f.name)} (${costTk(f.inclusive)} tk)</option>`).join("");
+  parts.push(`<div class="cost-head">${esc(t("cost.drill"))} <select id="costFnSel">${opts}</select></div>`);
+  parts.push('<div class="cost-tree" id="costFnTree"></div>');
+  return parts.join("");
+}
+function costFnTreeById(name) {
+  if (!costLast) return;
+  const tr = costLast.rep.funcTrees.find((n) => n.label.endsWith(name));
+  $("costFnTree").innerHTML = tr ? costTreeHtml(tr, 0, 0) : "";
+}
+function costTextReport(rep) {
+  const L = [];
+  L.push(`# static cost  (net/2000, turbo R;  1exec = net/2000 tick, TIME 60Hz)`);
+  const line = (n, d) => `${"  ".repeat(d)}${costTk(n.incl).padStart(8)} tk  ${n.label}${n.iters ? ` [x${n.iters}]` : ""}${n.hot ? `  <>${n.hot}` : ""}`;
+  const walk = (n, d) => {
+    if (n.incl / 2000 < 0.03 && !n.children.length) return;
+    L.push(line(n, d));
+    for (const c of [...n.children].sort((a, b) => b.incl - a.incl)) walk(c, d + 1);
+  };
+  L.push("\n== per-frame path ==");
+  if (rep.frameTree) walk(rep.frameTree, 0);
+  L.push("\n== functions (self / inclusive, reachable) ==");
+  for (const f of rep.functions.filter((f) => f.reachable).sort((a, b) => b.self - a.self))
+    L.push(`  self ${costTk(f.self).padStart(7)}  incl ${costTk(f.inclusive).padStart(7)} tk  ${f.name}`);
+  const un = rep.functions.filter((f) => !f.reachable);
+  if (un.length) L.push(`\nunused (DCE): ${un.map((f) => f.name).join(", ")}`);
+  return L.join("\n");
+}
+function openCostPanel() {
+  const sum = $("costSummary");
+  const out = $("costResult");
+  sum.textContent = "";
+  out.innerHTML = "";
+  $("costPanel").hidden = false;
+  let parsed;
+  try {
+    parsed = costParseCurrent();
+  } catch (e) {
+    out.innerHTML = `<div class="ee-empty">${esc(t("cost.err"))} ${esc(String(e && e.message || e))}</div>`;
+    return;
+  }
+  const errs = (parsed.diags || []).filter((d) => d.severity === "error");
+  if (errs.length) {
+    out.innerHTML = `<div class="ee-empty">${esc(t("cost.err"))}<br>${errs.slice(0, 8).map((d) => esc(localize(d, lang))).join("<br>")}</div>`;
+    return;
+  }
+  let rep;
+  try {
+    rep = analyzeCost(parsed.program);
+  } catch (e) {
+    out.innerHTML = `<div class="ee-empty">${esc(String(e && e.message || e))}</div>`;
+    return;
+  }
+  costLast = { rep };
+  const fps = rep.estFps > 0 ? rep.estFps.toFixed(1) : "-";
+  sum.innerHTML = `<b>${rep.perFrameTicks.toFixed(2)} tk/frame</b> ≒ ${fps} fps <span class="cost-cap">(上限/upper bound)</span>`;
+  out.innerHTML = renderCostReport(rep);
+  const selEl = $("costFnSel");
+  if (selEl) {
+    selEl.addEventListener("change", () => costFnTreeById(selEl.value));
+    if (selEl.value) costFnTreeById(selEl.value);
+  }
+}
+function closeCostPanel() { $("costPanel").hidden = true; }
+
 function renderEeReport(rep) {
   const parts = [];
   if (!rep.found) {
@@ -3638,6 +3765,7 @@ function runAction(act) {
     case "run-ext": return onPlayWebMSXExternal();
     case "reverse": return onReverse();
     case "errest": return openErrEstimate();
+    case "cost": return openCostPanel();
     case "import-basic": return onImportBasic();
     case "help": return showModal(t("sc.title"), t("sc.body"));
     case "about": return showModal("FunctionBASIC", t("about.body", APP_VERSION));
@@ -3679,6 +3807,7 @@ document.addEventListener("keydown", (e) => {
     closeMenus();
     if (!$("modal").hidden) resolveModal(null);
     else if (!$("errEst").hidden) closeErrEstimate();
+    else if (!$("costPanel").hidden) closeCostPanel();
     else if (gfindOpen()) closeGlobal();
   }
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "L" || e.key === "l")) {
@@ -3735,6 +3864,17 @@ $("settings").addEventListener("click", (e) => {
 // エラー箇所推測ダイアログ
 $("eeRun").addEventListener("click", runErrEstimate);
 $("eeClose").addEventListener("click", closeErrEstimate);
+$("costClose").addEventListener("click", closeCostPanel);
+$("costCopy").addEventListener("click", async () => {
+  if (!costLast) return;
+  const ok = await copyText(costTextReport(costLast.rep));
+  flash(ok ? t("copy.ok") : t("copy.err"));
+});
+$("costJson").addEventListener("click", () => {
+  if (!costLast) return;
+  const base = String(project.active || "source").replace(/\.msxb$/i, "");
+  download(`${base}.cost.json`, JSON.stringify(costLast.rep, null, 2));
+});
 $("eeLine").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); runErrEstimate(); }
 });

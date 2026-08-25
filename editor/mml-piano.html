@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FunctionBASIC 音楽ツール（ピアノロール）</title>
+<style>
+  :root { --bg:#1e1f26; --panel:#282a36; --grid:#33353f; --gridbar:#4a4d5e; --text:#e6e6e6; --sub:#9aa; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:8px 12px; background:var(--panel); display:flex; gap:12px; flex-wrap:wrap; align-items:center; border-bottom:1px solid #000; }
+  header .grp { display:flex; gap:6px; align-items:center; }
+  header label { color:var(--sub); }
+  button, select, input { background:#3b3d4a; color:var(--text); border:1px solid #4a4d5e; border-radius:4px; padding:4px 8px; font:inherit; }
+  button { cursor:pointer; }
+  button:hover { background:#474a5a; }
+  button.on { outline:2px solid #fff; }
+  .chA { background:#ff6b6b33; border-color:#ff6b6b; } .chB { background:#6bd3ff33; border-color:#6bd3ff; } .chC { background:#b5ff6b33; border-color:#b5ff6b; }
+  #wrap { display:flex; gap:12px; padding:12px; align-items:flex-start; }
+  #rollBox { overflow:auto; max-height:78vh; border:1px solid #000; background:#16171d; }
+  canvas { display:block; }
+  #side { width:340px; display:flex; flex-direction:column; gap:8px; }
+  textarea { width:100%; height:180px; background:#16171d; color:var(--text); border:1px solid #4a4d5e; border-radius:4px; font:12px/1.4 ui-monospace,Menlo,monospace; padding:6px; white-space:pre; }
+  #status { color:var(--sub); min-height:1.4em; }
+  h3 { margin:6px 0 2px; font-size:12px; color:var(--sub); font-weight:600; }
+  .hint { color:var(--sub); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="grp"><strong>♪ 音楽ツール</strong></div>
+  <div class="grp"><label>Tempo</label><input id="tempo" type="number" min="32" max="255" value="120" style="width:60px"></div>
+  <div class="grp"><label>拍子</label><input id="tsn" type="number" min="1" max="16" value="4" style="width:44px">/<select id="tsd"><option>2</option><option selected>4</option><option>8</option></select></div>
+  <div class="grp"><label>小節数</label><input id="bars" type="number" min="1" max="64" value="4" style="width:50px"></div>
+  <div class="grp"><label>音長</label>
+    <select id="len">
+      <option value="1">全</option><option value="2">2分</option><option value="4" selected>4分</option>
+      <option value="8">8分</option><option value="16">16分</option><option value="4.">付点4分</option><option value="8.">付点8分</option>
+    </select></div>
+  <div class="grp"><label>ch</label>
+    <button id="chA" class="chA on">A</button><button id="chB" class="chB">B</button><button id="chC" class="chC">C</button>
+  </div>
+  <div class="grp"><button id="play">▶ 再生</button><button id="stop">■ 停止</button><button id="clear">クリア</button></div>
+</header>
+
+<div id="wrap">
+  <div id="rollBox"><canvas id="roll" width="900" height="600"></canvas></div>
+  <div id="side">
+    <div id="status">クリックで音符を置く／同じ音符をクリックで消す（現在のch・音長で置きます）</div>
+    <div class="grp" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="toMml">→ MML 書出</button>
+      <button id="fromMml">← MML 読込</button>
+      <button id="toPlay">→ PLAY文(.msxb)</button>
+      <button id="copy">コピー</button>
+    </div>
+    <h3>テキスト（MML方言 / 生成PLAY文）</h3>
+    <textarea id="io" spellcheck="false"></textarea>
+    <p class="hint">MML方言を貼って「MML読込」で音符化。「PLAY文」は FunctionBASIC の整形（1小節1行・O/L明示・3声等長）を通した生成物。CLI: <code>music.mjs import/export</code> と同じコア。</p>
+  </div>
+</div>
+
+<script type="module">
+import { parseMmlDoc, songToMml, songToPlayBasic, songToNotes, notesToSong, PPQ } from "./core/music/mml.js";
+
+// ---- モデル ----
+const CH = [
+  { id: "A", name: "melody", color: "#ff6b6b", notes: [], ctrls: [] },
+  { id: "B", name: "harmony", color: "#6bd3ff", notes: [], ctrls: [] },
+  { id: "C", name: "bass", color: "#b5ff6b", notes: [], ctrls: [] },
+];
+let active = 0;
+const LOW = 24, HIGH = 83;            // 表示音域 O2C..O6B（絶対半音）
+const ROWH = 10, GUTTER = 42;         // 1半音の高さ / 左の鍵盤ラベル幅
+const PXT = 0.5;                      // px per tick
+const SNAP = PPQ / 4;                 // 16分グリッドにスナップ(=12tick)
+const NAME = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+const $ = (id) => document.getElementById(id);
+const roll = $("roll"), ctx = roll.getContext("2d");
+const tempoEl = $("tempo"), tsnEl = $("tsn"), tsdEl = $("tsd"), barsEl = $("bars"), lenEl = $("len");
+
+function measureTicks() { return Math.round(PPQ * 4 * (+tsnEl.value) / (+tsdEl.value)); }
+function totalTicks() { return measureTicks() * Math.max(1, +barsEl.value); }
+function lenTicks() {
+  const v = lenEl.value; const dot = v.endsWith("."); const n = parseInt(v);
+  let t = (PPQ * 4) / n; if (dot) t += t / 2; return Math.round(t);
+}
+function rowY(pitch) { return (HIGH - pitch) * ROWH; }
+function yPitch(y) { return HIGH - Math.floor(y / ROWH); }
+
+// ---- 描画 ----
+function resize() {
+  roll.width = GUTTER + totalTicks() * PXT;
+  roll.height = (HIGH - LOW + 1) * ROWH;
+}
+function draw() {
+  const W = roll.width, H = roll.height, mt = measureTicks();
+  ctx.clearRect(0, 0, W, H);
+  // 行（黒鍵は暗く／C 行に境界）
+  for (let p = LOW; p <= HIGH; p++) {
+    const y = rowY(p), semi = ((p % 12) + 12) % 12;
+    const black = [1,3,6,8,10].includes(semi);
+    ctx.fillStyle = black ? "#1b1c22" : "#212330";
+    ctx.fillRect(GUTTER, y, W - GUTTER, ROWH);
+    if (semi === 0) { ctx.fillStyle = "#3a3d4e"; ctx.fillRect(GUTTER, y + ROWH - 1, W - GUTTER, 1); }
+    // 鍵盤ラベル（C のみ）
+    if (semi === 0) { ctx.fillStyle = "#9aa"; ctx.font = "9px monospace"; ctx.fillText("O" + Math.floor(p/12) + "C", 4, y + ROWH - 1); }
+  }
+  // 縦線（拍/小節）
+  const beat = PPQ; // 4分ごと
+  for (let t = 0; t <= totalTicks(); t += beat) {
+    const x = GUTTER + t * PXT, bar = (t % mt) === 0;
+    ctx.fillStyle = bar ? "#4a4d5e" : "#2c2e3a";
+    ctx.fillRect(x, 0, bar ? 2 : 1, H);
+    if (bar) { ctx.fillStyle = "#9aa"; ctx.font = "9px monospace"; ctx.fillText((t / mt) + 1 + "", x + 3, 9); }
+  }
+  // 音符（非アクティブは薄く）
+  CH.forEach((ch, ci) => {
+    for (const n of ch.notes) {
+      if (n.pitch < LOW || n.pitch > HIGH) continue;
+      const x = GUTTER + n.start * PXT, y = rowY(n.pitch), w = Math.max(3, n.dur * PXT - 1);
+      ctx.globalAlpha = ci === active ? 1 : 0.35;
+      ctx.fillStyle = ch.color;
+      ctx.fillRect(x, y + 1, w, ROWH - 2);
+      ctx.globalAlpha = 1;
+    }
+  });
+}
+
+// ---- 編集 ----
+roll.addEventListener("mousedown", (e) => {
+  const r = roll.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  if (x < GUTTER) return;
+  const tick = Math.max(0, Math.round((x - GUTTER) / PXT / SNAP) * SNAP);
+  const pitch = yPitch(y);
+  if (pitch < LOW || pitch > HIGH) return;
+  const ch = CH[active];
+  const hit = ch.notes.findIndex((n) => n.pitch === pitch && tick >= n.start && tick < n.start + n.dur);
+  if (hit >= 0) ch.notes.splice(hit, 1);
+  else ch.notes.push({ start: tick, dur: lenTicks(), pitch, vol: 8 });
+  draw();
+});
+
+// ---- ch 切替 ----
+["A","B","C"].forEach((id, i) => $("ch" + id).addEventListener("click", () => {
+  active = i; ["A","B","C"].forEach((x, j) => $("ch" + x).classList.toggle("on", j === i)); draw();
+}));
+
+// ---- テキスト I/O ----
+function currentSong() {
+  return notesToSong(CH.map((c) => ({ id: c.id, name: c.name, notes: c.notes, ctrls: c.ctrls })),
+    { tempo: +tempoEl.value, timesig: [+tsnEl.value, +tsdEl.value] });
+}
+$("toMml").addEventListener("click", () => { $("io").value = songToMml(currentSong()); status("MML を書き出しました"); });
+$("toPlay").addEventListener("click", () => {
+  const { code, warnings } = songToPlayBasic(currentSong(), { func: "BGM_MAIN" });
+  $("io").value = code; status(warnings.length ? ("PLAY文生成（警告 " + warnings.length + "）") : "PLAY文を生成しました");
+});
+$("fromMml").addEventListener("click", () => {
+  try {
+    const { song, warnings } = parseMmlDoc($("io").value);
+    const grid = songToNotes(song);
+    tempoEl.value = grid.tempo; tsnEl.value = grid.timesig[0]; tsdEl.value = grid.timesig[1];
+    CH.forEach((c) => { c.notes = []; c.ctrls = []; });
+    grid.channels.forEach((gc, i) => { if (CH[i]) { CH[i].notes = gc.notes; CH[i].ctrls = gc.ctrls; } });
+    resize(); draw(); status(warnings.length ? ("読込（警告 " + warnings.length + "）") : "MML を読み込みました");
+  } catch (err) { status("読込エラー: " + err.message); }
+});
+$("copy").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("io").value); status("コピーしました"); } catch { status("コピー不可（手動で選択）"); } });
+$("clear").addEventListener("click", () => { CH.forEach((c) => { c.notes = []; c.ctrls = []; }); draw(); status("クリア"); });
+[tsnEl, tsdEl, barsEl].forEach((el) => el.addEventListener("change", () => { resize(); draw(); }));
+function status(s) { $("status").textContent = s; }
+
+// ---- 再生（Web Audio・矩形波3声） ----
+let actx = null, playing = [];
+$("play").addEventListener("click", () => {
+  stopAll();
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  const spt = (60 / (+tempoEl.value)) / PPQ; // 秒/tick
+  const t0 = actx.currentTime + 0.05;
+  CH.forEach((ch) => {
+    for (const n of ch.notes) {
+      const osc = actx.createOscillator(), g = actx.createGain();
+      const midi = n.pitch + 12; osc.type = "square";
+      osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+      const s = t0 + n.start * spt, e = s + n.dur * spt;
+      g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.15, s + 0.01);
+      g.gain.setValueAtTime(0.15, e - 0.02); g.gain.exponentialRampToValueAtTime(0.0001, e);
+      osc.connect(g).connect(actx.destination); osc.start(s); osc.stop(e + 0.02); playing.push(osc);
+    }
+  });
+  status("再生中…");
+});
+function stopAll() { playing.forEach((o) => { try { o.stop(); } catch {} }); playing = []; }
+$("stop").addEventListener("click", () => { stopAll(); status("停止"); });
+
+// ---- 初期サンプル ----
+$("io").value = "@tempo 120\n@timesig 4/4\n@ch A melody\n@ch B bass\nA: O4 L8 CDEF GAB>C | O5 C<BAGFED C\nB: O2 L2 CG | FG\n";
+$("fromMml").click();
+resize(); draw();
+</script>
+</body>
+</html>

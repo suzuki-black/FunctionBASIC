@@ -460,3 +460,65 @@ export function songToPlayBasic(song: Song, opts: PlayBasicOpts = {}): { code: s
   lines.push("END FUNCTION");
   return { code: lines.join("\n") + "\n", warnings };
 }
+
+// ============================================================
+//  Song <-> 絶対時刻ノート（ピアノロールGUI用）
+// ============================================================
+export interface GridNote {
+  start: number; // tick
+  dur: number; // tick
+  pitch: number; // 絶対半音
+  vol?: number;
+}
+export interface GridChannel {
+  id: string;
+  name?: string;
+  notes: GridNote[]; // 発音のみ（休符は隙間として表す）
+  ctrls: { start: number; raw: string }[]; // S/M/Q/N 等（位置つきで保持）
+}
+// Song(逐次イベント) → ch別の絶対ノート。休符は隙間になる。
+export function songToNotes(song: Song): { tempo: number; timesig: [number, number]; channels: GridChannel[] } {
+  const channels: GridChannel[] = song.channels.map((ch) => {
+    const notes: GridNote[] = [];
+    const ctrls: { start: number; raw: string }[] = [];
+    let t = 0;
+    for (const ev of ch.events) {
+      if (ev.t === "note") {
+        notes.push({ start: t, dur: ev.dur, pitch: ev.pitch, vol: ev.vol });
+        t += ev.dur;
+      } else if (ev.t === "rest") {
+        t += ev.dur;
+      } else {
+        ctrls.push({ start: t, raw: ev.raw });
+      }
+    }
+    return { id: ch.id, name: ch.name, notes, ctrls };
+  });
+  return { tempo: song.tempo, timesig: song.timesig, channels };
+}
+// ch別の絶対ノート → Song(逐次イベント)。隙間は休符で埋める。単声前提で重なりは詰める。
+export function notesToSong(
+  channels: GridChannel[],
+  meta: { tempo: number; timesig: [number, number] },
+): Song {
+  const outCh: Channel[] = channels.map((ch) => {
+    const items = [
+      ...ch.notes.map((n) => ({ start: n.start, kind: "note" as const, n })),
+      ...ch.ctrls.map((c) => ({ start: c.start, kind: "ctrl" as const, raw: c.raw })),
+    ].sort((a, b) => a.start - b.start);
+    const events: Ev[] = [];
+    let cursor = 0;
+    for (const it of items) {
+      if (it.kind === "note") {
+        if (it.n.start > cursor) events.push({ t: "rest", dur: it.n.start - cursor });
+        const start = Math.max(cursor, it.n.start);
+        events.push({ t: "note", dur: it.n.dur, pitch: it.n.pitch, vol: it.n.vol });
+        cursor = start + it.n.dur;
+      } else {
+        events.push({ t: "ctrl", raw: it.raw });
+      }
+    }
+    return { id: ch.id, name: ch.name, events };
+  });
+  return { tempo: meta.tempo, timesig: meta.timesig, channels: outCh };
+}

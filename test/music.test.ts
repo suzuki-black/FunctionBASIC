@@ -6,6 +6,8 @@ import {
   parseMmlDoc,
   songToMml,
   songToPlayBasic,
+  songToNotes,
+  notesToSong,
   lenToTicks,
   ticksToLen,
   type Song,
@@ -60,6 +62,17 @@ test("往復: MML → PLAY.msxb → デコンパイル で音程/音長が一致
   const norm2 = songToMml(song2!);
   assert.equal(norm2, norm1, "往復で MML 正規形が一致");
   assert.equal(song2!.tempo, 132);
+});
+
+test("Song ⇄ 絶対ノート(GUI用): 休符が隙間になり戻せる", () => {
+  const { song } = parseMmlDoc("@tempo 120\nA: O4 L4 C R E G\n");
+  const grid = songToNotes(song);
+  const notes = grid.channels[0].notes;
+  assert.equal(notes.length, 3); // C, E, G（Rは隙間）
+  assert.equal(notes[0].start, 0);
+  assert.equal(notes[1].start, 96); // C(48)+R(48)=96
+  const back = notesToSong(grid.channels, { tempo: grid.tempo, timesig: grid.timesig });
+  assert.equal(songToMml(back), songToMml(song));
 });
 
 test("デコンパイル: 非リテラルな PLAY 引数はスキップして警告", () => {

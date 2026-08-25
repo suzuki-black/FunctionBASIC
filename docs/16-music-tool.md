@@ -8,7 +8,7 @@
 - デコンパイル: `src/music/decompile.ts`（`.msxb` を parse して `PLAY` 文字列を抽出）
 - CLI: `music.mjs`
 - テスト: `test/music.test.ts`
-- GUI（ピアノロール）は Phase 2（`research/mml-piano.html` 予定）
+- GUI（ピアノロール）: `editor/mml-piano.html`（`editor/core/music/mml.js` を import してコア再利用）
 
 ## MSX MML 仕様（対応サブセット・一次資料）
 
@@ -81,7 +81,18 @@ node --experimental-strip-types music.mjs roundtrip <file.msxb> [--func NAME]
 `PLAY(n)` を見て 1 小節ずつ供給するフィーダが要る（曲全体を一度に流すとブロック／キュー溢れ）。
 foreground/background の既定・キュー上限（32コマンド）は実機で確認して運用する。将来 `--player feeder` を提供予定。
 
-## 今後（Phase 2 以降）
+## ピアノロール GUI（`editor/mml-piano.html`）
 
-- ピアノロール GUI（`research/` → 確認後 editor 統合）
+`npm run serve` → `http://localhost:8123/mml-piano.html`。3声（A/B/C）をクリックで打ち込み、
+テンポ/拍子/音長/小節数を指定、Web Audio（矩形波3声）で試聴。ボタン:
+- 「→ MML 書出」＝現在の音符を MML方言テキストへ／「← MML 読込」＝テキストを音符化
+- 「→ PLAY文(.msxb)」＝ FunctionBASIC の整形を通した読みやすい `PLAY` 文を生成／「コピー」
+
+コアは CLI と同じ `mml.ts`（ブラウザ用に `build.mjs` が `editor/core/music/mml.js` へ型ストリップ）。
+`editor/core/**` はビルド生成物（gitignore）なので、GUI 利用前に `node build.mjs` が必要。
+橋渡し API: `songToNotes`（Song→絶対ノート）/ `notesToSong`（絶対ノート→Song）。
+
+## 今後（Phase 3 以降）
+
 - `--json`（リッチメタ・汎用ツール連携）／FM（MSX-MUSIC `@音色`・追加ch）／ループ点
+- エディタ本体の Tools メニュー統合／BGMフィーダ生成（`--player feeder`）

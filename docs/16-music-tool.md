@@ -83,7 +83,8 @@ foreground/background の既定・キュー上限（32コマンド）は実機�
 
 ## ピアノロール GUI（`editor/mml-piano.html`）
 
-`npm run serve` → `http://localhost:8123/mml-piano.html`。3声（A/B/C）をクリックで打ち込み、
+エディタの **実行 → 音楽ツール（ピアノロール）…** から開く（別タブ）。単体では `npm run serve` →
+`http://localhost:8123/mml-piano.html`。3声（A/B/C）をクリックで打ち込み、
 テンポ/拍子/音長/小節数を指定、Web Audio（矩形波3声）で試聴。ボタン:
 - 「→ MML 書出」＝現在の音符を MML方言テキストへ／「← MML 読込」＝テキストを音符化
 - 「→ PLAY文(.msxb)」＝ FunctionBASIC の整形を通した読みやすい `PLAY` 文を生成／「コピー」
@@ -95,4 +96,4 @@ foreground/background の既定・キュー上限（32コマンド）は実機�
 ## 今後（Phase 3 以降）
 
 - `--json`（リッチメタ・汎用ツール連携）／FM（MSX-MUSIC `@音色`・追加ch）／ループ点
-- エディタ本体の Tools メニュー統合／BGMフィーダ生成（`--player feeder`）
+- BGMフィーダ生成（`--player feeder`）／音符ドラッグでの長さ変更・ノート移動などGUI操作の拡充

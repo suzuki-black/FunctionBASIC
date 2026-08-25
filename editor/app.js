@@ -41,6 +41,8 @@ const I18N = {
     "m.file": "ファイル", "m.edit": "編集", "m.view": "表示", "m.run": "実行", "m.help": "ヘルプ",
     "m.errest": "エラー箇所を推測…",
     "m.cost": "コスト解析（重い所）…",
+    "m.music": "音楽ツール（ピアノロール）…",
+    "music.opened": "音楽ツールを開けませんでした。ポップアップを許可するか mml-piano.html を直接開いてください。",
     "cost.title": "コスト解析（重い所）", "cost.copy": "📋 コピー(テキスト)", "cost.json": "💾 JSON保存", "cost.close": "閉じる",
     "cost.desc": "実機較正コスト(turbo R)でソースを静的解析し、毎フレームの重い箇所を推定します（実行なし・上限見積り。絶対値より順位を見る）。",
     "cost.err": "解析できません。先に文法エラーを修正してください:",
@@ -228,6 +230,8 @@ const I18N = {
     "m.file": "File", "m.edit": "Edit", "m.view": "View", "m.run": "Run", "m.help": "Help",
     "m.errest": "Estimate error location…",
     "m.cost": "Cost analysis (hotspots)…",
+    "m.music": "Music tool (piano roll)…",
+    "music.opened": "Could not open the music tool. Allow popups or open mml-piano.html directly.",
     "cost.title": "Cost analysis (hotspots)", "cost.copy": "📋 Copy (text)", "cost.json": "💾 Save JSON", "cost.close": "Close",
     "cost.desc": "Static analysis using measured turbo-R costs; estimates per-frame hotspots (no execution; upper bound - read the ranking, not absolutes).",
     "cost.err": "Cannot analyze. Fix syntax errors first:",
@@ -697,6 +701,12 @@ function costTextReport(rep) {
   const un = rep.functions.filter((f) => !f.reachable);
   if (un.length) L.push(`\nunused (DCE): ${un.map((f) => f.name).join(", ")}`);
   return L.join("\n");
+}
+// 音楽ツール（ピアノロール）を別タブ/ウィンドウで開く。_blank なので現在のエディタは置換しない。
+// デスクトップ(Tauri/WKWebView)でポップアップが抑止された場合はステータスで案内。
+function openMusicTool() {
+  const w = window.open("mml-piano.html", "_blank");
+  if (!w) setStatus("info", t("music.opened"));
 }
 function openCostPanel() {
   const sum = $("costSummary");
@@ -3766,6 +3776,7 @@ function runAction(act) {
     case "reverse": return onReverse();
     case "errest": return openErrEstimate();
     case "cost": return openCostPanel();
+    case "music": return openMusicTool();
     case "import-basic": return onImportBasic();
     case "help": return showModal(t("sc.title"), t("sc.body"));
     case "about": return showModal("FunctionBASIC", t("about.body", APP_VERSION));

@@ -1,0 +1,20 @@
+' find the first zero in an array
+FUNCTION FIND_ZERO(REF IDX)
+    GLOBAL A
+    FOR I = 1 TO 10
+        IF A(I) = 0 THEN
+            IDX = I
+            RETURN 1
+        END IF
+    NEXT I
+    RETURN 0
+END FUNCTION
+
+DIM A(10)
+' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+FOR I = 1 TO 10
+    A(I) = I
+NEXT I
+A(3) = 0
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE

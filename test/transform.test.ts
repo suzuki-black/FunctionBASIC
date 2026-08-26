@@ -11,7 +11,9 @@ const compile = (src: string) => {
   return { code, diagnostics: [...ld, ...pd, ...td], msx: renderMsx(code) };
 };
 
-const FIND_ZERO = `' 配列の中から最初に 0 を見つけて返す
+// examples/find-zero.msxb と同一の正しいデモ。MSX-BASIC は DIM 直後、数値配列の全要素が 0 なので
+// まず 1..10 で埋めてから 3 番目だけ 0 に戻す（そうしないと最初の 0 は既定値の要素＝index 1 になる）。
+const FIND_ZERO = `' find the first zero in an array
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
@@ -24,26 +26,34 @@ FUNCTION FIND_ZERO(REF IDX)
 END FUNCTION
 
 DIM A(10)
+' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+FOR I = 1 TO 10
+    A(I) = I
+NEXT I
 A(3) = 0
-RESULT = FIND_ZERO(PX)
-PRINT "FOUND="; RESULT; " AT "; PX`;
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE`;
 
 test("FIND_ZERO ゴールデン出力", () => {
   const { msx, diagnostics } = compile(FIND_ZERO);
   assert.deepEqual(diagnostics, []);
   const expected = [
     "100 ' === MAIN ===",
-    "110 ' 配列の中から最初に 0 を見つけて返す",
+    "110 ' find the first zero in an array",
     "120 DIM A(10)",
-    "130 A(3)=0",
-    "140 GOSUB 1000: B=E",
-    '150 PRINT "FOUND=";B;" AT ";C',
-    "160 END",
-    "1000 ' === FUNCTION FIND_ZERO (IDX->C) ===",
-    "1010 FOR D=1 TO 10",
-    "1020 IF A(D)=0 THEN C=D: E=1: RETURN",
+    "130 ' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0",
+    "140 FOR B=1 TO 10",
+    "150 A(B)=B",
+    "160 NEXT",
+    "170 A(3)=0",
+    "180 GOSUB 1000: C=F",
+    '190 PRINT "FOUND=";C;" AT ";D',
+    "200 END",
+    "1000 ' === FUNCTION FIND_ZERO (IDX->D) ===",
+    "1010 FOR E=1 TO 10",
+    "1020 IF A(E)=0 THEN D=E: F=1: RETURN",
     "1030 NEXT",
-    "1040 E=0: RETURN",
+    "1040 F=0: RETURN",
   ].join("\r\n");
   assert.equal(msx, expected);
 });
@@ -58,11 +68,12 @@ test("行番号は昇順・重複なし、GOSUBは数値解決済み", () => {
 
 test("REF名前置換: 呼び出し側の実変数を関数内で直接書き換える（ゼロコピー）", () => {
   const { msx } = compile(FIND_ZERO);
-  // IDX は PX の割当名 C に置換され、関数内で C= が直接現れる（受渡変数やコピーバックは無い）
-  assert.match(msx, /THEN C=D/);
-  // 実行コードに IDX= のような構造化名の代入は残らない（コメント内の "IDX->C" 注記は可）
+  // IDX は WHERE の割当名 D に置換され、関数内で D= が直接現れる（受渡変数やコピーバックは無い）
+  assert.match(msx, /THEN D=E/);
+  // 実行コードに IDX= のような構造化名の代入は残らない（コメント内の "IDX->D" 注記は可）
   assert.ok(!/\bIDX=/.test(msx), "IDX への代入は出力に残らない");
-  assert.ok(!/=PX\b|PX=/.test(msx.replace(/PRINT.*/g, "")), "受渡変数/コピーバックが無い");
+  // REF 実引数名 WHERE は割当名へ置換され、受渡変数/コピーバックとして残らない
+  assert.ok(!/\bWHERE\b/.test(msx.replace(/'.*/g, "")), "受渡変数/コピーバックが無い");
 });
 
 test("再帰はソフトスタックで変換される（エラーにしない）", () => {

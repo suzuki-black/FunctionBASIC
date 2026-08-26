@@ -339,6 +339,7 @@ Two showcases, two philosophies: **the shooter** shows how to drop to inline Z80
 A representative snippet — a function with a `REF` parameter and an early `RETURN`, scanning an array for the first zero:
 
 ```basic
+' find the first zero in an array
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
@@ -349,9 +350,18 @@ FUNCTION FIND_ZERO(REF IDX)
     NEXT I
     RETURN 0
 END FUNCTION
+
+DIM A(10)
+' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+FOR I = 1 TO 10
+    A(I) = I
+NEXT I
+A(3) = 0
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
-Each `FUNCTION` becomes a `GOSUB` routine and every long name gets a unique 2-character MSX variable.
+Each `FUNCTION` becomes a `GOSUB` routine and every long name gets a unique 2-character MSX variable. (MSX-BASIC zero-fills numeric arrays on `DIM`, so the array is seeded before the search — otherwise the "first zero" would trivially be index 1.) Full program: [`examples/find-zero.msxb`](examples/find-zero.msxb).
 
 More, all convert-tested: a **multicolour sprite** trick (two hardware sprites stacked at the same spot for two colours — a self-bouncing cat) in [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb); a **game-loop skeleton** (`WHILE 1 … WEND` with `BREAK` on fire); an MSX2 **`SCREEN 5` graphics + BGM/SE** demo (custom palette, `LINE …,BF` / `CIRCLE` / `PAINT`, `SET PAGE` double-buffering, `COPY`, `PLAY`, `SOUND`) in [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb); and a **recursion** showcase (factorial / Fibonacci / mutual) in [`examples/recursion.msxb`](examples/recursion.msxb). Browse [`examples/`](examples/) and the per-feature [`examples/cookbook/`](examples/cookbook/).
 
@@ -771,6 +781,7 @@ DATA 62, 42, 205, 162, 0, ...
 代表的なスニペット — `REF` 引数と早期 `RETURN` を持つ関数で、配列から最初の 0 を探す：
 
 ```basic
+' find the first zero in an array
 FUNCTION FIND_ZERO(REF IDX)
     GLOBAL A
     FOR I = 1 TO 10
@@ -781,9 +792,18 @@ FUNCTION FIND_ZERO(REF IDX)
     NEXT I
     RETURN 0
 END FUNCTION
+
+DIM A(10)
+' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+FOR I = 1 TO 10
+    A(I) = I
+NEXT I
+A(3) = 0
+RESULT = FIND_ZERO(WHERE)
+PRINT "FOUND="; RESULT; " AT "; WHERE
 ```
 
-各 `FUNCTION` は `GOSUB` ルーチンになり、長い名前はそれぞれ一意の2文字MSX変数へ割り当てられます。
+各 `FUNCTION` は `GOSUB` ルーチンになり、長い名前はそれぞれ一意の2文字MSX変数へ割り当てられます。（MSX-BASIC は `DIM` で数値配列を 0 で初期化するため、探索前に配列を埋めています。埋めないと「最初の 0」は自明に index 1 になってしまいます。）完全なプログラム: [`examples/find-zero.msxb`](examples/find-zero.msxb)。
 
 その他（すべて変換確認済み）：**多色スプライト技**（同じ位置に2枚のハードウェアスプライトを重ねて2色に＝自分で跳ね回る猫）は [`examples/cat-sprite.msxb`](examples/cat-sprite.msxb)；**ゲームループの雛形**（`WHILE 1 … WEND` ＋ 発射で `BREAK`）；MSX2 の **`SCREEN 5` グラフィック＋BGM/SE** デモ（独自パレット、`LINE …,BF` / `CIRCLE` / `PAINT`、`SET PAGE` ダブルバッファ、`COPY`、`PLAY`、`SOUND`）は [`examples/msx2-graphics-sound.msxb`](examples/msx2-graphics-sound.msxb)；**再帰**のショーケース（階乗／フィボナッチ／相互再帰）は [`examples/recursion.msxb`](examples/recursion.msxb)。[`examples/`](examples/) と機能別の [`examples/cookbook/`](examples/cookbook/) もどうぞ。
 

@@ -876,6 +876,11 @@ FUNCTION FIND_ZERO(REF IDX)
 END FUNCTION
 
 DIM A(10)
+' MSX-BASIC は DIM で数値配列を 0 初期化するので、まず 1..10 で埋めてから 3 番目だけ 0 に戻す
+' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+FOR I = 1 TO 10
+    A(I) = I
+NEXT I
 A(3) = 0
 RESULT = FIND_ZERO(WHERE)
 PRINT "FOUND="; RESULT; " AT "; WHERE

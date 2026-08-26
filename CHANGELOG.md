@@ -4,6 +4,28 @@
 バージョンは `editor/app.js` の `APP_VERSION` と `src-tauri/tauri.conf.json` の `version` に一致させる。
 0.1.44 以前の詳細は git 履歴を参照。
 
+## [0.1.47] - 2026-08-27
+
+### Added
+- **音楽ツール（MML方言 ⇄ 読みやすい PLAY 文）**: 音符を「読みやすい構造化BASICの `PLAY` 文」に
+  書き出し、既存の `PLAY` 文を音符へ戻す（デコンパイル）ツール群。中間フォーマット＝MML方言、
+  整形（読みやすいPLAY化）は FunctionBASIC が持つ。
+  - 共有コア `src/music/mml.ts`（Song ⇄ MML方言 ⇄ PLAY文。1小節=1 PLAY・`O`/`L`明示・3声を休符で
+    等長化＝再生同期を保証）と `src/music/decompile.ts`（`.msxb` の `PLAY` 抽出。非リテラルはスキップ＋警告）。
+  - CLI `music.mjs`（`import` / `export`＝デコンパイル / `roundtrip`、stdin/stdout フィルタ）。
+  - ピアノロールGUI `editor/mml-piano.html`（3声打ち込み・Web Audio試聴・MML/PLAY 入出力）。
+    エディタ「実行 → 音楽ツール（ピアノロール）…」から起動。CLIと同じコアを再利用。
+  - 対応MMLサブセット：音名 `A`–`G`＋`#`/`+`/`-`、`O`/`<`/`>`、`L`＋付点、`R`、`T`、`V`。`S`/`M`/`Q`/`N`
+    はパススルー＋警告。FM（MSX-MUSIC）は将来対応。
+  - 仕様書 `docs/16-music-tool.md`、テスト `test/music.test.ts`（6件）、README 英日に追記。
+
+### Fixed
+- **README デモ／初期サンプルの配列0初期化バグ**: MSX-BASIC は `DIM` で数値配列を 0 初期化するため、
+  旧デモの `A(3)=0` は無意味（`A(1)` が既に 0）で、結果が誤って `FOUND=1 AT 1` になっていた。配列を
+  1..10 で埋めてから index 3 に 0 を置く正しい形に修正（`FOUND=1 AT 3`）。新規プロジェクトの**初期
+  サンプル（`editor/app.js` の `SAMPLE`）も同修正**。`examples/find-zero.msxb` を追加、`test/transform.test.ts`
+  のゴールデン出力を更新、README 英日スニペットに配列0初期化の注記を追加、ヒーロー画像4枚を撮り直し。
+
 ## [0.1.46] - 2026-08-22
 
 ### Added

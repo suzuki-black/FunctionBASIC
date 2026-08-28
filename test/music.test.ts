@@ -6,6 +6,7 @@ import {
   parseMmlDoc,
   songToMml,
   songToPlayBasic,
+  songToFeederBasic,
   songToNotes,
   notesToSong,
   lenToTicks,
@@ -62,6 +63,23 @@ test("往復: MML → PLAY.msxb → デコンパイル で音程/音長が一致
   const norm2 = songToMml(song2!);
   assert.equal(norm2, norm1, "往復で MML 正規形が一致");
   assert.equal(song2!.tempo, 132);
+});
+
+test("BGMフィーダ生成: 非ブロック(PLAY(0))＋DATASET で有効なMSXに変換できる", async () => {
+  const { song } = parseMmlDoc("@tempo 132\nA: O4 L8 CDEFGAB>C\nB: O2 L4 CEGE\n");
+  const { code } = songToFeederBasic(song, { func: "BGM" });
+  assert.match(code, /FUNCTION BGM_TICK\(\)/);
+  assert.match(code, /IF PLAY\(0\) <> 0 THEN/); // 非ブロック（キューが空いた時だけ積む）
+  assert.match(code, /DATASET BGM_DATA/);
+  assert.match(code, /T132/); // 各小節にテンポ確立
+  const { transform, renderMsx } = await import("../src/transform/transformer.ts");
+  const main = "SCREEN 1\nBGM_LOAD()\nBGM_START()\nWHILE 1\n BGM_TICK()\nWEND\n";
+  const tk = tokenize(main + code);
+  const ast = parse((tk as { tokens?: unknown }).tokens ?? tk);
+  const tr = transform((ast as { program?: unknown }).program ?? ast);
+  const errs = (tr.diagnostics ?? []).filter((d: { severity: string }) => d.severity === "error");
+  assert.equal(errs.length, 0, "変換エラーなし");
+  assert.match(renderMsx(tr.code), /PLAY [A-Z]\$\([A-Z]%?\)/); // 配列からの PLAY
 });
 
 test("Song ⇄ 絶対ノート(GUI用): 休符が隙間になり戻せる", () => {

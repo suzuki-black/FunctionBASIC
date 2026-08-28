@@ -51,6 +51,7 @@
       <button id="toMml">→ MML 書出</button>
       <button id="fromMml">← MML 読込</button>
       <button id="toPlay">→ PLAY文(.msxb)</button>
+      <button id="toFeeder">→ BGM(feeder)</button>
       <button id="copy">コピー</button>
     </div>
     <h3>テキスト（MML方言 / 生成PLAY文）</h3>
@@ -60,7 +61,7 @@
 </div>
 
 <script type="module">
-import { parseMmlDoc, songToMml, songToPlayBasic, songToNotes, notesToSong, PPQ } from "./core/music/mml.js";
+import { parseMmlDoc, songToMml, songToPlayBasic, songToFeederBasic, songToNotes, notesToSong, PPQ } from "./core/music/mml.js";
 
 // ---- モデル ----
 const CH = [
@@ -156,6 +157,10 @@ $("toMml").addEventListener("click", () => { $("io").value = songToMml(currentSo
 $("toPlay").addEventListener("click", () => {
   const { code, warnings } = songToPlayBasic(currentSong(), { func: "BGM_MAIN" });
   $("io").value = code; status(warnings.length ? ("PLAY文生成（警告 " + warnings.length + "）") : "PLAY文を生成しました");
+});
+$("toFeeder").addEventListener("click", () => {
+  const { code, warnings } = songToFeederBasic(currentSong(), { func: "BGM" });
+  $("io").value = code; status(warnings.length ? ("BGMフィーダ生成（警告 " + warnings.length + "）") : "BGMフィーダを生成（BGM_LOAD/START/TICK/STOP・プレイ中BGM用）");
 });
 $("fromMml").addEventListener("click", () => {
   try {

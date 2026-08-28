@@ -1,19 +1,20 @@
 // FunctionBASIC 音楽ツール CLI。中間フォーマット(MML方言) <-> 読みやすい PLAY文(.msxb) を相互変換。
 // 使い方:
 //   node --experimental-strip-types music.mjs import [song.mml] [--func NAME] [--min-state] > bgm.msxb
+//     --player feeder [--feed N]  … プレイ中BGM用の非ブロック・フィーダ(LOAD/START/TICK/STOP)を生成
 //   node --experimental-strip-types music.mjs export <file.msxb> [--func NAME] > song.mml
 //   node --experimental-strip-types music.mjs roundtrip <file.msxb> [--func NAME]
 // 既定出力=標準出力（パイプ/リダイレクトで受け渡し）。入力ファイル省略時は標準入力。
 import { readFileSync } from "node:fs";
 import { tokenize } from "./src/lexer/lexer.ts";
 import { parse } from "./src/parser/parser.ts";
-import { parseMmlDoc, songToMml, songToPlayBasic } from "./src/music/mml.ts";
+import { parseMmlDoc, songToMml, songToPlayBasic, songToFeederBasic } from "./src/music/mml.ts";
 import { programToSong } from "./src/music/decompile.ts";
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 const rest = argv.slice(1);
-const VALUE_FLAGS = new Set(["--func"]); // 値を1つ取るフラグ（位置引数と混同しないため）
+const VALUE_FLAGS = new Set(["--func", "--player", "--feed"]); // 値を1つ取るフラグ（位置引数と混同しないため）
 const flag = (name) => rest.includes(name);
 const opt = (name) => {
   const i = rest.indexOf(name);
@@ -37,6 +38,7 @@ const usage = () => {
     [
       "usage:",
       "  node --experimental-strip-types music.mjs import [song.mml] [--func NAME] [--min-state] > bgm.msxb",
+      "  node --experimental-strip-types music.mjs import [song.mml] --player feeder [--feed N] [--func NAME] > bgm.msxb",
       "  node --experimental-strip-types music.mjs export <file.msxb> [--func NAME] > song.mml",
       "  node --experimental-strip-types music.mjs roundtrip <file.msxb> [--func NAME]",
     ].join("\n"),
@@ -62,9 +64,16 @@ const msxbToSong = (src) => {
 
 if (cmd === "import") {
   const { song, warnings } = parseMmlDoc(readInput());
-  const { code, warnings: w2 } = songToPlayBasic(song, { func, minState: flag("--min-state") });
-  warn([...warnings, ...w2]);
-  process.stdout.write(code);
+  const player = opt("--player"); // "feeder" でプレイ中BGM用フィーダを生成（既定=inline関数）
+  let out;
+  if (player === "feeder") {
+    const feed = opt("--feed");
+    out = songToFeederBasic(song, { func: func ?? "BGM", feed: feed != null ? Number(feed) : undefined });
+  } else {
+    out = songToPlayBasic(song, { func, minState: flag("--min-state") });
+  }
+  warn([...warnings, ...out.warnings]);
+  process.stdout.write(out.code);
 } else if (cmd === "export") {
   if (!file) usage();
   const { song, warnings } = msxbToSong(readInput());

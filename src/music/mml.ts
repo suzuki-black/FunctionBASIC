@@ -522,3 +522,95 @@ export function notesToSong(
   });
   return { tempo: meta.tempo, timesig: meta.timesig, channels: outCh };
 }
+
+// ============================================================
+//  Song → BGMフィーダ（プレイ中の常時BGM用・非ブロック）
+// ============================================================
+// MSX の PLAY はキュー(1chあたり128B)へ積み、満杯だとブロックする。PLAY(n) は真偽値
+// (-1=再生中/0=停止)でキュー残量は返せない。よって定石＝「キューが空いた(PLAY(0)=0)時に
+// 次の数小節を積む」フィーダ。<prefix>_LOAD()で DATASET から読込→_START()→毎フレーム _TICK()。
+// 出典: msx.org/wiki/PLAY() ／ MSX Resource Center "PLAY command in BASIC"。
+export function songToFeederBasic(
+  song: Song,
+  opts: PlayBasicOpts & { feed?: number } = {},
+): { code: string; warnings: string[] } {
+  const warnings: string[] = [];
+  const prefix = (opts.func ?? "BGM").toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+  const feed = Math.max(1, Math.floor(opts.feed ?? 2));
+  const measure = measureTicks(song);
+  const chs = song.channels;
+  const nch = Math.min(3, chs.length);
+  const sliced = chs.map((ch) => sliceByMeasure(ch.events, measure, warnings));
+  const nBars = Math.max(1, ...sliced.map((s) => s.length));
+  const encStates: EncState[] = chs.map(() => ({ octave: null, defLen: null, vol: 8 }));
+  const bars: string[][] = [];
+  for (let b = 0; b < nBars; b++) {
+    const row: string[] = [];
+    for (let ci = 0; ci < nch; ci++) {
+      let mml = measureMmlForChannel(sliced[ci][b] ?? [], measure, false, encStates[ci], warnings);
+      if (ci === 0) mml = `T${song.tempo}` + mml; // 各小節でテンポ確立(状態持ち越しの実機差に依存しない)
+      row.push(mml);
+    }
+    bars.push(row);
+  }
+  const CH = ["A", "B", "C"];
+  const arefs = (idx: string) => Array.from({ length: nch }, (_, ci) => `${prefix}_${CH[ci]}$(${idx})`).join(", ");
+  const L: string[] = [];
+  const P = (s = "") => L.push(s);
+  P("' " + "=".repeat(56));
+  P(`'  BGM feeder: ${prefix}  (PSG ${nch}ch / ${nBars}小節 / ループ)`);
+  P(`'  使い方: 起動時に ${prefix}_LOAD() を1回 → ${prefix}_START() → 毎フレーム ${prefix}_TICK()`);
+  P(`'  停止: ${prefix}_STOP()（以後は積まない。現キューは鳴り切る）`);
+  P("' " + "=".repeat(56));
+  P(`CONST ${prefix}_NB% = ${nBars}`);
+  P(`CONST ${prefix}_FEED% = ${feed}    ' 1回の補充で積む小節数(増やすと継ぎ目が減る/1chあたり合計~128B未満に)`);
+  for (let ci = 0; ci < nch; ci++) P(`DIM ${prefix}_${CH[ci]}$(${prefix}_NB%)`);
+  for (let ci = 0; ci < nch; ci++) P(`GLOBAL ${prefix}_${CH[ci]}$`);
+  P(`GLOBAL ${prefix}_I%`);
+  P(`GLOBAL ${prefix}_ON%`);
+  P("");
+  P(`FUNCTION ${prefix}_LOAD()`);
+  for (let ci = 0; ci < nch; ci++) P(`    GLOBAL ${prefix}_${CH[ci]}$`);
+  P(`    RESTORE ${prefix}_DATA`);
+  P(`    FOR I = 0 TO ${prefix}_NB% - 1`);
+  P(`        READ ${arefs("I")}`);
+  P(`    NEXT I`);
+  P(`END FUNCTION`);
+  P("");
+  P(`FUNCTION ${prefix}_START()`);
+  P(`    GLOBAL ${prefix}_I%`);
+  P(`    GLOBAL ${prefix}_ON%`);
+  P(`    ${prefix}_I% = 0`);
+  P(`    ${prefix}_ON% = 1`);
+  P(`END FUNCTION`);
+  P("");
+  P(`FUNCTION ${prefix}_STOP()`);
+  P(`    GLOBAL ${prefix}_ON%`);
+  P(`    ${prefix}_ON% = 0`);
+  P(`END FUNCTION`);
+  P("");
+  P(`FUNCTION ${prefix}_TICK()`);
+  for (let ci = 0; ci < nch; ci++) P(`    GLOBAL ${prefix}_${CH[ci]}$`);
+  P(`    GLOBAL ${prefix}_I%`);
+  P(`    GLOBAL ${prefix}_ON%`);
+  P(`    IF ${prefix}_ON% = 0 THEN`);
+  P(`        RETURN 0`);
+  P(`    END IF`);
+  P(`    IF PLAY(0) <> 0 THEN`); // まだ再生中→積まない(非ブロック)
+  P(`        RETURN 0`);
+  P(`    END IF`);
+  P(`    FOR J = 1 TO ${prefix}_FEED%`);
+  P(`        PLAY ${arefs(prefix + "_I%")}`);
+  P(`        ${prefix}_I% = ${prefix}_I% + 1`);
+  P(`        IF ${prefix}_I% >= ${prefix}_NB% THEN`);
+  P(`            ${prefix}_I% = 0`);
+  P(`        END IF`);
+  P(`    NEXT J`);
+  P(`    RETURN 0`);
+  P(`END FUNCTION`);
+  P("");
+  P(`DATASET ${prefix}_DATA`);
+  for (let b = 0; b < nBars; b++) P(`    DATA ${bars[b].map((s) => `"${s}"`).join(", ")}`);
+  P(`END DATASET`);
+  return { code: L.join("\n") + "\n", warnings };
+}

@@ -75,11 +75,35 @@ node --experimental-strip-types music.mjs roundtrip <file.msxb> [--func NAME]
 - 内部解像度 `PPQ=48`（付点・3連まで表現）。エディタのグリッドは MML で表せる音長に制限する想定。
 - 音符が小節境界をまたぐ場合は分割（発音が切れる）＋警告。ツール側のグリッドで回避する。
 
-## 実機ランタイムの使い分け（メモ）
+## 実機ランタイムの使い分け
 
-生成 `FUNCTION` は **ジングル／効果音**（呼べば鳴る）に向く。**プレイ中の常時BGM**は背景再生で
-`PLAY(n)` を見て 1 小節ずつ供給するフィーダが要る（曲全体を一度に流すとブロック／キュー溢れ）。
-foreground/background の既定・キュー上限（32コマンド）は実機で確認して運用する。将来 `--player feeder` を提供予定。
+生成 `FUNCTION`（既定の inline）は **ジングル／効果音**（呼べば鳴る）に向く。**プレイ中の常時BGM**は
+`--player feeder` で**非ブロックのフィーダ**を生成する。
+
+### `--player feeder`（プレイ中BGM）
+
+```
+node --experimental-strip-types music.mjs import song.mml --player feeder [--feed N] --func BGM > bgm.msxb
+```
+
+一次資料（[MSX Wiki PLAY()](https://www.msx.org/wiki/PLAY())）：MSX の `PLAY` は **1chあたり128バイトのキュー**へ
+積み、**満杯だとブロック（空くまで待つ）**。`PLAY(n)` は**真偽値**（-1=再生中／0=停止）で残量は返せない。
+よって定石＝**キューが空いた（`PLAY(0)=0`）時に次の数小節を積む**フィーダ。生成物は
+`<prefix>_LOAD` / `_START` / `_TICK` / `_STOP`（`--func` が prefix。既定 `BGM`）と、小節ごとの MML を持つ
+`DATASET <prefix>_DATA`。各小節の第1chに `T<tempo>` を埋めてテンポを確立する。
+
+```basic
+BGM_LOAD()            ' 起動時に1回（DATASETから小節配列へ読込）
+BGM_START()           ' 再生開始
+WHILE 1
+    ' … ゲーム処理 …
+    BGM_TICK()        ' 毎フレーム：PLAY(0)=0 なら次の BGM_FEED% 小節を積む（非ブロック）
+    ' … 描画 …
+WEND
+' BGM_STOP() で停止（以後は積まない。現キューは鳴り切る）。ループ再生（末尾で index 0 へ）。
+```
+
+`BGM_FEED%`（1回の補充で積む小節数、既定2／`--feed`）を増やすと継ぎ目が減る（1chあたり合計 ~128B 未満に）。
 
 ## ピアノロール GUI（`editor/mml-piano.html`）
 
@@ -96,4 +120,4 @@ foreground/background の既定・キュー上限（32コマンド）は実機�
 ## 今後（Phase 3 以降）
 
 - `--json`（リッチメタ・汎用ツール連携）／FM（MSX-MUSIC `@音色`・追加ch）／ループ点
-- BGMフィーダ生成（`--player feeder`）／音符ドラッグでの長さ変更・ノート移動などGUI操作の拡充
+- 音符ドラッグでの長さ変更・ノート移動などGUI操作の拡充

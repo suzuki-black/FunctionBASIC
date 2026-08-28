@@ -18,7 +18,7 @@
   .chA { background:#ff6b6b33; border-color:#ff6b6b; } .chB { background:#6bd3ff33; border-color:#6bd3ff; } .chC { background:#b5ff6b33; border-color:#b5ff6b; }
   #wrap { display:flex; gap:12px; padding:12px; align-items:flex-start; }
   #rollBox { overflow:auto; max-height:78vh; border:1px solid #000; background:#16171d; }
-  canvas { display:block; }
+  canvas { display:block; cursor:crosshair; }
   #side { width:340px; display:flex; flex-direction:column; gap:8px; }
   textarea { width:100%; height:180px; background:#16171d; color:var(--text); border:1px solid #4a4d5e; border-radius:4px; font:12px/1.4 ui-monospace,Menlo,monospace; padding:6px; white-space:pre; }
   #status { color:var(--sub); min-height:1.4em; }
@@ -32,7 +32,7 @@
   <div class="grp"><label>Tempo</label><input id="tempo" type="number" min="32" max="255" value="120" style="width:60px"></div>
   <div class="grp"><label>拍子</label><input id="tsn" type="number" min="1" max="16" value="4" style="width:44px">/<select id="tsd"><option>2</option><option selected>4</option><option>8</option></select></div>
   <div class="grp"><label>小節数</label><input id="bars" type="number" min="1" max="64" value="4" style="width:50px"></div>
-  <div class="grp"><label>音長</label>
+  <div class="grp"><label title="単クリックで置く時の既定の長さ。ドラッグで描けば任意長。">既定長</label>
     <select id="len">
       <option value="1">全</option><option value="2">2分</option><option value="4" selected>4分</option>
       <option value="8">8分</option><option value="16">16分</option><option value="4.">付点4分</option><option value="8.">付点8分</option>
@@ -46,7 +46,7 @@
 <div id="wrap">
   <div id="rollBox"><canvas id="roll" width="900" height="600"></canvas></div>
   <div id="side">
-    <div id="status">クリックで音符を置く／同じ音符をクリックで消す（現在のch・音長で置きます）</div>
+    <div id="status">ドラッグで描く／右端で長さ変更／本体で移動／右クリックで削除。単クリックは直近の長さ。</div>
     <div class="grp" style="display:flex;gap:6px;flex-wrap:wrap">
       <button id="toMml">→ MML 書出</button>
       <button id="fromMml">← MML 読込</button>
@@ -128,19 +128,77 @@ function draw() {
   });
 }
 
-// ---- 編集 ----
-roll.addEventListener("mousedown", (e) => {
+// ---- 編集（標準ピアノロール流：ドラッグで描画／右端でリサイズ／本体で移動／右クリック削除／
+//        単クリックは直近の長さで配置。音長ドロップダウンは「単クリック時の既定長」）----
+let lastLen = lenTicks();                 // 直近の音符長（クリック配置に使う）
+lenEl.addEventListener("change", () => { lastLen = lenTicks(); });
+const EDGE = 6;                           // 右端リサイズ判定幅(px)
+let drag = null;                          // {mode:'draw'|'resize'|'move', i, grabTick}
+
+const evtPos = (e) => {
   const r = roll.getBoundingClientRect();
   const x = e.clientX - r.left, y = e.clientY - r.top;
-  if (x < GUTTER) return;
-  const tick = Math.max(0, Math.round((x - GUTTER) / PXT / SNAP) * SNAP);
-  const pitch = yPitch(y);
-  if (pitch < LOW || pitch > HIGH) return;
+  return { x, y, tick: Math.max(0, (x - GUTTER) / PXT), pitch: yPitch(y) };
+};
+const snapR = (t) => Math.max(0, Math.round(t / SNAP) * SNAP);   // 最寄り
+const snapC = (t) => Math.ceil(t / SNAP) * SNAP;                 // 切り上げ（右端用）
+function hitNote(ch, x, tick, pitch) {
+  for (let i = ch.notes.length - 1; i >= 0; i--) {
+    const n = ch.notes[i];
+    if (n.pitch !== pitch || tick < n.start || tick >= n.start + n.dur) continue;
+    const endX = GUTTER + (n.start + n.dur) * PXT;
+    return { i, edge: Math.abs(x - endX) <= EDGE };
+  }
+  return null;
+}
+
+roll.addEventListener("contextmenu", (e) => {   // 右クリック＝削除
+  e.preventDefault();
+  const p = evtPos(e); if (p.x < GUTTER) return;
+  const h = hitNote(CH[active], p.x, p.tick, p.pitch);
+  if (h) { CH[active].notes.splice(h.i, 1); draw(); status("音符を削除"); }
+});
+
+roll.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;                    // 左のみ（右はcontextmenu）
+  const p = evtPos(e);
+  if (p.x < GUTTER || p.pitch < LOW || p.pitch > HIGH) return;
   const ch = CH[active];
-  const hit = ch.notes.findIndex((n) => n.pitch === pitch && tick >= n.start && tick < n.start + n.dur);
-  if (hit >= 0) ch.notes.splice(hit, 1);
-  else ch.notes.push({ start: tick, dur: lenTicks(), pitch, vol: 8 });
+  const h = hitNote(ch, p.x, p.tick, p.pitch);
+  if (h && h.edge) drag = { mode: "resize", i: h.i };
+  else if (h) drag = { mode: "move", i: h.i, grabTick: p.tick - ch.notes[h.i].start };
+  else {
+    ch.notes.push({ start: snapR(p.tick), dur: lastLen, pitch: p.pitch, vol: 8 });
+    drag = { mode: "draw", i: ch.notes.length - 1 };
+  }
   draw();
+});
+
+window.addEventListener("mousemove", (e) => {
+  const p = evtPos(e);
+  if (!drag) {                                   // カーソルフィードバック
+    if (p.x >= GUTTER && p.pitch >= LOW && p.pitch <= HIGH) {
+      const h = hitNote(CH[active], p.x, p.tick, p.pitch);
+      roll.style.cursor = h ? (h.edge ? "ew-resize" : "move") : "crosshair";
+    } else roll.style.cursor = "default";
+    return;
+  }
+  const n = CH[active].notes[drag.i]; if (!n) { drag = null; return; }
+  if (drag.mode === "draw" || drag.mode === "resize") {
+    n.dur = Math.max(SNAP, snapC(p.tick) - n.start);       // 右へドラッグで伸縮
+  } else {                                                 // move
+    n.start = Math.max(0, snapR(p.tick - drag.grabTick));
+    if (p.pitch >= LOW && p.pitch <= HIGH) n.pitch = p.pitch;
+  }
+  draw();
+});
+
+window.addEventListener("mouseup", () => {
+  if (drag && (drag.mode === "draw" || drag.mode === "resize")) {
+    const n = CH[active].notes[drag.i];
+    if (n) lastLen = n.dur;                       // 直近長を更新（次の単クリックに反映）
+  }
+  drag = null;
 });
 
 // ---- ch 切替 ----

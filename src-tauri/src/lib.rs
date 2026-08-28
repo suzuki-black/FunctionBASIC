@@ -850,6 +850,23 @@ fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> 
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
+// 音楽ツール(ピアノロール)を別ウィンドウで開く。デスクトップの WebView は window.open を弾くため、
+// フロントはこのコマンドを呼ぶ(AppHandle で生成＝JS権限に依存しない/既に開いていれば前面化)。
+#[tauri::command]
+fn open_music_tool(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+    if let Some(w) = app.get_webview_window("music") {
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "music", WebviewUrl::App("mml-piano.html".into()))
+        .title("FunctionBASIC - 音楽ツール")
+        .inner_size(1040.0, 740.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::Emitter;
@@ -877,7 +894,8 @@ pub fn run() {
             save_dsk,
             save_sav,
             set_menu_lang,
-            set_window_title
+            set_window_title,
+            open_music_tool
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

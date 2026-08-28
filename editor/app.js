@@ -705,6 +705,11 @@ function costTextReport(rep) {
 // 音楽ツール（ピアノロール）を別タブ/ウィンドウで開く。_blank なので現在のエディタは置換しない。
 // デスクトップ(Tauri/WKWebView)でポップアップが抑止された場合はステータスで案内。
 function openMusicTool() {
+  // デスクトップ(Tauri)は window.open が弾かれるので Rust コマンドで別ウィンドウを開く。
+  if (isDesktop()) {
+    tauri().core.invoke("open_music_tool").catch((e) => { logErr("music", e); setStatus("err", t("music.opened")); });
+    return;
+  }
   const w = window.open("mml-piano.html", "_blank");
   if (!w) setStatus("info", t("music.opened"));
 }

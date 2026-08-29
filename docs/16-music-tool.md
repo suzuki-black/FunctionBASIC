@@ -105,13 +105,28 @@ WEND
 
 `BGM_FEED%`（1回の補充で積む小節数、既定2／`--feed`）を増やすと継ぎ目が減る（1chあたり合計 ~128B 未満に）。
 
+## ピッチスライド（グライド／急降下SFX）
+
+MSX の PLAY/MML に**ポルタメント命令は無い**（[msx.org](https://www.msx.org/forum/msx-talk/development/mml-ms-basic-in-machine-language)）。ので2方式で実現する。
+
+- **方式A: グライド（音楽的スライド）** — 音符に `glideTo`（滑り先の音程）を付けると、出力時に
+  `expandGlides()` が **半音刻みの高速ラン（`L64` 等の下降/上昇）** へ展開し、`PLAY`／フィーダにそのまま乗る。
+  GUI では **Shift+ドラッグ**で滑り先を指定（ロールに斜線表示）。
+- **方式B: 急降下SFX（本物のスイープ）** — `sfxSweepBasic(from, to)` が **PSG音程レジスタを直接スイープ**する
+  `SFX_DROP()` を生成（`SOUND 7`=ミキサ / `SOUND 8+ch`=音量 / `FOR P=P0 TO P1`で `SOUND 0/1` に周期を書く）。
+  一次資料: PSGクロック=1,789,772.5Hz、`period=clock/(16*freq)`（[PSG Registers](https://www.msx.org/wiki/PSG_Registers)）。
+  落下・爆発の効果音向き。BGMが使っていない ch で呼ぶ。GUI は **「→ SFX(急降下)」**（グライド音符の音程を使用）。
+
 ## ピアノロール GUI（`editor/mml-piano.html`）
 
-エディタの **実行 → 音楽ツール（ピアノロール）…** から開く（別タブ）。単体では `npm run serve` →
-`http://localhost:8123/mml-piano.html`。3声（A/B/C）をクリックで打ち込み、
-テンポ/拍子/音長/小節数を指定、Web Audio（矩形波3声）で試聴。ボタン:
-- 「→ MML 書出」＝現在の音符を MML方言テキストへ／「← MML 読込」＝テキストを音符化
-- 「→ PLAY文(.msxb)」＝ FunctionBASIC の整形を通した読みやすい `PLAY` 文を生成／「コピー」
+エディタの **実行 → 音楽ツール（ピアノロール）…** から開く（別ウィンドウ）。単体では `npm run serve` →
+`http://localhost:8123/mml-piano.html`。3声（A/B/C）。テンポ/拍子/音長(既定長)/小節数を指定、Web Audio で試聴。
+
+**操作（標準ピアノロール流）**: ドラッグで描画（長さ＝ドラッグ量・16分スナップ）／音符の右端ドラッグで長さ変更／
+本体ドラッグで移動／**Shift+ドラッグでグライド**（滑り先を指定・斜線表示）／右クリックで削除。単クリックは直近の長さ。
+
+**ボタン**: 「→ MML 書出／← MML 読込」／「→ PLAY文(.msxb)」（読みやすい `PLAY`）／
+「→ BGM(feeder)」（プレイ中BGM）／「→ SFX(急降下)」（PSGスイープの急降下音）／「コピー」。
 
 コアは CLI と同じ `mml.ts`（ブラウザ用に `build.mjs` が `editor/core/music/mml.js` へ型ストリップ）。
 `editor/core/**` はビルド生成物（gitignore）なので、GUI 利用前に `node build.mjs` が必要。

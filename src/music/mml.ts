@@ -10,7 +10,7 @@ const WHOLE = PPQ * 4; // 全音符=192tick
 
 // ---- 音符イベント（各チャンネルは単声＝逐次列）----
 export type Ev =
-  | { t: "note"; dur: number; pitch: number; vol?: number } // pitch=絶対半音(オクターブ*12+音名), C=0
+  | { t: "note"; dur: number; pitch: number; vol?: number; glideTo?: number } // glideTo=グライド先の絶対半音(pitchからそこへ滑る)
   | { t: "rest"; dur: number }
   | { t: "ctrl"; raw: string }; // S/M/Q/N 等の未対応トークン(0長・そのまま再出力)
 
@@ -320,6 +320,7 @@ export function playStringsToSong(
 }
 
 export function songToMml(song: Song): string {
+  song = expandGlides(song); // グライドは半音ランへ展開してから出力
   const lines: string[] = [];
   lines.push(`@tempo ${song.tempo}`);
   lines.push(`@timesig ${song.timesig[0]}/${song.timesig[1]}`);
@@ -430,6 +431,7 @@ function measureMmlForChannel(evs: Ev[], measure: number, minState: boolean, pre
 
 export function songToPlayBasic(song: Song, opts: PlayBasicOpts = {}): { code: string; warnings: string[] } {
   const warnings: string[] = [];
+  song = expandGlides(song); // グライド→半音ラン
   const func = opts.func ?? "BGM_MAIN";
   const minState = !!opts.minState;
   const measure = measureTicks(song);
@@ -469,6 +471,7 @@ export interface GridNote {
   dur: number; // tick
   pitch: number; // 絶対半音
   vol?: number;
+  glideTo?: number; // グライド先の絶対半音(pitch→glideTo に dur かけて滑る)
 }
 export interface GridChannel {
   id: string;
@@ -484,7 +487,7 @@ export function songToNotes(song: Song): { tempo: number; timesig: [number, numb
     let t = 0;
     for (const ev of ch.events) {
       if (ev.t === "note") {
-        notes.push({ start: t, dur: ev.dur, pitch: ev.pitch, vol: ev.vol });
+        notes.push({ start: t, dur: ev.dur, pitch: ev.pitch, vol: ev.vol, glideTo: ev.glideTo });
         t += ev.dur;
       } else if (ev.t === "rest") {
         t += ev.dur;
@@ -512,7 +515,7 @@ export function notesToSong(
       if (it.kind === "note") {
         if (it.n.start > cursor) events.push({ t: "rest", dur: it.n.start - cursor });
         const start = Math.max(cursor, it.n.start);
-        events.push({ t: "note", dur: it.n.dur, pitch: it.n.pitch, vol: it.n.vol });
+        events.push({ t: "note", dur: it.n.dur, pitch: it.n.pitch, vol: it.n.vol, glideTo: it.n.glideTo });
         cursor = start + it.n.dur;
       } else {
         events.push({ t: "ctrl", raw: it.raw });
@@ -535,6 +538,7 @@ export function songToFeederBasic(
   opts: PlayBasicOpts & { feed?: number } = {},
 ): { code: string; warnings: string[] } {
   const warnings: string[] = [];
+  song = expandGlides(song); // グライド→半音ラン
   const prefix = (opts.func ?? "BGM").toUpperCase().replace(/[^A-Z0-9_]/g, "_");
   const feed = Math.max(1, Math.floor(opts.feed ?? 2));
   const measure = measureTicks(song);
@@ -612,5 +616,88 @@ export function songToFeederBasic(
   P(`DATASET ${prefix}_DATA`);
   for (let b = 0; b < nBars; b++) P(`    DATA ${bars[b].map((s) => `"${s}"`).join(", ")}`);
   P(`END DATASET`);
+  return { code: L.join("\n") + "\n", warnings };
+}
+
+// ============================================================
+//  グライド(方式A): glideTo 付き音符を半音刻みの高速ラン(グリッサンド)へ展開
+// ============================================================
+// MSX MML にポルタメント命令は無い(出典 msx.org)。musical なピッチスライドは
+// 「pitch→glideTo を短い音符で半音ずつ刻む下降/上昇ラン」で表現し、PLAY/フィーダにそのまま乗せる。
+export function expandGlides(song: Song): Song {
+  const chans = song.channels.map((ch) => {
+    const events: Ev[] = [];
+    for (const ev of ch.events) {
+      if (ev.t !== "note" || ev.glideTo == null || ev.glideTo === ev.pitch) {
+        events.push(ev);
+        continue;
+      }
+      const dir = ev.glideTo > ev.pitch ? 1 : -1;
+      const semis = Math.abs(ev.glideTo - ev.pitch); // 半音数
+      // 各刻みは >= 3tick(=64分相当)。長さが足りなければ刻みを間引く。
+      const maxSteps = Math.max(1, Math.floor(ev.dur / 3));
+      const n = Math.min(semis + 1, maxSteps); // 出す音符数
+      let used = 0;
+      for (let i = 0; i < n; i++) {
+        const p = i === n - 1 ? ev.glideTo : ev.pitch + dir * Math.round((semis * i) / (n - 1 || 1));
+        const d = i === n - 1 ? ev.dur - used : Math.floor(ev.dur / n);
+        used += d;
+        if (d > 0) events.push({ t: "note", dur: d, pitch: p, vol: ev.vol });
+      }
+    }
+    return { id: ch.id, name: ch.name, events };
+  });
+  return { tempo: song.tempo, timesig: song.timesig, channels: chans };
+}
+
+// ============================================================
+//  効果音スイープ(方式B): PSG音程レジスタを直接スイープする「急降下」SFX を生成
+// ============================================================
+// 一次資料(msx.org/wiki/PSG_Registers, AY-3-8910): PSGクロック=1,789,772.5Hz。
+// 音程period(12bit)= clock/(16*freq)。reg0/1=chの音程(下位8/上位4bit)、reg7=ミキサ(bit0=0でtoneA有効)、
+// reg8..10=各chの音量。周期を増やす=音が下がる。MMLでは出せないので SOUND 直書きのループで実装。
+const PSG_CLOCK = 1789772.5;
+function pitchToPeriod(pitch: number): number {
+  const freq = 440 * Math.pow(2, (pitch + 12 - 69) / 12); // pitch=絶対半音(O4C=48→MIDI60), A4(pitch57)=440
+  const p = Math.round(PSG_CLOCK / (16 * freq));
+  return Math.max(1, Math.min(4095, p));
+}
+export interface SfxOpts {
+  func?: string; // 生成する関数名(既定 SFX_DROP)
+  channel?: number; // PSGチャンネル 0=A / 1=B / 2=C（既定0=A）
+  steps?: number; // スイープの反復回数(速さ。少ないほど速い。既定40)
+  vol?: number; // 音量 0..15（既定15）
+}
+export function sfxSweepBasic(fromPitch: number, toPitch: number, opts: SfxOpts = {}): { code: string; warnings: string[] } {
+  const warnings: string[] = [];
+  const func = (opts.func ?? "SFX_DROP").toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+  const chn = Math.max(0, Math.min(2, opts.channel ?? 0));
+  const steps = Math.max(2, Math.floor(opts.steps ?? 40));
+  const vol = Math.max(0, Math.min(15, opts.vol ?? 15));
+  const p0 = pitchToPeriod(fromPitch);
+  const p1 = pitchToPeriod(toPitch);
+  const ps = Math.max(1, Math.round(Math.abs(p1 - p0) / steps)) * (p1 >= p0 ? 1 : -1);
+  const rFine = chn * 2; // reg0/2/4
+  const rCoarse = chn * 2 + 1;
+  const rVol = 8 + chn; // reg8/9/10
+  // ミキサ reg7: 該当chのtoneビット(bit chn)を0(有効)に、他tone/全noiseは1(無効)。bit6,7=0。
+  const mixVal = 0b00111111 & ~(1 << chn); // 例 chA→0b00111110=62
+  const L: string[] = [];
+  const P = (s = "") => L.push(s);
+  P("' " + "=".repeat(56));
+  P(`'  SFX: ${func}  PSGを直接スイープする急降下音(ポルタメント/落下・爆発SFX向き)`);
+  P(`'  使い方: ${func}() を呼ぶ。BGMがこの ch(${["A", "B", "C"][chn]}) を使っていない時に。`);
+  P(`'  調整: P0=開始周期(高音=小), P1=終了周期(低音=大), PS=1回の増分(速さ)。`);
+  P("' " + "=".repeat(56));
+  P(`FUNCTION ${func}()`);
+  P(`    SOUND 7, ${mixVal}    ' ミキサ: tone ${["A", "B", "C"][chn]} のみ有効`);
+  P(`    SOUND ${rVol}, ${vol}    ' ch${["A", "B", "C"][chn]} 音量`);
+  P(`    FOR P = ${p0} TO ${p1} STEP ${ps}`);
+  P(`        SOUND ${rFine}, P AND 255`);
+  P(`        SOUND ${rCoarse}, (P \\ 256) AND 15`);
+  P(`    NEXT P`);
+  P(`    SOUND ${rVol}, 0    ' 消音`);
+  P(`END FUNCTION`);
+  if (Math.abs(p1 - p0) < 2) warnings.push("開始と終了の音程が近すぎてスイープ効果が薄い");
   return { code: L.join("\n") + "\n", warnings };
 }

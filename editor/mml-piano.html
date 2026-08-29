@@ -46,12 +46,13 @@
 <div id="wrap">
   <div id="rollBox"><canvas id="roll" width="900" height="600"></canvas></div>
   <div id="side">
-    <div id="status">ドラッグで描く／右端で長さ変更／本体で移動／右クリックで削除。単クリックは直近の長さ。</div>
+    <div id="status">ドラッグで描く／右端で長さ変更／本体で移動／Shift+ドラッグでグライド／右クリック削除。単クリックは直近の長さ。</div>
     <div class="grp" style="display:flex;gap:6px;flex-wrap:wrap">
       <button id="toMml">→ MML 書出</button>
       <button id="fromMml">← MML 読込</button>
       <button id="toPlay">→ PLAY文(.msxb)</button>
       <button id="toFeeder">→ BGM(feeder)</button>
+      <button id="toSfx" title="PSGを直接スイープする急降下SFX。グライド音符があればその音程を使用。">→ SFX(急降下)</button>
       <button id="copy">コピー</button>
     </div>
     <h3>テキスト（MML方言 / 生成PLAY文）</h3>
@@ -61,7 +62,7 @@
 </div>
 
 <script type="module">
-import { parseMmlDoc, songToMml, songToPlayBasic, songToFeederBasic, songToNotes, notesToSong, PPQ } from "./core/music/mml.js";
+import { parseMmlDoc, songToMml, songToPlayBasic, songToFeederBasic, sfxSweepBasic, songToNotes, notesToSong, PPQ } from "./core/music/mml.js";
 
 // ---- モデル ----
 const CH = [
@@ -123,6 +124,13 @@ function draw() {
       ctx.globalAlpha = ci === active ? 1 : 0.35;
       ctx.fillStyle = ch.color;
       ctx.fillRect(x, y + 1, w, ROWH - 2);
+      // グライド: ノート頭の音程 → glideTo へ斜線＋終点マーカー
+      if (n.glideTo != null && n.glideTo !== n.pitch) {
+        const gy = rowY(n.glideTo) + ROWH / 2;
+        ctx.strokeStyle = ch.color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, y + ROWH / 2); ctx.lineTo(x + w, gy); ctx.stroke();
+        ctx.fillRect(x + w - 3, gy - (ROWH - 2) / 2, 3, ROWH - 2);
+      }
       ctx.globalAlpha = 1;
     }
   });
@@ -165,7 +173,8 @@ roll.addEventListener("mousedown", (e) => {
   if (p.x < GUTTER || p.pitch < LOW || p.pitch > HIGH) return;
   const ch = CH[active];
   const h = hitNote(ch, p.x, p.tick, p.pitch);
-  if (h && h.edge) drag = { mode: "resize", i: h.i };
+  if (h && e.shiftKey) drag = { mode: "glide", i: h.i };      // Shift+ドラッグ＝グライド先を指定
+  else if (h && h.edge) drag = { mode: "resize", i: h.i };
   else if (h) drag = { mode: "move", i: h.i, grabTick: p.tick - ch.notes[h.i].start };
   else {
     ch.notes.push({ start: snapR(p.tick), dur: lastLen, pitch: p.pitch, vol: 8 });
@@ -186,6 +195,8 @@ window.addEventListener("mousemove", (e) => {
   const n = CH[active].notes[drag.i]; if (!n) { drag = null; return; }
   if (drag.mode === "draw" || drag.mode === "resize") {
     n.dur = Math.max(SNAP, snapC(p.tick) - n.start);       // 右へドラッグで伸縮
+  } else if (drag.mode === "glide") {
+    if (p.pitch >= LOW && p.pitch <= HIGH) n.glideTo = p.pitch;   // グライド先の音程
   } else {                                                 // move
     n.start = Math.max(0, snapR(p.tick - drag.grabTick));
     if (p.pitch >= LOW && p.pitch <= HIGH) n.pitch = p.pitch;
@@ -197,6 +208,10 @@ window.addEventListener("mouseup", () => {
   if (drag && (drag.mode === "draw" || drag.mode === "resize")) {
     const n = CH[active].notes[drag.i];
     if (n) lastLen = n.dur;                       // 直近長を更新（次の単クリックに反映）
+  }
+  if (drag && drag.mode === "glide") {
+    const n = CH[active].notes[drag.i];
+    if (n && n.glideTo === n.pitch) delete n.glideTo;  // 同音＝グライド解除
   }
   drag = null;
 });
@@ -219,6 +234,13 @@ $("toPlay").addEventListener("click", () => {
 $("toFeeder").addEventListener("click", () => {
   const { code, warnings } = songToFeederBasic(currentSong(), { func: "BGM" });
   $("io").value = code; status(warnings.length ? ("BGMフィーダ生成（警告 " + warnings.length + "）") : "BGMフィーダを生成（BGM_LOAD/START/TICK/STOP・プレイ中BGM用）");
+});
+$("toSfx").addEventListener("click", () => {
+  // 最初のグライド音符から from→to を採る（無ければ既定 O6C→O3C の急降下）
+  let from = 72, to = 36, src = "既定 O6C→O3C";
+  for (const ch of CH) { const g = ch.notes.find((n) => n.glideTo != null && n.glideTo !== n.pitch); if (g) { from = g.pitch; to = g.glideTo; src = "グライド音符の音程"; break; } }
+  const { code, warnings } = sfxSweepBasic(from, to, { func: "SFX_DROP" });
+  $("io").value = code; status((warnings.length ? "警告" + warnings.length + "・" : "") + "急降下SFX SFX_DROP() を生成（" + src + "）");
 });
 $("fromMml").addEventListener("click", () => {
   try {

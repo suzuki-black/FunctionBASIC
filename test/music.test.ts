@@ -9,6 +9,8 @@ import {
   songToFeederBasic,
   songToNotes,
   notesToSong,
+  expandGlides,
+  sfxSweepBasic,
   lenToTicks,
   ticksToLen,
   type Song,
@@ -80,6 +82,34 @@ test("BGMフィーダ生成: 非ブロック(PLAY(0))＋DATASET で有効なMSX�
   const errs = (tr.diagnostics ?? []).filter((d: { severity: string }) => d.severity === "error");
   assert.equal(errs.length, 0, "変換エラーなし");
   assert.match(renderMsx(tr.code), /PLAY [A-Z]\$\([A-Z]%?\)/); // 配列からの PLAY
+});
+
+test("グライド(方式A): glideTo音符が半音下降ランへ展開される", () => {
+  // O5C(60) → O4C(48) を1拍でグライド
+  const song = notesToSong(
+    [{ id: "A", name: "melody", notes: [{ start: 0, dur: 48, pitch: 60, vol: 8, glideTo: 48 }], ctrls: [] }],
+    { tempo: 120, timesig: [4, 4] },
+  );
+  const notes = expandGlides(song).channels[0].events.filter((e) => e.t === "note");
+  assert.ok(notes.length >= 8, "多数の刻み音符に展開");
+  assert.equal(notes[0].pitch, 60);
+  assert.equal(notes[notes.length - 1].pitch, 48, "最後は glideTo に着地");
+  // MML 出力にも下降ランが出る
+  assert.match(songToMml(song), /A: .*O5C.*C/);
+});
+
+test("急降下SFX(方式B): PSGスイープが有効なMSXに変換できる", async () => {
+  const { code, warnings } = sfxSweepBasic(72, 36, { func: "SFX_DROP" }); // O6C→O3C
+  assert.equal(warnings.length, 0);
+  assert.match(code, /FUNCTION SFX_DROP\(\)/);
+  assert.match(code, /SOUND 7,/); // ミキサ
+  assert.match(code, /FOR P = 107 TO 855 STEP/); // 高音(小period)→低音(大period)へスイープ
+  const { transform, renderMsx } = await import("../src/transform/transformer.ts");
+  const tk = tokenize("SCREEN 1\nSFX_DROP()\n" + code);
+  const ast = parse((tk as { tokens?: unknown }).tokens ?? tk);
+  const tr = transform((ast as { program?: unknown }).program ?? ast);
+  assert.equal((tr.diagnostics ?? []).filter((d: { severity: string }) => d.severity === "error").length, 0);
+  assert.match(renderMsx(tr.code), /SOUND 0,\w+ AND 255/);
 });
 
 test("Song ⇄ 絶対ノート(GUI用): 休符が隙間になり戻せる", () => {

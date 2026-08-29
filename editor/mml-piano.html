@@ -274,7 +274,8 @@ $("toSfx").addEventListener("click", () => {
   let from = 72, to = 36, src = "既定 O6C→O3C";
   for (const ch of CH) { const g = ch.notes.find((n) => n.glideTo != null && n.glideTo !== n.pitch); if (g) { from = g.pitch; to = g.glideTo; src = "グライド音符の音程"; break; } }
   const { code, warnings } = sfxSweepBasic(from, to, { func: "SFX_DROP" });
-  $("io").value = code; status((warnings.length ? "警告" + warnings.length + "・" : "") + "急降下SFX SFX_DROP() を生成（" + src + "）");
+  $("io").value = code; status((warnings.length ? "警告" + warnings.length + "・" : "") + "急降下SFX SFX_DROP() を生成＋試聴（" + src + "）");
+  playSweep(from, to); // Web Audio で急降下を試聴（実機は生成した SFX_DROP() で鳴る）
 });
 $("fromMml").addEventListener("click", () => {
   try {
@@ -298,12 +299,15 @@ $("play").addEventListener("click", () => {
   actx = actx || new (window.AudioContext || window.webkitAudioContext)();
   const spt = (60 / (+tempoEl.value)) / PPQ; // 秒/tick
   const t0 = actx.currentTime + 0.05;
+  const freqOf = (p) => 440 * Math.pow(2, ((p + 12) - 69) / 12);
   CH.forEach((ch) => {
     for (const n of ch.notes) {
       const osc = actx.createOscillator(), g = actx.createGain();
-      const midi = n.pitch + 12; osc.type = "square";
-      osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+      osc.type = "square";
       const s = t0 + n.start * spt, e = s + n.dur * spt;
+      osc.frequency.setValueAtTime(freqOf(n.pitch), s);
+      if (n.glideTo != null && n.glideTo !== n.pitch)
+        osc.frequency.exponentialRampToValueAtTime(freqOf(n.glideTo), Math.max(s + 0.02, e)); // グライド＝滑らかにスライド
       g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.15, s + 0.01);
       g.gain.setValueAtTime(0.15, e - 0.02); g.gain.exponentialRampToValueAtTime(0.0001, e);
       osc.connect(g).connect(actx.destination); osc.start(s); osc.stop(e + 0.02); playing.push(osc);
@@ -312,6 +316,19 @@ $("play").addEventListener("click", () => {
   status("再生中…");
 });
 function stopAll() { playing.forEach((o) => { try { o.stop(); } catch {} }); playing = []; }
+// 急降下SFXの試聴（from→to へ矩形波を滑らかにスイープ）
+function playSweep(from, to) {
+  stopAll();
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  const f = (p) => 440 * Math.pow(2, ((p + 12) - 69) / 12);
+  const t = actx.currentTime + 0.02, dur = 0.45;
+  const osc = actx.createOscillator(), g = actx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(f(from), t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(20, f(to)), t + dur);
+  g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g).connect(actx.destination); osc.start(t); osc.stop(t + dur + 0.02); playing.push(osc);
+}
 $("stop").addEventListener("click", () => { stopAll(); status("停止"); });
 
 // ---- 初期サンプル ----

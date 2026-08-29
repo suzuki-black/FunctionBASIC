@@ -168,6 +168,11 @@ function draw() {
       ctx.globalAlpha = 1;
     }
   });
+  // 再生ヘッド（再生中の現在位置を示す縦線）
+  if (playhead != null) {
+    const x = GUTTER + playhead * PXT;
+    ctx.fillStyle = "#ffcc44"; ctx.fillRect(x, 0, 2, roll.height);
+  }
 }
 
 // ---- 編集（標準ピアノロール流：ドラッグで描画／右端でリサイズ／本体で移動／右クリック削除／
@@ -292,8 +297,8 @@ $("clear").addEventListener("click", () => { CH.forEach((c) => { c.notes = []; c
 [tsnEl, tsdEl, barsEl].forEach((el) => el.addEventListener("change", () => { resize(); draw(); }));
 function status(s) { $("status").textContent = s; }
 
-// ---- 再生（Web Audio・矩形波3声） ----
-let actx = null, playing = [];
+// ---- 再生（Web Audio・矩形波3声）＋プレイヘッド ----
+let actx = null, playing = [], playhead = null, tickTimer = 0, playSpt = 0, playTotal = 0;
 $("play").addEventListener("click", () => {
   stopAll();
   actx = actx || new (window.AudioContext || window.webkitAudioContext)();
@@ -314,9 +319,19 @@ $("play").addEventListener("click", () => {
       osc.connect(g).connect(actx.destination); osc.start(s); osc.stop(e + 0.02); playing.push(osc);
     }
   });
+  // プレイヘッド（再生位置の縦線）を実時計で進める。startMs は音のスケジュール(t0=+0.05s)に合わせる。
+  playSpt = spt;
+  playTotal = Math.max(0, ...CH.flatMap((ch) => ch.notes.map((n) => n.start + n.dur)));
+  const startMs = performance.now() + 50;
+  clearInterval(tickTimer);
+  tickTimer = setInterval(() => {
+    const tk = (performance.now() - startMs) / 1000 / playSpt;
+    if (tk >= playTotal + 1) { clearInterval(tickTimer); playhead = null; draw(); status("再生終了"); return; }
+    playhead = Math.max(0, tk); draw();
+  }, 30);
   status("再生中…");
 });
-function stopAll() { playing.forEach((o) => { try { o.stop(); } catch {} }); playing = []; }
+function stopAll() { playing.forEach((o) => { try { o.stop(); } catch {} }); playing = []; clearInterval(tickTimer); playhead = null; }
 // 急降下SFXの試聴（from→to へ矩形波を滑らかにスイープ）
 function playSweep(from, to) {
   stopAll();
@@ -331,7 +346,7 @@ function playSweep(from, to) {
   g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.connect(g).connect(actx.destination); osc.start(t); osc.stop(t + dur + 0.02); playing.push(osc);
 }
-$("stop").addEventListener("click", () => { stopAll(); status("停止"); });
+$("stop").addEventListener("click", () => { stopAll(); draw(); status("停止"); });
 
 // ---- 初期サンプル ----
 $("io").value = "@tempo 120\n@timesig 4/4\n@ch A melody\n@ch B bass\nA: O4 L8 CDEF GAB>C | O5 C<BAGFED C\nB: O2 L2 CG | FG\n";

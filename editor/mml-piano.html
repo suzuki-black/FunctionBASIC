@@ -24,6 +24,13 @@
   #status { color:var(--sub); min-height:1.4em; }
   h3 { margin:6px 0 2px; font-size:12px; color:var(--sub); font-weight:600; }
   .hint { color:var(--sub); font-size:12px; }
+  #helpbox { margin-top:6px; border:1px solid var(--grid); border-radius:4px; }
+  #helpbox > summary { cursor:pointer; padding:6px 8px; color:var(--text); background:var(--panel); user-select:none; border-radius:4px; }
+  .help { padding:4px 10px 8px; font-size:12px; color:var(--sub); }
+  .help b { color:var(--text); }
+  .help ul { margin:2px 0 8px; padding-left:18px; }
+  .help li { margin:2px 0; }
+  .help kbd { background:#3b3d4a; border:1px solid #4a4d5e; border-radius:3px; padding:0 4px; color:var(--text); font-size:11px; }
 </style>
 </head>
 <body>
@@ -58,6 +65,33 @@
     <h3>テキスト（MML方言 / 生成PLAY文）</h3>
     <textarea id="io" spellcheck="false"></textarea>
     <p class="hint">MML方言を貼って「MML読込」で音符化。「PLAY文」は FunctionBASIC の整形（1小節1行・O/L明示・3声等長）を通した生成物。CLI: <code>music.mjs import/export</code> と同じコア。</p>
+    <details id="helpbox" open>
+      <summary>操作方法（クリックで開閉）</summary>
+      <div class="help">
+        <b>打ち込み（ロール上）</b>
+        <ul>
+          <li><b>描く</b>：グリッドを<b>ドラッグ</b>（長さ＝ドラッグ量・16分スナップ／単クリックは直近の長さ）</li>
+          <li><b>長さ変更</b>：音符の<b>右端</b>を左右ドラッグ</li>
+          <li><b>移動</b>：音符の<b>本体</b>をドラッグ（上下＝音程／左右＝位置）</li>
+          <li><b>グライド（ピッチスライド）</b>：音符を <kbd>Shift</kbd>+ドラッグして滑り先の音程へ（斜線表示）</li>
+          <li><b>削除</b>：音符を<b>右クリック</b></li>
+        </ul>
+        <b>ツールバー（上）</b>
+        <ul>
+          <li><b>ch A / B / C</b>：編集する声部を切替（他声部は薄く表示）</li>
+          <li><b>既定長</b>：単クリック配置の音符長／<b>Tempo・拍子・小節数</b>：曲の設定</li>
+          <li><b>▶ 再生 / ■ 停止</b>：Web Audio で試聴／<b>クリア</b>：全消去</li>
+        </ul>
+        <b>書き出し（下のボタン → テキスト欄）</b>
+        <ul>
+          <li><b>→ MML 書出 / ← MML 読込</b>：MML方言テキストと相互変換</li>
+          <li><b>→ PLAY文(.msxb)</b>：読みやすい PLAY 文（曲・ジングル用）</li>
+          <li><b>→ BGM(feeder)</b>：プレイ中BGM用の非ブロック再生コード（LOAD/START/TICK/STOP）</li>
+          <li><b>→ SFX(急降下)</b>：PSGスイープの急降下効果音（グライド音符があればその音程を使用）</li>
+          <li><b>コピー</b>：テキスト欄をクリップボードへ</li>
+        </ul>
+      </div>
+    </details>
   </div>
 </div>
 

@@ -297,6 +297,7 @@ let actx = null, playing = [];
 $("play").addEventListener("click", () => {
   stopAll();
   actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume(); // 一時停止からの復帰(これが無いと2回目以降無音になる)
   const spt = (60 / (+tempoEl.value)) / PPQ; // 秒/tick
   const t0 = actx.currentTime + 0.05;
   const freqOf = (p) => 440 * Math.pow(2, ((p + 12) - 69) / 12);
@@ -320,6 +321,7 @@ function stopAll() { playing.forEach((o) => { try { o.stop(); } catch {} }); pla
 function playSweep(from, to) {
   stopAll();
   actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume();
   const f = (p) => 440 * Math.pow(2, ((p + 12) - 69) / 12);
   const t = actx.currentTime + 0.02, dur = 0.45;
   const osc = actx.createOscillator(), g = actx.createGain();

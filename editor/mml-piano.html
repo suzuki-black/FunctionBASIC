@@ -80,7 +80,7 @@
         <ul>
           <li><b>ch A / B / C</b>：編集する声部を切替（他声部は薄く表示）</li>
           <li><b>既定長</b>：単クリック配置の音符長／<b>Tempo・拍子・小節数</b>：曲の設定</li>
-          <li><b>▶ 再生</b>：<b>再生位置（縦線）から</b>試聴（曲の全長まで）／<b>■ 停止</b>：開始位置へ戻す（もう一度で先頭へ）／<b>クリア</b>：全消去</li>
+          <li><b>▶ 再生</b>：<b>再生位置（縦線）から</b>試聴（曲の全長まで）／<b>■ 停止</b>：その場で一時停止（もう一度押すと先頭へ）／<b>クリア</b>：全消去</li>
           <li><b>再生位置</b>：上の<b>ルーラー（目盛り）をクリック/ドラッグ</b>して移動（縦線は常時表示）</li>
         </ul>
         <b>書き出し（下のボタン → テキスト欄）</b>
@@ -358,8 +358,11 @@ function playSweep(from, to) {
   g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.connect(g).connect(actx.destination); osc.start(t); osc.stop(t + dur + 0.02); oscs.push(osc);
 }
-// 停止＝開始位置へ戻す（プレイヘッドは消えず残る）。もう一度押すと先頭(0)へ。
-$("stop").addEventListener("click", () => { const was = playing; stopAll(); playPos = was ? playStart : 0; playStart = playPos; draw(); status(was ? "停止（開始位置へ）" : "先頭へ"); });
+// 停止: 1回目=その場で一時停止(線は残る) / 2回目(停止中)=先頭(0)へ戻す。
+$("stop").addEventListener("click", () => {
+  if (playing) { stopAll(); draw(); status("一時停止（その場）"); }
+  else if (playPos !== 0) { playPos = 0; playStart = 0; draw(); status("先頭へ"); }
+});
 
 // ---- 初期サンプル ----
 $("io").value = "@tempo 120\n@timesig 4/4\n@ch A melody\n@ch B bass\nA: O4 L8 CDEF GAB>C | O5 C<BAGFED C\nB: O2 L2 CG | FG\n";

@@ -80,7 +80,8 @@
         <ul>
           <li><b>ch A / B / C</b>：編集する声部を切替（他声部は薄く表示）</li>
           <li><b>既定長</b>：単クリック配置の音符長／<b>Tempo・拍子・小節数</b>：曲の設定</li>
-          <li><b>▶ 再生 / ■ 停止</b>：Web Audio で試聴／<b>クリア</b>：全消去</li>
+          <li><b>▶ 再生</b>：<b>再生位置（縦線）から</b>試聴（曲の全長まで）／<b>■ 停止</b>：開始位置へ戻す（もう一度で先頭へ）／<b>クリア</b>：全消去</li>
+          <li><b>再生位置</b>：上の<b>ルーラー（目盛り）をクリック/ドラッグ</b>して移動（縦線は常時表示）</li>
         </ul>
         <b>書き出し（下のボタン → テキスト欄）</b>
         <ul>
@@ -109,6 +110,7 @@ const LOW = 24, HIGH = 83;            // 表示音域 O2C..O6B（絶対半音）
 const ROWH = 10, GUTTER = 42;         // 1半音の高さ / 左の鍵盤ラベル幅
 const PXT = 0.5;                      // px per tick
 const SNAP = PPQ / 4;                 // 16分グリッドにスナップ(=12tick)
+const RULER = 16;                     // 上部ルーラー(クリック/ドラッグで再生位置スクラブ)
 const NAME = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 const $ = (id) => document.getElementById(id);
@@ -121,13 +123,13 @@ function lenTicks() {
   const v = lenEl.value; const dot = v.endsWith("."); const n = parseInt(v);
   let t = (PPQ * 4) / n; if (dot) t += t / 2; return Math.round(t);
 }
-function rowY(pitch) { return (HIGH - pitch) * ROWH; }
-function yPitch(y) { return HIGH - Math.floor(y / ROWH); }
+function rowY(pitch) { return RULER + (HIGH - pitch) * ROWH; }
+function yPitch(y) { return HIGH - Math.floor((y - RULER) / ROWH); }
 
 // ---- 描画 ----
 function resize() {
   roll.width = GUTTER + totalTicks() * PXT;
-  roll.height = (HIGH - LOW + 1) * ROWH;
+  roll.height = RULER + (HIGH - LOW + 1) * ROWH;
 }
 function draw() {
   const W = roll.width, H = roll.height, mt = measureTicks();
@@ -139,16 +141,21 @@ function draw() {
     ctx.fillStyle = black ? "#1b1c22" : "#212330";
     ctx.fillRect(GUTTER, y, W - GUTTER, ROWH);
     if (semi === 0) { ctx.fillStyle = "#3a3d4e"; ctx.fillRect(GUTTER, y + ROWH - 1, W - GUTTER, 1); }
-    // 鍵盤ラベル（C のみ）
     if (semi === 0) { ctx.fillStyle = "#9aa"; ctx.font = "9px monospace"; ctx.fillText("O" + Math.floor(p/12) + "C", 4, y + ROWH - 1); }
   }
-  // 縦線（拍/小節）
-  const beat = PPQ; // 4分ごと
-  for (let t = 0; t <= totalTicks(); t += beat) {
+  // 縦線（拍/小節・全高）
+  for (let t = 0; t <= totalTicks(); t += PPQ) {
     const x = GUTTER + t * PXT, bar = (t % mt) === 0;
     ctx.fillStyle = bar ? "#4a4d5e" : "#2c2e3a";
-    ctx.fillRect(x, 0, bar ? 2 : 1, H);
-    if (bar) { ctx.fillStyle = "#9aa"; ctx.font = "9px monospace"; ctx.fillText((t / mt) + 1 + "", x + 3, 9); }
+    ctx.fillRect(x, RULER, bar ? 2 : 1, H - RULER);
+  }
+  // ルーラー(上部・クリックで再生位置スクラブ)
+  ctx.fillStyle = "#191a20"; ctx.fillRect(0, 0, W, RULER);
+  ctx.fillStyle = "#3a3d4e"; ctx.fillRect(GUTTER, RULER - 1, W - GUTTER, 1);
+  for (let t = 0; t <= totalTicks(); t += mt) {
+    const x = GUTTER + t * PXT;
+    ctx.fillStyle = "#4a4d5e"; ctx.fillRect(x, 0, 2, RULER);
+    ctx.fillStyle = "#9aa"; ctx.font = "9px monospace"; ctx.fillText((t / mt) + 1 + "", x + 3, 11);
   }
   // 音符（非アクティブは薄く）
   CH.forEach((ch, ci) => {
@@ -158,7 +165,6 @@ function draw() {
       ctx.globalAlpha = ci === active ? 1 : 0.35;
       ctx.fillStyle = ch.color;
       ctx.fillRect(x, y + 1, w, ROWH - 2);
-      // グライド: ノート頭の音程 → glideTo へ斜線＋終点マーカー
       if (n.glideTo != null && n.glideTo !== n.pitch) {
         const gy = rowY(n.glideTo) + ROWH / 2;
         ctx.strokeStyle = ch.color; ctx.lineWidth = 2;
@@ -168,11 +174,11 @@ function draw() {
       ctx.globalAlpha = 1;
     }
   });
-  // 再生ヘッド（再生中の現在位置を示す縦線）
-  if (playhead != null) {
-    const x = GUTTER + playhead * PXT;
-    ctx.fillStyle = "#ffcc44"; ctx.fillRect(x, 0, 2, roll.height);
-  }
+  // 再生ヘッド（常時表示・全高＋ルーラーに掴みハンドル）
+  const px = GUTTER + playPos * PXT;
+  ctx.fillStyle = playing ? "#ffcc44" : "#ff9a3c";
+  ctx.fillRect(px, 0, 2, H);
+  ctx.beginPath(); ctx.moveTo(px - 4, 0); ctx.lineTo(px + 6, 0); ctx.lineTo(px + 1, 9); ctx.closePath(); ctx.fill();
 }
 
 // ---- 編集（標準ピアノロール流：ドラッグで描画／右端でリサイズ／本体で移動／右クリック削除／
@@ -209,7 +215,9 @@ roll.addEventListener("contextmenu", (e) => {   // 右クリック＝削除
 roll.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;                    // 左のみ（右はcontextmenu）
   const p = evtPos(e);
-  if (p.x < GUTTER || p.pitch < LOW || p.pitch > HIGH) return;
+  if (p.x < GUTTER) return;
+  if (p.y < RULER) { drag = { mode: "scrub" }; playPos = snapR(p.tick); draw(); return; } // ルーラー=再生位置スクラブ
+  if (p.pitch < LOW || p.pitch > HIGH) return;
   const ch = CH[active];
   const h = hitNote(ch, p.x, p.tick, p.pitch);
   if (h && e.shiftKey) drag = { mode: "glide", i: h.i };      // Shift+ドラッグ＝グライド先を指定
@@ -225,12 +233,14 @@ roll.addEventListener("mousedown", (e) => {
 window.addEventListener("mousemove", (e) => {
   const p = evtPos(e);
   if (!drag) {                                   // カーソルフィードバック
-    if (p.x >= GUTTER && p.pitch >= LOW && p.pitch <= HIGH) {
+    if (p.x >= GUTTER && p.y < RULER) roll.style.cursor = "ew-resize";     // ルーラー
+    else if (p.x >= GUTTER && p.pitch >= LOW && p.pitch <= HIGH) {
       const h = hitNote(CH[active], p.x, p.tick, p.pitch);
       roll.style.cursor = h ? (h.edge ? "ew-resize" : "move") : "crosshair";
     } else roll.style.cursor = "default";
     return;
   }
+  if (drag.mode === "scrub") { playPos = snapR(p.tick); draw(); return; }  // 再生位置スクラブ
   const n = CH[active].notes[drag.i]; if (!n) { drag = null; return; }
   if (drag.mode === "draw" || drag.mode === "resize") {
     n.dur = Math.max(SNAP, snapC(p.tick) - n.start);       // 右へドラッグで伸縮
@@ -297,41 +307,43 @@ $("clear").addEventListener("click", () => { CH.forEach((c) => { c.notes = []; c
 [tsnEl, tsdEl, barsEl].forEach((el) => el.addEventListener("change", () => { resize(); draw(); }));
 function status(s) { $("status").textContent = s; }
 
-// ---- 再生（Web Audio・矩形波3声）＋プレイヘッド ----
-let actx = null, playing = [], playhead = null, tickTimer = 0, playSpt = 0, playTotal = 0;
+// ---- 再生（Web Audio・矩形波3声）＋プレイヘッド（常時表示・カーソル位置から再生・停止で開始位置へ） ----
+let actx = null, oscs = [], playing = false, playPos = 0, playStart = 0, tickTimer = 0;
 $("play").addEventListener("click", () => {
   stopAll();
   actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-  if (actx.state === "suspended") actx.resume(); // 一時停止からの復帰(これが無いと2回目以降無音になる)
+  if (actx.state === "suspended") actx.resume(); // 一時停止からの復帰(これが無いと2回目以降無音)
   const spt = (60 / (+tempoEl.value)) / PPQ; // 秒/tick
   const t0 = actx.currentTime + 0.05;
   const freqOf = (p) => 440 * Math.pow(2, ((p + 12) - 69) / 12);
+  playStart = playPos;                        // 停止したらここへ戻す
+  const total = totalTicks();
   CH.forEach((ch) => {
     for (const n of ch.notes) {
+      if (n.start + n.dur <= playPos) continue;       // 再生位置より前の音は飛ばす
+      const from = Math.max(n.start, playPos);
       const osc = actx.createOscillator(), g = actx.createGain();
       osc.type = "square";
-      const s = t0 + n.start * spt, e = s + n.dur * spt;
+      const s = t0 + (from - playPos) * spt, e = t0 + (n.start + n.dur - playPos) * spt;
       osc.frequency.setValueAtTime(freqOf(n.pitch), s);
       if (n.glideTo != null && n.glideTo !== n.pitch)
-        osc.frequency.exponentialRampToValueAtTime(freqOf(n.glideTo), Math.max(s + 0.02, e)); // グライド＝滑らかにスライド
+        osc.frequency.exponentialRampToValueAtTime(freqOf(n.glideTo), Math.max(s + 0.02, e));
       g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.15, s + 0.01);
       g.gain.setValueAtTime(0.15, e - 0.02); g.gain.exponentialRampToValueAtTime(0.0001, e);
-      osc.connect(g).connect(actx.destination); osc.start(s); osc.stop(e + 0.02); playing.push(osc);
+      osc.connect(g).connect(actx.destination); osc.start(s); osc.stop(e + 0.02); oscs.push(osc);
     }
   });
-  // プレイヘッド（再生位置の縦線）を実時計で進める。startMs は音のスケジュール(t0=+0.05s)に合わせる。
-  playSpt = spt;
-  playTotal = Math.max(0, ...CH.flatMap((ch) => ch.notes.map((n) => n.start + n.dur)));
+  playing = true;
   const startMs = performance.now() + 50;
   clearInterval(tickTimer);
-  tickTimer = setInterval(() => {
-    const tk = (performance.now() - startMs) / 1000 / playSpt;
-    if (tk >= playTotal + 1) { clearInterval(tickTimer); playhead = null; draw(); status("再生終了"); return; }
-    playhead = Math.max(0, tk); draw();
+  tickTimer = setInterval(() => {                       // 実時計でプレイヘッドを曲の全長まで進める
+    const tk = playStart + (performance.now() - startMs) / 1000 / spt;
+    if (tk >= total) { clearInterval(tickTimer); playing = false; playPos = playStart; draw(); status("再生終了（開始位置へ）"); return; }
+    playPos = Math.max(0, tk); draw();
   }, 30);
   status("再生中…");
 });
-function stopAll() { playing.forEach((o) => { try { o.stop(); } catch {} }); playing = []; clearInterval(tickTimer); playhead = null; }
+function stopAll() { oscs.forEach((o) => { try { o.stop(); } catch {} }); oscs = []; clearInterval(tickTimer); playing = false; }
 // 急降下SFXの試聴（from→to へ矩形波を滑らかにスイープ）
 function playSweep(from, to) {
   stopAll();
@@ -344,9 +356,10 @@ function playSweep(from, to) {
   osc.frequency.setValueAtTime(f(from), t);
   osc.frequency.exponentialRampToValueAtTime(Math.max(20, f(to)), t + dur);
   g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  osc.connect(g).connect(actx.destination); osc.start(t); osc.stop(t + dur + 0.02); playing.push(osc);
+  osc.connect(g).connect(actx.destination); osc.start(t); osc.stop(t + dur + 0.02); oscs.push(osc);
 }
-$("stop").addEventListener("click", () => { stopAll(); draw(); status("停止"); });
+// 停止＝開始位置へ戻す（プレイヘッドは消えず残る）。もう一度押すと先頭(0)へ。
+$("stop").addEventListener("click", () => { const was = playing; stopAll(); playPos = was ? playStart : 0; playStart = playPos; draw(); status(was ? "停止（開始位置へ）" : "先頭へ"); });
 
 // ---- 初期サンプル ----
 $("io").value = "@tempo 120\n@timesig 4/4\n@ch A melody\n@ch B bass\nA: O4 L8 CDEF GAB>C | O5 C<BAGFED C\nB: O2 L2 CG | FG\n";

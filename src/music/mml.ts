@@ -46,21 +46,24 @@ export function ticksToLen(ticks: number): { n: number; dots: number } | null {
   }
   return null;
 }
-// 任意 tick を「表現可能な音長の並び」に貪欲分解（休符埋め/端数用）。
+// 任意 tick を「表現可能な音長の並び」に貪欲分解（連結表記/端数用）。
+// L64グリッド(=3tick)の2冪 {3,6,12,24,48,96,192tick} だけを使う。これらは全て3の倍数なので、
+// 3の倍数の tick は必ず誤差ゼロで分解できる(=3×k の2進表現)。付点/3連L は3の倍数でなく端数を
+// 生む(例: 付点L12=28tick を食うと2tick残って表現不能)ため、この分解には用いない。単一で表せる
+// 音長(付点含む)は呼び出し側が先に単一表現を選ぶので、ここへは来ない。
+const BIN_NS = [1, 2, 4, 8, 16, 32, 64];
 function decomposeLen(ticks: number): { n: number; dots: number }[] {
   const out: { n: number; dots: number }[] = [];
   let rest = ticks;
   let guard = 0;
-  while (rest > 0 && guard++ < 64) {
+  while (rest >= 3 && guard++ < 64) {
     let best: { n: number; dots: number } | null = null;
     let bestT = 0;
-    for (const n of LEN_NS) {
-      for (let dots = 0; dots <= 2; dots++) {
-        const t = lenToTicks(n, dots);
-        if (t <= rest && t > bestT) {
-          bestT = t;
-          best = { n, dots };
-        }
+    for (const n of BIN_NS) {
+      const t = lenToTicks(n, 0);
+      if (t <= rest && t > bestT) {
+        bestT = t;
+        best = { n, dots: 0 };
       }
     }
     if (!best) break;
@@ -203,18 +206,6 @@ interface EncState {
   defLen: number | null;
   vol: number | null;
 }
-function emitOneLen(dur: number, defLen: number | null, warnings: string[]): string {
-  if (defLen != null && dur === defLen) return "";
-  const l = ticksToLen(dur);
-  if (l) return String(l.n) + ".".repeat(l.dots);
-  // 単一で表せない音符長（グリッド外）: 最も近い表現へ丸め、警告
-  const parts = decomposeLen(dur);
-  if (parts.length) {
-    warnings.push(`音長 ${dur}tick を単一MML長で表せず近似`);
-    return String(parts[0].n) + ".".repeat(parts[0].dots);
-  }
-  return "";
-}
 // 1音符/休符を MML へ。state を更新。
 function emitEvent(ev: Ev, st: EncState, warnings: string[]): string {
   if (ev.t === "ctrl") return ev.raw;
@@ -231,8 +222,20 @@ function emitEvent(ev: Ev, st: EncState, warnings: string[]): string {
       out += "O" + octave;
       st.octave = octave;
     }
-    out += name; // 例: "C" / "C#"
-    out += emitOneLen(ev.dur, st.defLen, warnings);
+    // 長さの出力: (1)既定長と同じなら省略 (2)単一MML長で表せればそれ (3)表せなければ
+    // 「同音を連結(tie)」で全長を保つ。先頭要素だけ出して端数を捨てると音が短くなり、
+    // 3声の等長化(同期)が崩れるため、休符と同じく全要素を出し切る。
+    const single = ticksToLen(ev.dur);
+    if (st.defLen != null && ev.dur === st.defLen) {
+      out += name; // 既定長→長さ省略
+    } else if (single) {
+      out += name + String(single.n) + ".".repeat(single.dots);
+    } else {
+      const parts = decomposeLen(ev.dur);
+      const got = parts.reduce((a, p) => a + lenToTicks(p.n, p.dots), 0);
+      if (got !== ev.dur) warnings.push(`音長 ${ev.dur}tick を厳密に表せず ${ev.dur - got}tick 近似`);
+      for (const p of parts) out += name + String(p.n) + ".".repeat(p.dots);
+    }
   } else {
     // rest: 単一で表せなければ複数Rへ分解
     const l = ticksToLen(ev.dur);
@@ -632,10 +635,13 @@ export function expandGlides(song: Song): Song {
       // 各刻みは >= 3tick(=64分相当)。長さが足りなければ刻みを間引く。
       const maxSteps = Math.max(1, Math.floor(ev.dur / 3));
       const n = Math.min(semis + 1, maxSteps); // 出す音符数
+      // 刻み長は L64 グリッド(=3tick)に量子化する。標準音長(付点含む)は全て3の倍数なので、
+      // これで刻みの合計 tick が元の音符長にぴったり一致し、他声との等長化(同期)が崩れない。
+      const base = Math.max(3, Math.floor(ev.dur / n / 3) * 3);
       let used = 0;
       for (let i = 0; i < n; i++) {
         const p = i === n - 1 ? ev.glideTo : ev.pitch + dir * Math.round((semis * i) / (n - 1 || 1));
-        const d = i === n - 1 ? ev.dur - used : Math.floor(ev.dur / n);
+        const d = i === n - 1 ? ev.dur - used : base; // 最後の刻みが端数(=3の倍数)を吸収
         used += d;
         if (d > 0) events.push({ t: "note", dur: d, pitch: p, vol: ev.vol });
       }

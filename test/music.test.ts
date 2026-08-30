@@ -98,6 +98,30 @@ test("グライド(方式A): glideTo音符が半音下降ランへ展開され�
   assert.match(songToMml(song), /A: .*O5C.*C/);
 });
 
+// 回帰: グライドは「音階の再現」を優先して「音の長さ」を落としてはいけない。
+// 旧実装は刻み長に floor(dur/n) を使い(グリッド外の半端が発生)、emit が単一MML長へ丸めて
+// 端数を捨てていたため、グライド音符が最大~10%短くなり3声の等長化(同期)が崩れた。
+// 刻みを L64グリッド(3tick)に量子化＋端数を連結(tie)で出し切ることで合計tickを厳密保存する。
+test("グライド: 展開後の合計tickが元の音符長と完全一致(音長を落とさない)", () => {
+  const durs = [24, 36, 48, 72, 96, 144, 192];
+  for (const dur of durs) {
+    for (const semis of [1, 2, 4, 6, 9, 10, 12]) {
+      const song = notesToSong(
+        [{ id: "A", name: "A", notes: [{ start: 0, dur, pitch: 48, glideTo: 48 + semis }], ctrls: [] }],
+        { tempo: 120, timesig: [4, 4] },
+      );
+      // (1) 展開後イベントの合計tick
+      const expanded = expandGlides(song).channels[0].events;
+      const sumExpanded = expanded.reduce((a, e) => a + (e.t === "ctrl" ? 0 : e.dur), 0);
+      assert.equal(sumExpanded, dur, `expandGlides 合計tick (dur=${dur}, semis=${semis})`);
+      // (2) MML へ出力→再パースした合計tick(emit の丸めで落ちないこと)
+      const { song: back } = parseMmlDoc(songToMml(song));
+      const sumBack = back.channels[0].events.reduce((a, e) => a + (e.t === "ctrl" ? 0 : e.dur), 0);
+      assert.equal(sumBack, dur, `MML往復 合計tick (dur=${dur}, semis=${semis})`);
+    }
+  }
+});
+
 test("急降下SFX(方式B): PSGスイープが有効なMSXに変換できる", async () => {
   const { code, warnings } = sfxSweepBasic(72, 36, { func: "SFX_DROP" }); // O6C→O3C
   assert.equal(warnings.length, 0);

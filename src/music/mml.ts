@@ -77,7 +77,8 @@ function pitchInt(letter: string, accidental: number, octave: number): number {
   return octave * 12 + LETTER_SEMI[letter] + accidental;
 }
 function splitPitch(pitch: number): { octave: number; name: string } {
-  const octave = Math.floor(pitch / 12);
+  // MSX の O は 1..8。範囲外(O0/O9)は「Illegal function call」になるので音名は保ちオクターブをクランプ。
+  const octave = Math.min(8, Math.max(1, Math.floor(pitch / 12)));
   const semi = ((pitch % 12) + 12) % 12;
   return { octave, name: SEMI_NAME[semi] };
 }
@@ -224,16 +225,10 @@ function emitEvent(ev: Ev, st: EncState, warnings: string[]): string {
   }
   if (ev.t === "note") {
     const { octave, name } = splitPitch(ev.pitch);
-    if (st.octave == null) {
+    // MSX-BASIC PLAY は `<`/`>`(オクターブシフト)を解釈せず Illegal function call になる。
+    // よってオクターブ変更は必ず `O<n>` を出す(実機WebMSXで確認)。
+    if (octave !== st.octave) {
       out += "O" + octave;
-      st.octave = octave;
-    } else {
-      const delta = octave - st.octave;
-      if (delta === 1) out += ">";
-      else if (delta === -1) out += "<";
-      else if (delta === 2) out += ">>";
-      else if (delta === -2) out += "<<";
-      else if (delta !== 0) out += "O" + octave;
       st.octave = octave;
     }
     out += name; // 例: "C" / "C#"

@@ -181,6 +181,41 @@ export function decodeMml(mml: string, state: DecodeState, warnings: string[]): 
       evs.push({ t: "note", dur, pitch: pitchInt(c, acc, state.octave), vol: state.vol });
       continue;
     }
+    // タイ `&<長さ>`: 直前の音符に長さを加算し「1音符」として継続する（方言専用。往復で音符が
+    // 分裂しないように songToMml が出す）。単一MML長で表せない音長を保持するための表記。
+    if (c === "&") {
+      i++;
+      const n = readNum();
+      const d = readDots();
+      const add = n != null ? lenToTicks(n, d) : state.defLen;
+      for (let k = evs.length - 1; k >= 0; k--) { if (evs[k].t === "note") { evs[k].dur += add; break; } }
+      continue;
+    }
+    // グライド `~<滑り先>`: 直前の音符に glideTo を付与（音符→滑り先へ dur かけて滑る）。
+    // 滑り先は O<n>/</> ＋ 音名（長さは持たない＝元音符の長さで滑る）。O は一時的に使い、
+    // 声部の流れ（永続オクターブ）は変えない。展開は MSX 出力(PLAY/feeder)時のみ行う。
+    if (c === "~") {
+      i++;
+      const savedOct = state.octave;
+      while (i < s.length && (s[i] === "O" || s[i] === ">" || s[i] === "<" || s[i] === " ")) {
+        if (s[i] === " ") { i++; continue; }
+        if (s[i] === "O") { i++; const n = readNum(); if (n != null) state.octave = n; }
+        else if (s[i] === ">") { i++; state.octave++; }
+        else { i++; state.octave--; }
+      }
+      if (i < s.length && s[i] >= "A" && s[i] <= "G") {
+        const letter = s[i];
+        i++;
+        let acc = 0;
+        while (i < s.length && (s[i] === "#" || s[i] === "+" || s[i] === "-")) { acc += s[i] === "-" ? -1 : 1; i++; }
+        const target = pitchInt(letter, acc, state.octave);
+        for (let k = evs.length - 1; k >= 0; k--) { if (evs[k].t === "note") { (evs[k] as { glideTo?: number }).glideTo = target; break; } }
+      } else {
+        warnings.push("グライド(~)の後に音名がありません");
+      }
+      state.octave = savedOct;
+      continue;
+    }
     // 未対応トークン(S/M/Q/N 等): 記号＋続く数字を1塊として ctrl 保持
     if (c === "S" || c === "M" || c === "Q" || c === "N" || c === "@") {
       const start = i;
@@ -207,7 +242,9 @@ interface EncState {
   vol: number | null;
 }
 // 1音符/休符を MML へ。state を更新。
-function emitEvent(ev: Ev, st: EncState, warnings: string[]): string {
+// tie=true(方言): 単一長で表せない音長は同音のタイ `&` で1音符として連結（往復で音符が分裂しない）。
+// tie=false(MSX PLAY出力): タイ命令が無いので同音を再アタック（`CC`）。どちらも合計tickは保つ。
+function emitEvent(ev: Ev, st: EncState, warnings: string[], tie = false): string {
   if (ev.t === "ctrl") return ev.raw;
   let out = "";
   if (ev.t === "note" && ev.vol != null && ev.vol !== st.vol) {
@@ -234,7 +271,22 @@ function emitEvent(ev: Ev, st: EncState, warnings: string[]): string {
       const parts = decomposeLen(ev.dur);
       const got = parts.reduce((a, p) => a + lenToTicks(p.n, p.dots), 0);
       if (got !== ev.dur) warnings.push(`音長 ${ev.dur}tick を厳密に表せず ${ev.dur - got}tick 近似`);
-      for (const p of parts) out += name + String(p.n) + ".".repeat(p.dots);
+      if (tie) {
+        // 方言: 1音符を維持するためタイ `&` で連結（先頭のみ音名、以降は &長さ）。
+        out += name + String(parts[0].n) + ".".repeat(parts[0].dots);
+        for (let k = 1; k < parts.length; k++) out += "&" + String(parts[k].n) + ".".repeat(parts[k].dots);
+      } else {
+        // MSX PLAY: タイ命令が無いので同音を再アタック。
+        for (const p of parts) out += name + String(p.n) + ".".repeat(p.dots);
+      }
+    }
+    // グライドは展開せず `~<滑り先>` として保持（往復で glideTo を失わない）。
+    // 滑り先は明示 O＋音名（長さ無し＝元音符の長さで滑る）。st.octave は変更しない。
+    if (ev.glideTo != null && ev.glideTo !== ev.pitch) {
+      const to = ev.glideTo;
+      const toct = Math.floor(to / 12); // クランプしない=パーサ(pitchInt)と厳密一致
+      const toname = SEMI_NAME[((to % 12) + 12) % 12];
+      out += "~O" + toct + toname;
     }
   } else {
     // rest: 単一で表せなければ複数Rへ分解
@@ -318,7 +370,8 @@ export function playStringsToSong(
 }
 
 export function songToMml(song: Song): string {
-  song = expandGlides(song); // グライドは半音ランへ展開してから出力
+  // グライドは展開せず `~<滑り先>` で保持する（往復で glideTo を失わない）。
+  // 半音ランへの展開は MSX 出力(songToPlayBasic/songToFeederBasic)時のみ行う。
   const lines: string[] = [];
   lines.push(`@tempo ${song.tempo}`);
   lines.push(`@timesig ${song.timesig[0]}/${song.timesig[1]}`);
@@ -335,7 +388,7 @@ export function songToMml(song: Song): string {
       let head = "";
       if (st.defLen != null) head = "L" + ticksToLen(st.defLen)!.n + ".".repeat(ticksToLen(st.defLen)!.dots);
       let body = "";
-      for (const ev of evs) body += emitEvent(ev, st, warnings);
+      for (const ev of evs) body += emitEvent(ev, st, warnings, true); // 方言=タイ有効
       return (head + body).trim();
     });
     lines.push(`${ch.id}: ${bars.join(" | ")}`);

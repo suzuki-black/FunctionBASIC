@@ -84,18 +84,53 @@ test("BGMフィーダ生成: 非ブロック(PLAY(0))＋DATASET で有効なMSX�
   assert.match(renderMsx(tr.code), /PLAY [A-Z]\$\([A-Z]%?\)/); // 配列からの PLAY
 });
 
-test("グライド(方式A): glideTo音符が半音下降ランへ展開される", () => {
+test("グライド(方式A): glideTo音符が半音下降ランへ展開される（MSX出力）", () => {
   // O5C(60) → O4C(48) を1拍でグライド
   const song = notesToSong(
     [{ id: "A", name: "melody", notes: [{ start: 0, dur: 48, pitch: 60, vol: 8, glideTo: 48 }], ctrls: [] }],
     { tempo: 120, timesig: [4, 4] },
   );
+  // MSX 出力(expandGlides)は半音ランへ展開される
   const notes = expandGlides(song).channels[0].events.filter((e) => e.t === "note");
   assert.ok(notes.length >= 8, "多数の刻み音符に展開");
   assert.equal(notes[0].pitch, 60);
   assert.equal(notes[notes.length - 1].pitch, 48, "最後は glideTo に着地");
-  // MML 出力にも下降ランが出る
-  assert.match(songToMml(song), /A: .*O5C.*C/);
+});
+
+// 回帰: MML方言(=編集の保存形式)はグライドを展開せず `~<滑り先>` で保持し、往復で glideTo を
+// 失わない。旧実装は songToMml で半音ランへ展開していたため、保存→読込でグライドが多数の小音符に
+// なり、GUIの斜線が途切れる(点線化する)不具合があった。
+test("グライド: MML往復で glideTo が保持される（斜線が途切れない）", () => {
+  // dur は「単一MML長で表せる」もの と「タイ & が必要」なもの(60/108/120/132tick=16分刻みで頻出)を混ぜる。
+  // 後者は旧実装だと同音の連続で書かれ、読込で複数音符に分裂→グライドが末尾断片にだけ付き線が化けた。
+  for (const [dur, from, to] of [[48, 60, 48], [96, 55, 67], [24, 60, 63], [192, 48, 60], [60, 48, 67], [108, 55, 43], [120, 60, 72], [132, 48, 60]] as const) {
+    const song = notesToSong(
+      [{ id: "A", name: "A", notes: [{ start: 0, dur, pitch: from, glideTo: to }], ctrls: [] }],
+      { tempo: 120, timesig: [4, 4] },
+    );
+    const mml = songToMml(song);
+    assert.match(mml, /~O\d/, `MMLにグライド記法 ~ が出る (dur=${dur})`);
+    const notes = songToNotes(parseMmlDoc(mml).song).channels[0].notes;
+    assert.equal(notes.length, 1, `1音符のまま（分裂しない） dur=${dur}: ${mml}`);
+    assert.equal(notes[0].pitch, from, `元の音程 dur=${dur}`);
+    assert.equal(notes[0].glideTo, to, `glideTo 保持 dur=${dur}`);
+    assert.equal(notes[0].dur, dur, `音長 保持 dur=${dur}`);
+  }
+});
+
+// 回帰: タイ `&` は方言専用（MSX PLAY 出力には出さない＝実機で Syntax error にしない）。
+test("タイ &: 方言では1音符化・MSX PLAY出力には出さない", async () => {
+  const song = notesToSong(
+    [{ id: "A", name: "A", notes: [{ start: 0, dur: 60, pitch: 48 }], ctrls: [] }],
+    { tempo: 120, timesig: [4, 4] },
+  );
+  assert.match(songToMml(song), /&/, "方言ではタイ & を使う");
+  const { code } = songToPlayBasic(song, { func: "BGM" });
+  assert.ok(!/&/.test(code), "MSX PLAY 出力にタイ & を出さない");
+  // 非グライドでも往復で1音符・長さ保持
+  const back = songToNotes(parseMmlDoc(songToMml(song)).song).channels[0].notes;
+  assert.equal(back.length, 1);
+  assert.equal(back[0].dur, 60);
 });
 
 // 回帰: グライドは「音階の再現」を優先して「音の長さ」を落としてはいけない。

@@ -706,11 +706,12 @@ function costTextReport(rep) {
 // デスクトップ(Tauri/WKWebView)でポップアップが抑止された場合はステータスで案内。
 function openMusicTool() {
   // デスクトップ(Tauri)は window.open が弾かれるので Rust コマンドで別ウィンドウを開く。
+  // 本体の言語(lang)を渡し、音楽ツール側のUI/メッセージを英/日で追従させる。
   if (isDesktop()) {
-    tauri().core.invoke("open_music_tool").catch((e) => { logErr("music", e); setStatus("err", t("music.opened")); });
+    tauri().core.invoke("open_music_tool", { lang }).catch((e) => { logErr("music", e); setStatus("err", t("music.opened")); });
     return;
   }
-  const w = window.open("mml-piano.html", "_blank");
+  const w = window.open("mml-piano.html?lang=" + encodeURIComponent(lang), "_blank");
   if (!w) setStatus("info", t("music.opened"));
 }
 function openCostPanel() {

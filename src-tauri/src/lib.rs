@@ -850,21 +850,101 @@ fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> 
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize)]
+struct TextFileRead {
+    name: String,
+    content: String,
+}
+
+// 汎用テキスト保存: ネイティブ保存ダイアログでパスを選ばせ UTF-8 で書き出す。
+// パスは常にユーザーがダイアログで選ぶ(JS から任意パスを渡さない)。音楽ツールの .mml 保存に使用。
+#[tauri::command]
+async fn save_text_file(
+    app: tauri::AppHandle,
+    default_name: String,
+    filter_name: String,
+    ext: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .set_file_name(default_name.as_str())
+        .add_filter(filter_name.as_str(), &[ext.as_str()])
+        .blocking_save_file()
+    else {
+        return Ok(None); // キャンセル
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, content.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(Some(path.display().to_string()))
+}
+
+// 汎用テキスト読込: ネイティブ選択ダイアログでファイルを選ばせ UTF-8 で読み込む。
+#[tauri::command]
+async fn open_text_file(
+    app: tauri::AppHandle,
+    filter_name: String,
+    ext: String,
+) -> Result<Option<TextFileRead>, String> {
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .add_filter(filter_name.as_str(), &[ext.as_str()])
+        .blocking_pick_file()
+    else {
+        return Ok(None); // キャンセル
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    Ok(Some(TextFileRead { name, content }))
+}
+
 // 音楽ツール(ピアノロール)を別ウィンドウで開く。デスクトップの WebView は window.open を弾くため、
 // フロントはこのコマンドを呼ぶ(AppHandle で生成＝JS権限に依存しない/既に開いていれば前面化)。
 #[tauri::command]
-fn open_music_tool(app: tauri::AppHandle) -> Result<(), String> {
+fn open_music_tool(app: tauri::AppHandle, lang: Option<String>) -> Result<(), String> {
     use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
     if let Some(w) = app.get_webview_window("music") {
         let _ = w.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, "music", WebviewUrl::App("mml-piano.html".into()))
-        .title("FunctionBASIC - 音楽ツール")
-        .inner_size(1040.0, 740.0)
-        .build()
-        .map_err(|e| e.to_string())?;
+    // 本体の言語を ?lang= で渡し、音楽ツールのUIを英/日で追従させる（既定 ja）。
+    let lang = match lang.as_deref() {
+        Some("en") => "en",
+        _ => "ja",
+    };
+    let title = if lang == "en" { "FunctionBASIC - Music tool" } else { "FunctionBASIC - 音楽ツール" };
+    WebviewWindowBuilder::new(
+        &app,
+        "music",
+        WebviewUrl::App(format!("mml-piano.html?lang={lang}").into()),
+    )
+    .title(title)
+    .inner_size(1040.0, 740.0)
+    .build()
+    .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// 音楽ツールの「一時保存」= プロセス内メモリに現在の曲(MML方言)を退避する。
+// ウィンドウを誤って閉じても、開き直せば自動復元する。本体(プロセス)終了で消える＝仕様どおり。
+#[derive(Default)]
+struct MusicAutosave(std::sync::Mutex<Option<String>>);
+
+#[tauri::command]
+fn music_autosave_set(state: tauri::State<'_, MusicAutosave>, content: String) -> Result<(), String> {
+    *state.0.lock().map_err(|e| e.to_string())? = Some(content);
+    Ok(())
+}
+
+#[tauri::command]
+fn music_autosave_get(state: tauri::State<'_, MusicAutosave>) -> Result<Option<String>, String> {
+    Ok(state.0.lock().map_err(|e| e.to_string())?.clone())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -879,6 +959,7 @@ pub fn run() {
             let _ = app.emit("menu-action", event.id().0.as_str());
         })
         .manage(WatcherState(std::sync::Mutex::new(None)))
+        .manage(MusicAutosave::default())
         .invoke_handler(tauri::generate_handler![
             save_project,
             pick_folder,
@@ -895,7 +976,11 @@ pub fn run() {
             save_sav,
             set_menu_lang,
             set_window_title,
-            open_music_tool
+            open_music_tool,
+            save_text_file,
+            open_text_file,
+            music_autosave_set,
+            music_autosave_get
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

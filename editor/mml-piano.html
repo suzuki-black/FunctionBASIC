@@ -35,69 +35,185 @@
 </head>
 <body>
 <header>
-  <div class="grp"><strong>♪ 音楽ツール</strong></div>
+  <div class="grp"><strong data-i18n="app.title">♪ 音楽ツール</strong></div>
   <div class="grp"><label>Tempo</label><input id="tempo" type="number" min="32" max="255" value="120" style="width:60px"></div>
-  <div class="grp"><label>拍子</label><input id="tsn" type="number" min="1" max="16" value="4" style="width:44px">/<select id="tsd"><option>2</option><option selected>4</option><option>8</option></select></div>
-  <div class="grp"><label>小節数</label><input id="bars" type="number" min="1" max="64" value="4" style="width:50px"></div>
-  <div class="grp"><label title="単クリックで置く時の既定の長さ。ドラッグで描けば任意長。">既定長</label>
+  <div class="grp"><label data-i18n="lbl.timesig">拍子</label><input id="tsn" type="number" min="1" max="16" value="4" style="width:44px">/<select id="tsd"><option>2</option><option selected>4</option><option>8</option></select></div>
+  <div class="grp"><label data-i18n="lbl.bars">小節数</label><input id="bars" type="number" min="1" max="64" value="4" style="width:50px"></div>
+  <div class="grp"><label data-i18n="lbl.deflen" data-i18n-title="lbl.deflen.t" title="単クリックで置く時の既定の長さ。ドラッグで描けば任意長。">既定長</label>
     <select id="len">
-      <option value="1">全</option><option value="2">2分</option><option value="4" selected>4分</option>
-      <option value="8">8分</option><option value="16">16分</option><option value="4.">付点4分</option><option value="8.">付点8分</option>
+      <option value="1" data-i18n="opt.whole">全</option><option value="2" data-i18n="opt.half">2分</option><option value="4" selected data-i18n="opt.q">4分</option>
+      <option value="8" data-i18n="opt.e">8分</option><option value="16" data-i18n="opt.s">16分</option><option value="4." data-i18n="opt.dq">付点4分</option><option value="8." data-i18n="opt.de">付点8分</option>
     </select></div>
   <div class="grp"><label>ch</label>
     <button id="chA" class="chA on">A</button><button id="chB" class="chB">B</button><button id="chC" class="chC">C</button>
   </div>
-  <div class="grp"><button id="play">▶ 再生</button><button id="stop">■ 停止</button><button id="clear">クリア</button></div>
+  <div class="grp"><button id="play" data-i18n="btn.play">▶ 再生</button><button id="stop" data-i18n="btn.stop">■ 停止</button><button id="clear" data-i18n="btn.clear">クリア</button></div>
 </header>
 
 <div id="wrap">
   <div id="rollBox"><canvas id="roll" width="900" height="600"></canvas></div>
   <div id="side">
-    <div id="status">ドラッグで描く／右端で長さ変更／本体で移動／Shift+ドラッグでグライド／右クリック削除。単クリックは直近の長さ。</div>
+    <div id="status"></div>
     <div class="grp" style="display:flex;gap:6px;flex-wrap:wrap">
-      <button id="toMml">→ MML 書出</button>
-      <button id="fromMml">← MML 読込</button>
-      <button id="toPlay">→ PLAY文(.msxb)</button>
-      <button id="toFeeder">→ BGM(feeder)</button>
-      <button id="toSfx" title="PSGを直接スイープする急降下SFX。グライド音符があればその音程を使用。">→ SFX(急降下)</button>
-      <button id="copy">コピー</button>
+      <button id="saveFile" data-i18n="btn.save" data-i18n-title="btn.save.t" title="曲(MML方言)をファイルに保存">💾 保存(.mml)</button>
+      <button id="openFile" data-i18n="btn.open" data-i18n-title="btn.open.t" title="保存した曲(.mml)を開く">📂 開く(.mml)</button>
     </div>
-    <h3>テキスト（MML方言 / 生成PLAY文）</h3>
+    <div class="grp" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="toMml" data-i18n="btn.toMml">→ MML 書出</button>
+      <button id="fromMml" data-i18n="btn.fromMml">← MML 読込</button>
+      <button id="toPlay" data-i18n="btn.toPlay">→ PLAY文(.msxb)</button>
+      <button id="toFeeder" data-i18n="btn.toFeeder">→ BGM(feeder)</button>
+      <button id="toSfx" data-i18n="btn.toSfx" data-i18n-title="btn.toSfx.t" title="PSGを直接スイープする急降下SFX。グライド音符があればその音程を使用。">→ SFX(急降下)</button>
+      <button id="copy" data-i18n="btn.copy">コピー</button>
+    </div>
+    <h3 data-i18n="h3.text">テキスト（MML方言 / 生成PLAY文）</h3>
     <textarea id="io" spellcheck="false"></textarea>
-    <p class="hint">MML方言を貼って「MML読込」で音符化。「PLAY文」は FunctionBASIC の整形（1小節1行・O/L明示・3声等長）を通した生成物。CLI: <code>music.mjs import/export</code> と同じコア。</p>
+    <p class="hint" data-i18n-html="hint.html">MML方言を貼って「MML読込」で音符化。「PLAY文」は FunctionBASIC の整形（1小節1行・O/L明示・3声等長）を通した生成物。CLI: <code>music.mjs import/export</code> と同じコア。</p>
     <details id="helpbox" open>
-      <summary>操作方法（クリックで開閉）</summary>
-      <div class="help">
-        <b>打ち込み（ロール上）</b>
-        <ul>
-          <li><b>描く</b>：グリッドを<b>ドラッグ</b>（長さ＝ドラッグ量・16分スナップ／単クリックは直近の長さ）</li>
-          <li><b>長さ変更</b>：音符の<b>右端</b>を左右ドラッグ</li>
-          <li><b>移動</b>：音符の<b>本体</b>をドラッグ（上下＝音程／左右＝位置）</li>
-          <li><b>グライド（ピッチスライド）</b>：音符を <kbd>Shift</kbd>+ドラッグして滑り先の音程へ（斜線表示）</li>
-          <li><b>削除</b>：音符を<b>右クリック</b></li>
-        </ul>
-        <b>ツールバー（上）</b>
-        <ul>
-          <li><b>ch A / B / C</b>：編集する声部を切替（他声部は薄く表示）</li>
-          <li><b>既定長</b>：単クリック配置の音符長／<b>Tempo・拍子・小節数</b>：曲の設定</li>
-          <li><b>▶ 再生</b>：<b>再生位置（縦線）から</b>試聴（曲の全長まで）／<b>■ 停止</b>：その場で一時停止（もう一度押すと先頭へ）／<b>クリア</b>：全消去</li>
-          <li><b>再生位置</b>：上の<b>ルーラー（目盛り）をクリック/ドラッグ</b>して移動（縦線は常時表示）</li>
-        </ul>
-        <b>書き出し（下のボタン → テキスト欄）</b>
-        <ul>
-          <li><b>→ MML 書出 / ← MML 読込</b>：MML方言テキストと相互変換</li>
-          <li><b>→ PLAY文(.msxb)</b>：読みやすい PLAY 文（曲・ジングル用）</li>
-          <li><b>→ BGM(feeder)</b>：プレイ中BGM用の非ブロック再生コード（LOAD/START/TICK/STOP）</li>
-          <li><b>→ SFX(急降下)</b>：PSGスイープの急降下効果音（グライド音符があればその音程を使用）</li>
-          <li><b>コピー</b>：テキスト欄をクリップボードへ</li>
-        </ul>
-      </div>
+      <summary data-i18n="help.summary">操作方法（クリックで開閉）</summary>
+      <div class="help" data-i18n-html="help.html"></div>
     </details>
+  </div>
+</div>
+
+<div id="closeAsk" style="display:none; position:fixed; inset:0; background:#0009; align-items:center; justify-content:center; z-index:100;">
+  <div style="background:var(--panel); border:1px solid #000; border-radius:8px; padding:18px 20px; max-width:380px; box-shadow:0 8px 30px #000a;">
+    <p id="closeAskMsg" data-i18n="close.msg" style="margin:0 0 14px; color:var(--text); font-size:14px;">変更があります。保存しますか？</p>
+    <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+      <button id="closeCancel" data-i18n="close.cancel">キャンセル</button>
+      <button id="closeDiscard" data-i18n="close.discard">保存せず閉じる</button>
+      <button id="closeSave" data-i18n="close.save" style="outline:2px solid #fff;">保存して閉じる</button>
+    </div>
   </div>
 </div>
 
 <script type="module">
 import { parseMmlDoc, songToMml, songToPlayBasic, songToFeederBasic, sfxSweepBasic, songToNotes, notesToSong, PPQ } from "./core/music/mml.js";
+
+// ---- 多言語（本体の言語に追従。?lang= を最優先、無ければ本体の fbe-lang、既定 ja）----
+const LANG = (() => {
+  const q = new URLSearchParams(location.search).get("lang");
+  if (q === "en" || q === "ja") return q;
+  try { if (localStorage.getItem("fbe-lang") === "en") return "en"; } catch {}
+  return "ja";
+})();
+const T = {
+  ja: {
+    "doc.title": "FunctionBASIC 音楽ツール（ピアノロール）",
+    "app.title": "♪ 音楽ツール",
+    "lbl.timesig": "拍子", "lbl.bars": "小節数", "lbl.deflen": "既定長",
+    "lbl.deflen.t": "単クリックで置く時の既定の長さ。ドラッグで描けば任意長。",
+    "opt.whole": "全", "opt.half": "2分", "opt.q": "4分", "opt.e": "8分", "opt.s": "16分", "opt.dq": "付点4分", "opt.de": "付点8分",
+    "btn.play": "▶ 再生", "btn.stop": "■ 停止", "btn.clear": "クリア",
+    "btn.save": "💾 保存(.mml)", "btn.save.t": "曲(MML方言)をファイルに保存",
+    "btn.open": "📂 開く(.mml)", "btn.open.t": "保存した曲(.mml)を開く",
+    "btn.toMml": "→ MML 書出", "btn.fromMml": "← MML 読込", "btn.toPlay": "→ PLAY文(.msxb)",
+    "btn.toFeeder": "→ BGM(feeder)", "btn.toSfx": "→ SFX(急降下)",
+    "btn.toSfx.t": "PSGを直接スイープする急降下SFX。グライド音符があればその音程を使用。", "btn.copy": "コピー",
+    "h3.text": "テキスト（MML方言 / 生成PLAY文）",
+    "hint.html": 'MML方言を貼って「MML読込」で音符化。「PLAY文」は FunctionBASIC の整形（1小節1行・O/L明示・3声等長）を通した生成物。CLI: <code>music.mjs import/export</code> と同じコア。',
+    "help.summary": "操作方法（クリックで開閉）",
+    "help.html":
+      '<b>打ち込み（ロール上）</b><ul>' +
+      '<li><b>描く</b>：グリッドを<b>ドラッグ</b>（長さ＝ドラッグ量・16分スナップ／単クリックは直近の長さ）</li>' +
+      '<li><b>長さ変更</b>：音符の<b>右端</b>を左右ドラッグ</li>' +
+      '<li><b>移動</b>：音符の<b>本体</b>をドラッグ（上下＝音程／左右＝位置）</li>' +
+      '<li><b>グライド（ピッチスライド）</b>：音符を <kbd>Shift</kbd>+ドラッグして滑り先の音程へ（斜線表示）</li>' +
+      '<li><b>削除</b>：音符を<b>右クリック</b></li></ul>' +
+      '<b>ツールバー（上）</b><ul>' +
+      '<li><b>ch A / B / C</b>：編集する声部を切替（他声部は薄く表示）</li>' +
+      '<li><b>既定長</b>：単クリック配置の音符長／<b>Tempo・拍子・小節数</b>：曲の設定</li>' +
+      '<li><b>▶ 再生</b>：<b>再生位置（縦線）から</b>試聴（曲の全長まで）／<b>■ 停止</b>：その場で一時停止（もう一度押すと先頭へ）／<b>クリア</b>：全消去</li>' +
+      '<li><b>再生位置</b>：上の<b>ルーラー（目盛り）をクリック/ドラッグ</b>して移動（縦線は常時表示）</li></ul>' +
+      '<b>ファイル</b><ul>' +
+      '<li><b>💾 保存(.mml) / 📂 開く(.mml)</b>：曲（MML方言）をファイルに保存・読込。デスクトップはダイアログ、ブラウザはダウンロード／選択。<b>.mml は可逆</b>なので編集の保存先に最適。閉じる時に未保存の変更があれば確認します（編集内容は開き直せば自動復元／本体終了で消えます）。</li></ul>' +
+      '<b>書き出し（下のボタン → テキスト欄）</b><ul>' +
+      '<li><b>→ MML 書出 / ← MML 読込</b>：MML方言テキストと相互変換（テキスト欄経由・コピペ用）</li>' +
+      '<li><b>→ PLAY文(.msxb)</b>：読みやすい PLAY 文（曲・ジングル用）</li>' +
+      '<li><b>→ BGM(feeder)</b>：プレイ中BGM用の非ブロック再生コード（LOAD/START/TICK/STOP）</li>' +
+      '<li><b>→ SFX(急降下)</b>：PSGスイープの急降下効果音（グライド音符があればその音程を使用）</li>' +
+      '<li><b>コピー</b>：テキスト欄をクリップボードへ</li></ul>',
+    "close.msg": "変更があります。保存しますか？", "close.save": "保存して閉じる", "close.discard": "保存せず閉じる", "close.cancel": "キャンセル",
+    "status.hint": "ドラッグで描く／右端で長さ変更／本体で移動／Shift+ドラッグでグライド／右クリック削除。単クリックは直近の長さ。",
+    "st.restored": "前回の内容を復元しました", "st.noteDeleted": "音符を削除",
+    "st.mmlWritten": "MML を書き出しました", "st.playGen": "PLAY文を生成しました",
+    "st.feederGen": "BGMフィーダを生成（BGM_LOAD/START/TICK/STOP・プレイ中BGM用）",
+    "st.loaded": "MML を読み込みました", "st.copied": "コピーしました", "st.copyFail": "コピー不可（手動で選択）",
+    "st.cleared": "クリア", "st.playEnd": "再生終了（開始位置へ）", "st.playing": "再生中…",
+    "st.paused": "一時停止（その場）", "st.toStart": "先頭へ",
+    "st.saveCanceled": "保存をキャンセルしました", "st.loadCanceled": "読込をキャンセルしました",
+    "src.glide": "グライド音符の音程", "src.default": "既定 O6C→O3C",
+    "w.warn": "警告", "w.loadedWarn": "読込", "w.playGen": "PLAY文生成", "w.feederGen": "BGMフィーダ生成",
+    "f.saved": (p) => "保存しました: " + p, "f.downloaded": (n) => "ダウンロードしました: " + n,
+    "f.saveErr": (m) => "保存エラー: " + m, "f.loadErr": (m) => "読込エラー: " + m,
+    "f.sfx": (warn, src) => (warn ? ("警告" + warn + "・") : "") + "急降下SFX SFX_DROP() を生成＋試聴（" + src + "）",
+  },
+  en: {
+    "doc.title": "FunctionBASIC Music Tool (Piano Roll)",
+    "app.title": "♪ Music tool",
+    "lbl.timesig": "Time sig", "lbl.bars": "Bars", "lbl.deflen": "Default len",
+    "lbl.deflen.t": "Default length when single-clicking; drag to draw any length.",
+    "opt.whole": "Whole", "opt.half": "1/2", "opt.q": "1/4", "opt.e": "1/8", "opt.s": "1/16", "opt.dq": "Dotted 1/4", "opt.de": "Dotted 1/8",
+    "btn.play": "▶ Play", "btn.stop": "■ Stop", "btn.clear": "Clear",
+    "btn.save": "💾 Save (.mml)", "btn.save.t": "Save the song (MML dialect) to a file",
+    "btn.open": "📂 Open (.mml)", "btn.open.t": "Open a saved song (.mml)",
+    "btn.toMml": "→ Export MML", "btn.fromMml": "← Import MML", "btn.toPlay": "→ PLAY (.msxb)",
+    "btn.toFeeder": "→ BGM (feeder)", "btn.toSfx": "→ SFX (drop)",
+    "btn.toSfx.t": "Drop SFX that sweeps the PSG tone register directly; uses a glide note's pitch if present.", "btn.copy": "Copy",
+    "h3.text": "Text (MML dialect / generated PLAY)",
+    "hint.html": 'Paste MML dialect and press "Import MML" to place notes. "PLAY" is the FunctionBASIC-formatted output (one measure per line, O/L explicit, three voices equal-length). Same core as CLI <code>music.mjs import/export</code>.',
+    "help.summary": "How to use (click to toggle)",
+    "help.html":
+      '<b>Editing (on the roll)</b><ul>' +
+      '<li><b>Draw</b>: <b>drag</b> on the grid (length = drag amount, snapped to 1/16; single click uses the last length)</li>' +
+      '<li><b>Resize</b>: drag the <b>right edge</b> of a note left/right</li>' +
+      '<li><b>Move</b>: drag the <b>body</b> of a note (up/down = pitch, left/right = position)</li>' +
+      '<li><b>Glide (pitch slide)</b>: <kbd>Shift</kbd>+drag a note to the target pitch (shown as a diagonal)</li>' +
+      '<li><b>Delete</b>: <b>right-click</b> a note</li></ul>' +
+      '<b>Toolbar (top)</b><ul>' +
+      '<li><b>ch A / B / C</b>: switch the voice being edited (others are dimmed)</li>' +
+      '<li><b>Default len</b>: note length for single-click / <b>Tempo, Time sig, Bars</b>: song settings</li>' +
+      '<li><b>▶ Play</b>: preview <b>from the playhead (vertical line)</b> to the end / <b>■ Stop</b>: pause in place (press again to return to start) / <b>Clear</b>: erase all</li>' +
+      '<li><b>Playhead</b>: click/drag the <b>ruler</b> at the top to move it (the line is always shown)</li></ul>' +
+      '<b>Files</b><ul>' +
+      '<li><b>💾 Save (.mml) / 📂 Open (.mml)</b>: save/open the song (MML dialect) as a file. Desktop uses a dialog; the browser downloads/picks. <b>.mml is lossless</b>, ideal for saving your edits. You are asked to save unsaved changes on close (edits auto-restore when you reopen; lost when the main app quits).</li></ul>' +
+      '<b>Export (buttons below → text area)</b><ul>' +
+      '<li><b>→ Export MML / ← Import MML</b>: convert to/from MML dialect text (via the text area, for copy-paste)</li>' +
+      '<li><b>→ PLAY (.msxb)</b>: readable PLAY statements (for songs / jingles)</li>' +
+      '<li><b>→ BGM (feeder)</b>: non-blocking in-game BGM code (LOAD/START/TICK/STOP)</li>' +
+      "<li><b>→ SFX (drop)</b>: a PSG-sweep drop sound effect (uses a glide note's pitch if present)</li>" +
+      '<li><b>Copy</b>: copy the text area to the clipboard</li></ul>',
+    "close.msg": "You have unsaved changes. Save before closing?", "close.save": "Save and close", "close.discard": "Close without saving", "close.cancel": "Cancel",
+    "status.hint": "Drag to draw / right edge to resize / body to move / Shift+drag to glide / right-click to delete. Single click uses the last length.",
+    "st.restored": "Restored your previous session", "st.noteDeleted": "Note deleted",
+    "st.mmlWritten": "MML written", "st.playGen": "PLAY statements generated",
+    "st.feederGen": "BGM feeder generated (BGM_LOAD/START/TICK/STOP, for in-game music)",
+    "st.loaded": "MML loaded", "st.copied": "Copied", "st.copyFail": "Copy failed (select manually)",
+    "st.cleared": "Cleared", "st.playEnd": "Playback ended (back to start)", "st.playing": "Playing…",
+    "st.paused": "Paused (in place)", "st.toStart": "To start",
+    "st.saveCanceled": "Save canceled", "st.loadCanceled": "Open canceled",
+    "src.glide": "pitch of the glide note", "src.default": "default O6C→O3C",
+    "w.warn": "warnings", "w.loadedWarn": "Loaded", "w.playGen": "PLAY generated", "w.feederGen": "BGM feeder generated",
+    "f.saved": (p) => "Saved: " + p, "f.downloaded": (n) => "Downloaded: " + n,
+    "f.saveErr": (m) => "Save error: " + m, "f.loadErr": (m) => "Load error: " + m,
+    "f.sfx": (warn, src) => (warn ? (warn + " warnings, ") : "") + "Drop SFX SFX_DROP() generated + preview (" + src + ")",
+  },
+};
+function t(key, ...args) {
+  const v = (T[LANG] && T[LANG][key]) ?? T.ja[key] ?? key;
+  return typeof v === "function" ? v(...args) : v;
+}
+// 「〜（警告 N）」/「… (N warnings)」の言語別整形。
+function warnMsg(baseKey, n) {
+  return LANG === "en" ? (t(baseKey) + " (" + n + " warnings)") : (t(baseKey) + "（" + t("w.warn") + n + "）");
+}
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  document.title = t("doc.title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+}
 
 // ---- モデル ----
 const CH = [
@@ -209,7 +325,7 @@ roll.addEventListener("contextmenu", (e) => {   // 右クリック＝削除
   e.preventDefault();
   const p = evtPos(e); if (p.x < GUTTER) return;
   const h = hitNote(CH[active], p.x, p.tick, p.pitch);
-  if (h) { CH[active].notes.splice(h.i, 1); draw(); status("音符を削除"); }
+  if (h) { CH[active].notes.splice(h.i, 1); draw(); status(t("st.noteDeleted")); changed(); }
 });
 
 roll.addEventListener("mousedown", (e) => {
@@ -254,6 +370,7 @@ window.addEventListener("mousemove", (e) => {
 });
 
 window.addEventListener("mouseup", () => {
+  const wasEdit = !!drag && drag.mode !== "scrub";   // scrub(再生位置移動)は編集ではない
   if (drag && (drag.mode === "draw" || drag.mode === "resize")) {
     const n = CH[active].notes[drag.i];
     if (n) lastLen = n.dur;                       // 直近長を更新（次の単クリックに反映）
@@ -263,6 +380,7 @@ window.addEventListener("mouseup", () => {
     if (n && n.glideTo === n.pitch) delete n.glideTo;  // 同音＝グライド解除
   }
   drag = null;
+  if (wasEdit) changed();                          // 編集完了→自動退避
 });
 
 // ---- ch 切替 ----
@@ -275,37 +393,129 @@ function currentSong() {
   return notesToSong(CH.map((c) => ({ id: c.id, name: c.name, notes: c.notes, ctrls: c.ctrls })),
     { tempo: +tempoEl.value, timesig: [+tsnEl.value, +tsdEl.value] });
 }
-$("toMml").addEventListener("click", () => { $("io").value = songToMml(currentSong()); status("MML を書き出しました"); });
+$("toMml").addEventListener("click", () => { $("io").value = songToMml(currentSong()); status(t("st.mmlWritten")); });
 $("toPlay").addEventListener("click", () => {
   const { code, warnings } = songToPlayBasic(currentSong(), { func: "BGM_MAIN" });
-  $("io").value = code; status(warnings.length ? ("PLAY文生成（警告 " + warnings.length + "）") : "PLAY文を生成しました");
+  $("io").value = code; status(warnings.length ? warnMsg("w.playGen", warnings.length) : t("st.playGen"));
 });
 $("toFeeder").addEventListener("click", () => {
   const { code, warnings } = songToFeederBasic(currentSong(), { func: "BGM" });
-  $("io").value = code; status(warnings.length ? ("BGMフィーダ生成（警告 " + warnings.length + "）") : "BGMフィーダを生成（BGM_LOAD/START/TICK/STOP・プレイ中BGM用）");
+  $("io").value = code; status(warnings.length ? warnMsg("w.feederGen", warnings.length) : t("st.feederGen"));
 });
 $("toSfx").addEventListener("click", () => {
   // 最初のグライド音符から from→to を採る（無ければ既定 O6C→O3C の急降下）
-  let from = 72, to = 36, src = "既定 O6C→O3C";
-  for (const ch of CH) { const g = ch.notes.find((n) => n.glideTo != null && n.glideTo !== n.pitch); if (g) { from = g.pitch; to = g.glideTo; src = "グライド音符の音程"; break; } }
+  let from = 72, to = 36, src = t("src.default");
+  for (const ch of CH) { const g = ch.notes.find((n) => n.glideTo != null && n.glideTo !== n.pitch); if (g) { from = g.pitch; to = g.glideTo; src = t("src.glide"); break; } }
   const { code, warnings } = sfxSweepBasic(from, to, { func: "SFX_DROP" });
-  $("io").value = code; status((warnings.length ? "警告" + warnings.length + "・" : "") + "急降下SFX SFX_DROP() を生成＋試聴（" + src + "）");
+  $("io").value = code; status(t("f.sfx", warnings.length, src));
   playSweep(from, to); // Web Audio で急降下を試聴（実機は生成した SFX_DROP() で鳴る）
 });
+// MML方言テキストを取り込んで音符化（テキスト欄「MML読込」とファイル「開く」で共有）。
+function loadMmlText(text, srcLabel) {
+  const { song, warnings } = parseMmlDoc(text);
+  const grid = songToNotes(song);
+  tempoEl.value = grid.tempo; tsnEl.value = grid.timesig[0]; tsdEl.value = grid.timesig[1];
+  CH.forEach((c) => { c.notes = []; c.ctrls = []; });
+  grid.channels.forEach((gc, i) => { if (CH[i]) { CH[i].notes = gc.notes; CH[i].ctrls = gc.ctrls; } });
+  resize(); draw();
+  const pre = srcLabel ? (srcLabel + " ") : "";
+  status(warnings.length ? (pre + warnMsg("w.loadedWarn", warnings.length)) : (pre + t("st.loaded")));
+}
 $("fromMml").addEventListener("click", () => {
-  try {
-    const { song, warnings } = parseMmlDoc($("io").value);
-    const grid = songToNotes(song);
-    tempoEl.value = grid.tempo; tsnEl.value = grid.timesig[0]; tsdEl.value = grid.timesig[1];
-    CH.forEach((c) => { c.notes = []; c.ctrls = []; });
-    grid.channels.forEach((gc, i) => { if (CH[i]) { CH[i].notes = gc.notes; CH[i].ctrls = gc.ctrls; } });
-    resize(); draw(); status(warnings.length ? ("読込（警告 " + warnings.length + "）") : "MML を読み込みました");
-  } catch (err) { status("読込エラー: " + err.message); }
+  try { loadMmlText($("io").value); changed(); } catch (err) { status(t("f.loadErr", err.message)); }
 });
-$("copy").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("io").value); status("コピーしました"); } catch { status("コピー不可（手動で選択）"); } });
-$("clear").addEventListener("click", () => { CH.forEach((c) => { c.notes = []; c.ctrls = []; }); draw(); status("クリア"); });
-[tsnEl, tsdEl, barsEl].forEach((el) => el.addEventListener("change", () => { resize(); draw(); }));
+
+// ---- ディスク保存 / 読込（デスクトップ=Tauriダイアログ / ブラウザ=ダウンロード・input） ----
+const tauriInvoke = window.__TAURI__?.core?.invoke ?? null;
+// 保存を実行。成功=true / キャンセル・失敗=false（閉じる確認から成否を見て使う）。
+async function doSave() {
+  const mml = currentMml();
+  const name = "song.mml";
+  try {
+    if (tauriInvoke) {
+      const path = await tauriInvoke("save_text_file", { defaultName: name, filterName: "MML music", ext: "mml", content: mml });
+      if (path) { setBaseline(); status(t("f.saved", path)); return true; }
+      status(t("st.saveCanceled")); return false;
+    }
+    const blob = new Blob([mml], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+    setBaseline(); status(t("f.downloaded", name)); return true;
+  } catch (err) { status(t("f.saveErr", err.message)); return false; }
+}
+$("saveFile").addEventListener("click", doSave);
+$("openFile").addEventListener("click", async () => {
+  try {
+    if (tauriInvoke) {
+      const res = await tauriInvoke("open_text_file", { filterName: "MML music", ext: "mml" });
+      if (!res) { status(t("st.loadCanceled")); return; }
+      $("io").value = res.content;
+      loadMmlText(res.content, res.name);
+      setBaseline(); scheduleAutosave();       // 開いた内容が基準（dirtyでない）＋退避も更新
+    } else {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = ".mml,.txt,text/plain";
+      inp.addEventListener("change", async () => {
+        const f = inp.files && inp.files[0]; if (!f) return;
+        const text = await f.text();
+        $("io").value = text;
+        try { loadMmlText(text, f.name); setBaseline(); scheduleAutosave(); } catch (err) { status(t("f.loadErr", err.message)); }
+      });
+      inp.click();
+    }
+  } catch (err) { status(t("f.loadErr", err.message)); }
+});
+$("copy").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("io").value); status(t("st.copied")); } catch { status(t("st.copyFail")); } });
+$("clear").addEventListener("click", () => { CH.forEach((c) => { c.notes = []; c.ctrls = []; }); draw(); status(t("st.cleared")); changed(); });
+[tempoEl, tsnEl, tsdEl, barsEl].forEach((el) => el.addEventListener("change", () => { resize(); draw(); changed(); }));
 function status(s) { $("status").textContent = s; }
+
+// ---- 一時保存(自動退避) / 変更検知 / 閉じる確認 ----
+let savedMml = "";                 // dirty判定の基準（起動時・ディスク保存/読込で更新）
+let autosaveTimer = 0;
+function currentMml() { return songToMml(currentSong()); }
+function isDirty() { return currentMml() !== savedMml; }
+function setBaseline() { savedMml = currentMml(); }
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(async () => {
+    const mml = currentMml();
+    try {
+      if (tauriInvoke) await tauriInvoke("music_autosave_set", { content: mml });
+      else localStorage.setItem("musictool.autosave", mml);
+    } catch {}
+  }, 400);
+}
+function changed() { scheduleAutosave(); }   // 編集完了点から呼ぶ（dirtyは isDirty() で都度計算）
+async function loadAutosave() {
+  try {
+    if (tauriInvoke) return await tauriInvoke("music_autosave_get");
+    return localStorage.getItem("musictool.autosave");
+  } catch { return null; }
+}
+// 閉じる時、未保存の変更があれば確認する。
+const closeAskEl = $("closeAsk");
+let closeConfirmed = false;
+const tauriWin = window.__TAURI__?.window?.getCurrentWindow ? window.__TAURI__.window.getCurrentWindow() : null;
+function forceClose() { closeConfirmed = true; if (tauriWin) tauriWin.destroy(); else window.close(); }
+$("closeCancel").addEventListener("click", () => { closeAskEl.style.display = "none"; });
+$("closeDiscard").addEventListener("click", () => { closeAskEl.style.display = "none"; forceClose(); });
+$("closeSave").addEventListener("click", async () => {
+  const ok = await doSave();
+  closeAskEl.style.display = "none";
+  if (ok) forceClose();               // 保存できたら閉じる。キャンセル/失敗なら閉じない。
+});
+if (tauriWin) {
+  tauriWin.onCloseRequested((ev) => {
+    if (closeConfirmed || !isDirty()) return;   // 確認済み or 変更なし=そのまま閉じる
+    ev.preventDefault();
+    closeAskEl.style.display = "flex";
+  });
+} else {
+  window.addEventListener("beforeunload", (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ""; } });
+}
 
 // ---- 再生（Web Audio・矩形波3声）＋プレイヘッド（常時表示・カーソル位置から再生・停止で開始位置へ） ----
 let actx = null, oscs = [], playing = false, playPos = 0, playStart = 0, tickTimer = 0;
@@ -338,10 +548,10 @@ $("play").addEventListener("click", () => {
   clearInterval(tickTimer);
   tickTimer = setInterval(() => {                       // 実時計でプレイヘッドを曲の全長まで進める
     const tk = playStart + (performance.now() - startMs) / 1000 / spt;
-    if (tk >= total) { clearInterval(tickTimer); playing = false; playPos = playStart; draw(); status("再生終了（開始位置へ）"); return; }
+    if (tk >= total) { clearInterval(tickTimer); playing = false; playPos = playStart; draw(); status(t("st.playEnd")); return; }
     playPos = Math.max(0, tk); draw();
   }, 30);
-  status("再生中…");
+  status(t("st.playing"));
 });
 function stopAll() { oscs.forEach((o) => { try { o.stop(); } catch {} }); oscs = []; clearInterval(tickTimer); playing = false; }
 // 急降下SFXの試聴（from→to へ矩形波を滑らかにスイープ）
@@ -360,14 +570,23 @@ function playSweep(from, to) {
 }
 // 停止: 1回目=その場で一時停止(線は残る) / 2回目(停止中)=先頭(0)へ戻す。
 $("stop").addEventListener("click", () => {
-  if (playing) { stopAll(); draw(); status("一時停止（その場）"); }
-  else if (playPos !== 0) { playPos = 0; playStart = 0; draw(); status("先頭へ"); }
+  if (playing) { stopAll(); draw(); status(t("st.paused")); }
+  else if (playPos !== 0) { playPos = 0; playStart = 0; draw(); status(t("st.toStart")); }
 });
 
-// ---- 初期サンプル ----
-$("io").value = "@tempo 120\n@timesig 4/4\n@ch A melody\n@ch B bass\nA: O4 L8 CDEF GAB>C | O5 C<BAGFED C\nB: O2 L2 CG | FG\n";
-$("fromMml").click();
-resize(); draw();
+// ---- 初期化: 多言語適用 → 前回の自動退避があれば復元、無ければ初期サンプル ----
+applyI18n();
+(async () => {
+  const initial = "@tempo 120\n@timesig 4/4\n@ch A melody\n@ch B bass\nA: O4 L8 CDEF GAB>C | O5 C<BAGFED C\nB: O2 L2 CG | FG\n";
+  const saved = await loadAutosave();
+  const restore = saved && saved.trim();
+  $("io").value = restore ? saved : initial;
+  try { loadMmlText($("io").value); }
+  catch { $("io").value = initial; try { loadMmlText(initial); } catch {} }
+  setBaseline();                       // 復元/初期どちらも基準(=dirtyでない)から開始
+  resize(); draw();
+  status(restore ? t("st.restored") : t("status.hint"));
+})();
 </script>
 </body>
 </html>

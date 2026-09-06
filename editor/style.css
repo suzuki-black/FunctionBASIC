@@ -120,6 +120,12 @@ button:hover { background: #1177bb; }
 .ft-row:hover .ft-act { visibility: visible; }
 .ft-act:hover { color: #fff; }
 .ft-group { padding: 8px 10px 2px; font-size: 11px; color: #888; letter-spacing: .04em; }
+/* 「データファイル」等、ヘッダに追加ボタンを持つグループ。＋は常時表示。 */
+.ft-group-act { display: flex; align-items: center; justify-content: space-between; }
+.ft-group-act .ft-act { visibility: visible; font-size: 14px; line-height: 1; }
+/* サイドバーのインライン名前変更ボックス */
+.ft-rename { font: inherit; flex: 1 1 auto; min-width: 0; background: #2a2d2e; color: #eee;
+  border: 1px solid #007acc; border-radius: 2px; padding: 0 3px; margin: -1px 0; outline: none; }
 .ft-row.node-webmsx { color: #9cdcfe; }
 
 /* ペイン群: 既定は単一表示(タブ)、.split で左右2分割 */

@@ -64,8 +64,23 @@ fn decode_text(bytes: &[u8]) -> String {
 struct FileEntry {
     name: String,
     content: String,
-    mtime: u64, // 最終更新（UNIX epoch ミリ秒）。外部変更検出の baseline に使う
-    size: u64,  // バイト数
+    mtime: u64,   // 最終更新（UNIX epoch ミリ秒）。外部変更検出の baseline に使う
+    size: u64,    // バイト数
+    kind: String, // "source"（.msxb）または "data"（同梱テキストデータ）
+}
+
+// プロジェクトの一員として扱う「テキストデータファイル」の拡張子（当面 SJIS テキストのみ）。
+// 変換成果物（.bas / .map.json）や退避（.bak）は含めない＝プロジェクト汚染を避ける。
+const DATA_EXTS: &[&str] = &["txt", "dat", "csv", "mml", "asc", "tab"];
+
+// 指定パスが同梱対象のテキストデータファイルか。
+fn is_data_path(path: &std::path::Path) -> bool {
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| DATA_EXTS.iter().any(|x| e.eq_ignore_ascii_case(x)))
+            .unwrap_or(false)
 }
 
 #[derive(serde::Serialize)]
@@ -113,9 +128,13 @@ fn read_msxb_dir(dir: &std::path::Path) -> Result<Vec<FileEntry>, String> {
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if !is_msxb_path(&path) {
-            continue;
-        }
+        let kind = if is_msxb_path(&path) {
+            "source"
+        } else if is_data_path(&path) {
+            "data"
+        } else {
+            continue; // .msxb / 対象データ拡張子 以外は無視（.bas/.map.json/.dsk 等）
+        };
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
@@ -126,6 +145,7 @@ fn read_msxb_dir(dir: &std::path::Path) -> Result<Vec<FileEntry>, String> {
             content: decode_text(&bytes),
             mtime: mtime_ms(&meta),
             size: meta.len(),
+            kind: kind.to_string(),
         });
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -232,6 +252,25 @@ fn read_binary(dir: String, name: String) -> Result<Vec<u8>, String> {
     Err(format!("ファイルが見つかりません: {name}"))
 }
 
+// プロジェクトフォルダ内の 1 ファイルを OS のゴミ箱へ移動する（永久削除ではなく復元可能）。
+// read_binary と同じくフォルダ外参照（絶対パス・".."・区切り）を拒否し、束縛フォルダ直下のみ許可。
+#[tauri::command]
+fn trash_file(dir: String, name: String) -> Result<(), String> {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || std::path::Path::new(&name).is_absolute()
+    {
+        return Err(format!("不正なファイル名: {name}"));
+    }
+    let path = std::path::Path::new(&dir).join(&name);
+    if !path.is_file() {
+        return Ok(()); // 既に無い＝成功扱い（プロジェクト側の除去だけ進める）
+    }
+    trash::delete(&path).map_err(|e| e.to_string())
+}
+
 // フォルダを監視して、変更時に "files-changed" イベントを front へ emit する。
 // notify のイベントは細かく多発するので、整合（再 stat）は front 側でデバウンスする。
 // watcher は Tauri の管理状態に保持して生存させる（フォルダ切替時は置き換え）。
@@ -259,9 +298,25 @@ fn watch_folder(
     Ok(())
 }
 
+// ファイル名が束縛フォルダ直下の単一ファイルを指すか検証する（パストラバーサル防止）。
+// read_binary / trash_file と同じ規則: 空・区切り・親参照・絶対パスを拒否する。
+fn reject_unsafe_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || std::path::Path::new(name).is_absolute()
+    {
+        return Err(format!("不正なファイル名: {name}"));
+    }
+    Ok(())
+}
+
 // 1 ソースファイルを dir/name へ Shift-JIS 保存（ダイアログ無し）。name は .msxb 込み。
+// name は webview 由来なので、フォルダ外への書き込みを防ぐため名前を検証する。
 #[tauri::command]
 fn save_source(dir: String, name: String, source: String) -> Result<(), String> {
+    reject_unsafe_name(&name)?;
     let path = std::path::Path::new(&dir).join(&name);
     write_sjis(path, &source)
 }
@@ -484,11 +539,30 @@ fn build_disk_image_files(
     build_dsk_files(&files)
 }
 
-// 同梱バイナリ（BLOAD 用など）。data は生バイト列（Tauri IPC で number 配列として渡る）。
+// 同梱ファイル。data は生バイト列（Tauri IPC で number 配列として渡る）。
+// text=true は順次テキストデータ（OPEN 参照）で、Shift-JIS＋CRLF＋末尾 EOF(0x1A) に整えてから
+// 収める。text=false（既定）は BLOAD バイナリ等でそのまま生バイトを収める。
 #[derive(serde::Deserialize)]
 struct DskBin {
     name: String,
     data: Vec<u8>,
+    #[serde(default)]
+    text: bool,
+}
+
+// プロジェクトの UTF-8 テキストを MSX の順次ファイル形式（Shift-JIS, CRLF 改行, 末尾 EOF 0x1A）に
+// 変換する。LINE INPUT#/PRINT# で行単位に読める形。ASCII は Shift-JIS と等価。SJIS 表現不能な文字は
+// ディスク全体を失敗させず該当箇所のみ '?' に置換（best-effort。BASIC 本体側は別途 lexer で検出済み）。
+fn encode_msx_text(raw: &[u8]) -> Vec<u8> {
+    let s = String::from_utf8_lossy(raw);
+    let body = s.replace("\r\n", "\n").replace('\r', "\n");
+    let crlf = body.split('\n').collect::<Vec<_>>().join("\r\n");
+    let (bytes, _enc, _had_errors) = encoding_rs::SHIFT_JIS.encode(&crlf);
+    let mut d = bytes.into_owned();
+    if d.last() != Some(&0x1A) {
+        d.push(0x1A);
+    }
+    d
 }
 
 // 変換後 BASIC を ASCII(Shift-JIS) のディスクファイルにして .dsk を保存。
@@ -503,7 +577,14 @@ async fn save_dsk(
     let extra: Vec<(String, Vec<u8>)> = bins
         .unwrap_or_default()
         .into_iter()
-        .map(|b| (b.name, b.data))
+        .map(|b| {
+            let data = if b.text {
+                encode_msx_text(&b.data)
+            } else {
+                b.data
+            };
+            (b.name, data)
+        })
         .collect();
     let img = build_disk_image_files(&base, &msx, &extra)?;
     let load_name = dsk_filename(&base);
@@ -619,6 +700,51 @@ async fn save_sav(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reject_unsafe_name_blocks_traversal() {
+        assert!(reject_unsafe_name("main.msxb").is_ok());
+        assert!(reject_unsafe_name("BRAIN.TXT").is_ok());
+        assert!(reject_unsafe_name("../evil.msxb").is_err()); // 親参照
+        assert!(reject_unsafe_name("a/b.msxb").is_err()); // 区切り
+        assert!(reject_unsafe_name("a\\b.msxb").is_err()); // 区切り(win)
+        assert!(reject_unsafe_name("/etc/passwd").is_err()); // 絶対
+        assert!(reject_unsafe_name("").is_err()); // 空
+    }
+
+    #[test]
+    fn encode_msx_text_crlf_sjis_eof() {
+        // LF は CRLF に、末尾は EOF(0x1A) に。ASCII は Shift-JIS と等価。
+        let out = encode_msx_text(b"HELLO|HI THERE\nMSX|RULES\n");
+        assert_eq!(
+            out,
+            b"HELLO|HI THERE\r\nMSX|RULES\r\n\x1a".to_vec(),
+            "改行→CRLF＋末尾 EOF"
+        );
+        // 既に EOF がある入力へは二重付与しない。
+        let out2 = encode_msx_text(b"A\r\n\x1a");
+        assert_eq!(out2, b"A\r\n\x1a".to_vec(), "EOF は二重付与しない");
+        // 日本語(UTF-8)→ Shift-JIS。「あ」= 0x82 0xA0。
+        let out3 = encode_msx_text("あ\n".as_bytes());
+        assert_eq!(out3, vec![0x82, 0xA0, 0x0D, 0x0A, 0x1A], "UTF-8→SJIS＋CRLF＋EOF");
+    }
+
+    #[test]
+    fn dsk_bundles_text_data_file_as_sjis() {
+        // OPEN 参照のテキストデータを text=true で同梱すると、ディスク内では SJIS+CRLF+EOF になる。
+        let img = build_disk_image_files(
+            "PROG",
+            "10 OPEN \"BRAIN.TXT\" FOR INPUT AS#1",
+            &[("BRAIN.TXT".to_string(), encode_msx_text(b"HELLO|HI\n"))],
+        )
+        .unwrap();
+        // 生成イメージ内に SJIS/CRLF 済みのテキストが現れる（生の LF ではなく CRLF＋EOF）。
+        let needle = b"HELLO|HI\r\n\x1a";
+        assert!(
+            img.windows(needle.len()).any(|w| w == needle),
+            "テキストデータが CRLF+EOF でディスクに収まる"
+        );
+    }
 
     #[test]
     fn backup_existing_preserves_old_file() {
@@ -968,6 +1094,7 @@ pub fn run() {
             stat_files,
             read_file,
             read_binary,
+            trash_file,
             watch_folder,
             save_source,
             save_build,

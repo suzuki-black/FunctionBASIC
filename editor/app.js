@@ -107,7 +107,15 @@ const I18N = {
     "tip.node.webmsx": "アプリ内 WebMSX で実行",
     "proj.newfile": "新規ファイル", "proj.newfilemsg": "ファイル名（.msxb）:",
     "proj.rename": "名前を変更", "proj.renamemsg": "新しいファイル名:",
-    "proj.delete": "削除", "proj.deletemsg": (n) => `「${n}」を削除しますか？`,
+    "proj.delete": "削除（ゴミ箱へ）", "proj.deletemsg": (n) => `「${n}」を削除（ゴミ箱へ移動）しますか？`,
+    "proj.remove": "プロジェクトから外す（ディスクは残す）",
+    "proj.removed": (n) => `「${n}」をプロジェクトから外しました（ディスクの実体は残っています）`,
+    "proj.trashed": (n) => `「${n}」をゴミ箱へ移動しました`,
+    "proj.data": "データファイル",
+    "proj.newdata": "データファイルを追加",
+    "proj.newdatamsg": "ファイル名（拡張子つき、例: brain.txt）:",
+    "data.editing": "データファイル（テキスト / Shift-JIS）を編集中",
+    "data.badname": "使えないファイル名です（区切り文字は使えません）",
     "proj.exists": (n) => `「${n}」は既に存在します`, "proj.last": "最後の1ファイルは削除できません",
     "proj.setmain": "mainに指定（変換/実行の起点）", "proj.clearmain": "main指定を解除（自動判定に戻す）",
     "proj.mainexplicit": "main（明示指定・変換/実行の起点）", "proj.mainauto": "main（自動判定・変換/実行の起点）",
@@ -156,6 +164,8 @@ const I18N = {
     "save.dl": "保存しました（.msxb / .map.json / .bas）※Shift-JIS化はデスクトップ版で",
     "save.src": "保存しました（.msxb）",
     "save.srcdl": "保存しました（.msxb をダウンロード）",
+    "save.data": (n) => `保存しました（${n}、Shift-JIS）`,
+    "save.datadl": (n) => `保存しました（${n} をダウンロード）`,
     "savesrc": "保存（ソース）", "openfolder": "フォルダを開く…", "reloadfolder": "ディスクから再読込",
     "folder.opened": (n) => `フォルダを開きました（${n} ファイル）`,
     "folder.reloaded": (n) => `ディスクから再読込しました（${n} ファイル）`,
@@ -196,6 +206,8 @@ const I18N = {
     "newproject": "新規プロジェクト…",
     "recentprojects": "最近のプロジェクト…",
     "run.noerr": "エラーがあるため実行できません",
+    "run.starting": "WebMSX を起動中…（main を実行）",
+    "run.starting.ext": "外部ブラウザで WebMSX を起動中…",
     "run.ok": (name, note) => `アプリ内WebMSXで実行（RUN"${name}"）${note}`,
     "run.ext.ok": "外部ブラウザでWebMSXを開きました（音を出すには画面を1回クリック）",
     "run.note": (n) => `（日本語等${n}字は実行用に除去）`, "run.open.err": "WebMSXを開けませんでした",
@@ -296,7 +308,15 @@ const I18N = {
     "tip.node.webmsx": "Run in the in-app WebMSX",
     "proj.newfile": "New file", "proj.newfilemsg": "File name (.msxb):",
     "proj.rename": "Rename", "proj.renamemsg": "New file name:",
-    "proj.delete": "Delete", "proj.deletemsg": (n) => `Delete "${n}"?`,
+    "proj.delete": "Delete (to Trash)", "proj.deletemsg": (n) => `Delete "${n}" (move to Trash)?`,
+    "proj.remove": "Remove from project (keep file on disk)",
+    "proj.removed": (n) => `Removed "${n}" from the project (the file is kept on disk)`,
+    "proj.trashed": (n) => `Moved "${n}" to Trash`,
+    "proj.data": "Data files",
+    "proj.newdata": "Add data file",
+    "proj.newdatamsg": "File name (with extension, e.g. brain.txt):",
+    "data.editing": "Editing a data file (text / Shift-JIS)",
+    "data.badname": "Invalid file name (path separators are not allowed)",
     "proj.exists": (n) => `"${n}" already exists`, "proj.last": "Cannot delete the last file",
     "proj.setmain": "Set as main (build/run entry)", "proj.clearmain": "Clear main (back to auto-detect)",
     "proj.mainexplicit": "main (explicit — build/run entry)", "proj.mainauto": "main (auto-detected — build/run entry)",
@@ -345,6 +365,8 @@ const I18N = {
     "save.dl": "Saved (.msxb / .map.json / .bas). Shift-JIS encoding is desktop-only.",
     "save.src": "Saved (.msxb)",
     "save.srcdl": "Saved (.msxb download)",
+    "save.data": (n) => `Saved (${n}, Shift-JIS)`,
+    "save.datadl": (n) => `Saved (${n} download)`,
     "savesrc": "Save (source)", "openfolder": "Open Folder…", "reloadfolder": "Reload from Disk",
     "folder.opened": (n) => `Opened folder (${n} files)`,
     "folder.reloaded": (n) => `Reloaded from disk (${n} files)`,
@@ -385,6 +407,8 @@ const I18N = {
     "newproject": "New Project…",
     "recentprojects": "Recent Projects…",
     "run.noerr": "Cannot run: there are errors.",
+    "run.starting": "Starting WebMSX… (running main)",
+    "run.starting.ext": "Starting WebMSX in the external browser…",
     "run.ok": (name, note) => `Running in the embedded WebMSX (RUN"${name}")${note}`,
     "run.ext.ok": "Opened WebMSX in the external browser (click the screen once to enable sound)",
     "run.note": (n) => ` (${n} non-ASCII char(s) stripped for run)`, "run.open.err": "Could not open WebMSX.",
@@ -902,9 +926,14 @@ let project = loadProject();
 function loadProject() {
   try {
     const p = JSON.parse(localStorage.getItem(PROJECT_KEY) || "null");
-    if (p && p.files && typeof p.files === "object" && p.active) { if (!p.baseline) p.baseline = {}; return p; }
+    if (p && p.files && typeof p.files === "object" && p.active) {
+      if (!p.baseline) p.baseline = {};
+      if (!p.data || typeof p.data !== "object") p.data = {};     // 同梱テキストデータ（name→UTF-8内容）
+      if (!Array.isArray(p.excluded)) p.excluded = [];             // 「プロジェクトから外した」ディスク上のファイル名
+      return p;
+    }
   } catch (_) {}
-  return { files: { "main.msxb": SAMPLE }, active: "main.msxb", baseline: {} };
+  return { files: { "main.msxb": SAMPLE }, active: "main.msxb", baseline: {}, data: {}, excluded: [] };
 }
 let projSaveTimer = null;
 function saveProject() {
@@ -915,8 +944,13 @@ function saveProject() {
 }
 
 // ---- HTML エスケープ ----
+// テキストと属性値の両方に使う。引用符も必ずエスケープする（属性へ差し込むファイル名などに
+// " が入っても属性を破壊/イベントハンドラ注入できないように）。ディスクから読む名前は
+// sanitize されないため、ここで一括して安全化する。&quot;/&#39; は1グリフ描画なので overlay
+// の行/桁ズレ（キャレット安全性）にも影響しない。
 const esc = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // ---- シンタックスハイライト（実Lexerを再利用）----
 // 設計方針: トークン位置は「色付け」だけに使い、行構造には一切影響させない。
@@ -1008,7 +1042,10 @@ function compile(src) {
 }
 
 // 編集中ファイルは未保存の srcEl.value を使う（active→ライブ）。それ以外は project / LIBS。
-function activePath() { return viewingLib ? null : project.active; }
+// エディタが「ソース」を表示している時だけアクティブ・パスを返す。lib(読み取り専用)や
+// データファイル編集中は null＝ビルド/診断は srcEl でなく保存済み project.files を読む
+// （データ本文をソースとして取り込む事故を防ぐ）。
+function activePath() { return (viewingLib || viewingData) ? null : project.active; }
 function fileContent(path) {
   const ap = activePath();
   if (ap && path === ap) return srcEl.value;
@@ -1250,6 +1287,12 @@ function paintHighlight() {
   hlEl.innerHTML = highlightHtml(srcEl.value);
   syncScroll();
 }
+// データファイル編集用: BASIC として色付けせず、プレーンテキストとして描く。
+// highlightHtml と同じく末尾改行は ZWSP で行数を合わせ、キャレット/行番号のズレを防ぐ。
+function paintPlain() {
+  hlEl.innerHTML = esc(srcEl.value) + (srcEl.value.endsWith("\n") ? "​" : "");
+  syncScroll();
+}
 // 連続入力時に1フレーム1回へ間引く（高速タイプ/長文ペーストでも詰まらない）
 let hlScheduled = false;
 function scheduleHighlight() {
@@ -1257,12 +1300,19 @@ function scheduleHighlight() {
   hlScheduled = true;
   requestAnimationFrame(() => {
     hlScheduled = false;
-    paintHighlight();
+    if (viewingData) paintPlain(); else paintHighlight();
   });
 }
 
 // ---- 重い更新：変換・診断・プレビュー・ステータス（入力停止後にデバウンス実行）----
 function renderHeavy() {
+  if (viewingData) {
+    // データファイル編集中は変換・診断を走らせない（プレーンテキスト）。内容だけ永続化。
+    syncActiveFile();
+    saveProject();
+    setStatus("", t("data.editing"));
+    return;
+  }
   const src = srcEl.value;
   syncActiveFile(); // 現在の編集をプロジェクトへ反映し永続化
   saveProject();
@@ -1318,6 +1368,15 @@ function renderHeavy() {
 
 // 全更新（整形・読込・タブ切替など、入力以外のタイミング用）
 function render() {
+  if (viewingData) {
+    // データファイルは変換しない。プレーン描画＋内容を project.data へ反映して永続化。
+    paintPlain();
+    syncActiveFile();
+    saveProject();
+    commitHistory(true);
+    setStatus("", t("data.editing"));
+    return;
+  }
   paintHighlight();
   renderHeavy();
   commitHistory(true); // プログラム的編集（整形/行操作/置換/補完等）は1手として記録
@@ -1392,6 +1451,8 @@ function download(name, content) {
   URL.revokeObjectURL(a.href);
 }
 function baseName() {
+  // データファイル編集中は filename がデータ名なので、実行/出力名はエントリ(main)から取る。
+  if (viewingData) return String(currentEntry() || "game.msxb").replace(/\.msxb$/i, "");
   return ($("filename").value || "game.msxb").replace(/\.msxb$/i, "");
 }
 // ---- フォルダ＝プロジェクト（デスクトップ。JetBrains 流）----
@@ -1416,6 +1477,7 @@ async function ensureBound() {
   project.dir = dir;
   saveProject();
   await saveAllSources();
+  await saveAllData(); // データファイルもフォルダへ書き出す
   startWatching(dir); // 紐付けたフォルダの監視を開始
   renderTree();
   return dir;
@@ -1424,7 +1486,7 @@ async function ensureBound() {
 async function autosave() {
   if (isDesktop() && project.dir) {
     await checkExternalChanges({ reason: "run" }); // 実行/変換/ディスク前に外部変更と整合（巻き戻し防止）
-    try { await saveAllSources(); } catch (e) { logErr("autosave", e); }
+    try { await saveAllSources(); await saveAllData(); } catch (e) { logErr("autosave", e); }
   }
 }
 // 変換成果物の基準名（エントリ＝ビルド対象のファイル名）。
@@ -1435,6 +1497,22 @@ function entryBase() {
 // Cmd+S: ソース(.msxb)のみ保存（変換なし・無ダイアログ）。
 async function onSave() {
   syncActiveFile();
+  // データファイル編集中はそれを保存（テキスト・SJIS）。
+  if (viewingData) {
+    const dname = viewingData;
+    if (isDesktop()) {
+      const dir = await ensureBound();
+      if (!dir) return;
+      try {
+        await saveDataFile(dname);
+        setStatus("ok", t("save.data", dname));
+      } catch (e) { setStatus("err", t("save.err", e?.message ?? e)); } // 非SJIS文字は write_sjis が拒否
+    } else {
+      download(dname, project.data[dname] ?? srcEl.value);
+      setStatus("ok", t("save.datadl", dname));
+    }
+    return;
+  }
   const name = project.active;
   if (isDesktop()) {
     const dir = await ensureBound();
@@ -1503,18 +1581,18 @@ async function onReloadFolder() {
   try { files = await tauri().core.invoke("read_folder", { dir: project.dir }); }
   catch (e) { logErr("read_folder", e); setStatus("err", t("save.err", e?.message ?? e)); return; }
   if (!files.length) { setStatus("err", t("folder.empty")); return; }
-  const map = {};
   project.baseline = {};
   syncConflicts.clear();
-  for (const f of files) {
-    const content = lfNormalize(f.content);
-    map[f.name] = content;
-    project.baseline[f.name] = { content, mtime: f.mtime, size: f.size };
-  }
+  const { map, data } = splitFolderEntries(files); // excluded は保持（再読込で外したものを戻さない）
+  if (!Object.keys(map).length) map["main.msxb"] = SAMPLE;
   project.files = map;
+  project.data = data;
+  viewingData = null;
+  openDataTabs = []; openLibTabs = [];
   if (map[project.active] == null) project.active = map["main.msxb"] != null ? "main.msxb" : Object.keys(map).sort()[0];
   setReadOnly(false);
   $("filename").value = project.active;
+  $("filename").readOnly = false;
   setSource(project.files[project.active]);
   activateTab("structured");
   startWatching(project.dir);
@@ -1624,6 +1702,7 @@ async function checkExternalChanges({ reason } = {}) {
     const disk = new Map(stats.map((s) => [s.name, s]));
     const reloaded = [], added = [];
     for (const s of stats) {
+      if (project.excluded.includes(s.name)) continue; // 「プロジェクトから外した」実体は復活させない
       const base = project.baseline[s.name];
       if (!base) { // 初見（起動時・新規ファイル）: baseline 確立
         const r = await readFileMeta(s.name);
@@ -1685,22 +1764,44 @@ async function dirValid(dir) { if (!dir) return false; try { await tauri().core.
 function afterProjectLoaded() { syncFindToggles(); applyEditorPrefs(); calibrateLineHeight(); }
 
 // 既知パスのフォルダをプロジェクトとして開く（read_folder→バインド・baseline・監視。空なら starter）。
+// フォルダ読込結果(FileEntry[])を source(.msxb)/data(テキスト) に振り分け、baseline を確立する。
+// excluded に載る名前は取り込まない（「プロジェクトから外した」ものを復活させない）。
+function splitFolderEntries(files) {
+  const map = {}, data = {};
+  const excluded = new Set(project.excluded || []);
+  for (const f of files) {
+    if (excluded.has(f.name)) continue;
+    const content = lfNormalize(f.content);
+    if (f.kind === "data") {
+      data[f.name] = content; // データファイルは外部同期の baseline に載せない（.msxb のみ監視）
+    } else {
+      project.baseline[f.name] = { content, mtime: f.mtime, size: f.size };
+      map[f.name] = content;
+    }
+  }
+  return { map, data };
+}
 async function openDir(dir, { addToRecent = true } = {}) {
   let files;
   try { files = await tauri().core.invoke("read_folder", { dir }); }
   catch (e) { logErr("read_folder", e); return false; }
   syncActiveFile();
+  viewingData = null;
+  openDataTabs = []; openLibTabs = [];
   project.dir = dir;
   project.baseline = {};
+  project.excluded = []; // 新規オープン＝まっさらに全部見せる（除外はセッション内の外し操作で積む）
   syncConflicts.clear();
-  const map = {};
-  for (const f of files) { const content = lfNormalize(f.content); map[f.name] = content; project.baseline[f.name] = { content, mtime: f.mtime, size: f.size }; }
-  const empty = !Object.keys(map).length;
+  const { map, data } = splitFolderEntries(files);
+  const empty = !Object.keys(map).length && !Object.keys(data).length;
   if (empty) map["main.msxb"] = SAMPLE; // 空フォルダ→starter
   project.files = map;
-  project.active = map["main.msxb"] != null ? "main.msxb" : Object.keys(map).sort()[0];
+  project.data = data;
+  project.active = map["main.msxb"] != null ? "main.msxb" : (Object.keys(map).sort()[0] || "main.msxb");
+  if (project.files[project.active] == null) { project.files[project.active] = SAMPLE; } // データのみのフォルダ対策
   setReadOnly(false);
   $("filename").value = project.active;
+  $("filename").readOnly = false;
   setSource(project.files[project.active]);
   activateTab("structured");
   if (empty) await saveAllSources(); // starter をディスクへ→baseline 確立
@@ -1993,18 +2094,44 @@ function scanBloadRefs(msx) {
   return [...out];
 }
 
-// デスクトップ限定: BLOAD 参照バイナリをプロジェクトフォルダから生バイトで読む。
-// 返り値 files[].data は number[]（Rust Vec<u8>）。見つからない名は missing に。
+// プロジェクトの UTF-8 テキストを MSX の順次ファイル形式へ整える(改行→CRLF、末尾 EOF 0x1A)。
+// WebMSX(ZIP)経路は JS で SJIS 符号化できないため .bas 同様 UTF-8 のまま(ASCII は等価)。
+// 漢字を含むテキストの正しい表示は .dsk 経路(Rust で SJIS 符号化)側で担保する。
+function msxTextBytes(rawBytes) {
+  let s = new TextDecoder("utf-8").decode(Uint8Array.from(rawBytes));
+  s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").join("\r\n");
+  if (!s.endsWith("\x1a")) s += "\x1a";
+  return new TextEncoder().encode(s);
+}
+
+// 同梱ファイルをランタイム経路(WebMSX ZIP)向けの Uint8Array にする。
+// text:true は MSX テキスト整形、そうでなければ生バイト(BLOAD バイナリ)。
+function bundleRuntimeBytes(b) {
+  return b.text ? msxTextBytes(b.data) : Uint8Array.from(b.data);
+}
+
+// 同梱ファイルを集める。
+//  - データファイル(project.data) → テキスト(text:true)。メモリ内容から生成＝ブラウザでも同梱可。
+//    Rust 側で SJIS＋CRLF＋EOF に整形（.dsk）、WebMSX ZIP は msxTextBytes で CRLF＋EOF 整形。
+//  - BLOAD 参照バイナリ → 生バイト(text:false)。デスクトップ＆フォルダ束縛時のみ。無ければ missing。
+// 返り値 files[].data は number[]（Rust Vec<u8>）。files[].text で符号化を分岐。
 async function collectBundleFiles(msx) {
-  if (!isDesktop() || !project.dir) return { files: [], missing: [] };
   const files = [], missing = [];
-  for (const name of scanBloadRefs(msx)) {
-    try {
-      const bytes = await tauri().core.invoke("read_binary", { dir: project.dir, name });
-      files.push({ name, data: bytes });
-    } catch (e) {
-      logErr("read_binary", e);
-      missing.push(name);
+  for (const name of dataFiles()) {
+    const bytes = [...new TextEncoder().encode(project.data[name] ?? "")]; // UTF-8 → number[]
+    files.push({ name, data: bytes, text: true });
+  }
+  if (isDesktop() && project.dir) {
+    const have = new Set(files.map((f) => f.name.toUpperCase()));
+    for (const name of scanBloadRefs(msx)) {
+      if (have.has(name.toUpperCase())) continue;
+      try {
+        const bytes = await tauri().core.invoke("read_binary", { dir: project.dir, name });
+        files.push({ name, data: bytes, text: false });
+      } catch (e) {
+        logErr("read_binary", e);
+        missing.push(name);
+      }
     }
   }
   return { files, missing };
@@ -2057,6 +2184,9 @@ async function onPlayWebMSX() {
     setStatus("err", t("run.noerr"));
     return;
   }
+  // 押した瞬間のフィードバック: Run(WebMSX)タブへ即切替＋「起動中…」表示（データ編集中でも分かる）。
+  revealRun();
+  setStatus("", t("run.starting"));
   // MSX の ASCII セーブ形式に合わせ CRLF＋EOF(0x1A)
   const body = r.msx.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const { out, stripped } = asciiForWebMSX(body);
@@ -2066,7 +2196,7 @@ async function onPlayWebMSX() {
   const { files: bins, missing } = await collectBundleFiles(r.msx);
   const files = [
     { name, data: new TextEncoder().encode(program) },
-    ...bins.map((b) => ({ name: b.name, data: Uint8Array.from(b.data) })),
+    ...bins.map((b) => ({ name: b.name, data: bundleRuntimeBytes(b) })),
   ];
   const url = await webmsxAutorunUrlFiles(name, files);
   log(`WebMSX 実行: URL長=${url.length} name=${name} stripped=${stripped} bins=${bins.length}`);
@@ -2104,6 +2234,7 @@ async function onPlayWebMSX() {
 // ブラウザで開く必要がある。外部ブラウザは URL 長制限も緩い(~2MB)ので data-ZIP 同梱もそのまま通る。
 async function onPlayWebMSXExternal() {
   log("WebMSX 外部実行: 開始");
+  setStatus("", t("run.starting.ext")); // 押した瞬間のフィードバック（外部ブラウザで開く）
   await autosave();
   const r = compileProject({ stripComments: true, packLines: true });
   if (r.diags.some((d) => d.severity === "error")) {
@@ -2117,7 +2248,7 @@ async function onPlayWebMSXExternal() {
   const { files: bins, missing } = await collectBundleFiles(r.msx);
   const files = [
     { name, data: new TextEncoder().encode(program) },
-    ...bins.map((b) => ({ name: b.name, data: Uint8Array.from(b.data) })),
+    ...bins.map((b) => ({ name: b.name, data: bundleRuntimeBytes(b) })),
   ];
   const url = await webmsxAutorunUrlFiles(name, files);
   log(`WebMSX 外部実行: URL長=${url.length} name=${name} bins=${bins.length}`);
@@ -2402,8 +2533,11 @@ function renderStrip(g) {
   const strip = $("strip" + g);
   strip.innerHTML = "";
   for (const id of groups[g]) {
+    const isStructured = id === "structured";
+    // データ/lib タブを開いている時は「構造化BASIC」タブは非アクティブ表示にし、専用タブ側をアクティブに。
+    const chipActive = active[g] === id && !(isStructured && (viewingData || viewingLib));
     const b = document.createElement("div");
-    b.className = "tab" + (active[g] === id ? " active" : "");
+    b.className = "tab" + (chipActive ? " active" : "");
     b.draggable = true;
     b.dataset.tab = id;
     b.dataset.group = g;
@@ -2418,7 +2552,36 @@ function renderStrip(g) {
     x.dataset.group = g;
     b.appendChild(x);
     strip.appendChild(b);
+    // 構造化(エディタ)タブの隣に、開いているデータ/lib 専用タブを常に並べる＝トグルでなく両方表示。
+    // 他タブ(Run/出力)へ切替えても消えない。ハイライトは「構造化ペインが表示中で当該ファイルの時」だけ。
+    if (isStructured) {
+      const editorActive = active[g] === "structured";
+      for (const dname of openDataTabs) {
+        if (!(dname in (project.data || {}))) continue; // 消えたデータは出さない
+        strip.appendChild(makeFileChip(g, "📄 " + dname, editorActive && viewingData === dname, "datatab", dname));
+      }
+      for (const lpath of openLibTabs) {
+        strip.appendChild(makeFileChip(g, "📦 " + lpath.split("/").pop(), editorActive && viewingLib === lpath, "libtab", lpath));
+      }
+    }
   }
+}
+// エディタ strip 上の「ファイルタブ」チップ（データ/lib 共通）。key は data 属性名, val はその値。
+function makeFileChip(g, label, isActive, key, val) {
+  const d = document.createElement("div");
+  d.className = "tab" + (isActive ? " active" : "");
+  d.dataset.group = g;
+  d.dataset[key] = val;
+  const s = document.createElement("span");
+  s.textContent = label;
+  d.appendChild(s);
+  const x = document.createElement("button");
+  x.className = "tab-x";
+  x.textContent = "✕";
+  x.title = t("tab.close");
+  x.dataset[key === "datatab" ? "closedata" : "closelib"] = val;
+  d.appendChild(x);
+  return d;
 }
 function renderTabs() {
   normalizeGroups();
@@ -2488,6 +2651,32 @@ function closeTab(id) {
     }
   }
 }
+// データファイル専用タブを閉じる（プロジェクトからは外さない＝単に表示タブを消すだけ）。
+function closeDataTab(name) {
+  openDataTabs = openDataTabs.filter((n) => n !== name);
+  if (viewingData === name) {
+    const nextData = openDataTabs[openDataTabs.length - 1];
+    if (nextData) openDataFile(nextData); // 別のデータタブへ
+    else openFile(project.active);        // 無ければソースへ戻す
+  } else {
+    renderTabs();
+  }
+}
+
+// ライブラリ専用タブを閉じる（表示タブを消すだけ）。
+function closeLibTab(path) {
+  openLibTabs = openLibTabs.filter((p) => p !== path);
+  if (viewingLib === path) {
+    const nextLib = openLibTabs[openLibTabs.length - 1];
+    const nextData = openDataTabs[openDataTabs.length - 1];
+    if (nextLib) openLib(nextLib);
+    else if (nextData) openDataFile(nextData);
+    else openFile(project.active);
+  } else {
+    renderTabs();
+  }
+}
+
 // 実行時に WebMSX タブをそのグループでアクティブにする（閉じていれば開く）
 function revealRun() {
   openTab("webmsx");
@@ -2601,15 +2790,28 @@ function setSource(text) {
 
 // ============ プロジェクトツリー（左サイドバー）============
 const fileTreeEl = $("fileTree");
-const userFiles = () => Object.keys(project.files).sort();        // ユーザ編集可
+const userFiles = () => Object.keys(project.files).sort();        // ユーザ編集可(.msxb ソース)
+const dataFiles = () => Object.keys(project.data || {}).sort();   // 同梱テキストデータ
 const libFiles = () => Object.keys(LIBS).filter((k) => k.includes("/")).sort(); // 埋め込み(読み取り専用)
 
 // lib を表示中ならそのパス（読み取り専用）。null=通常のプロジェクトファイル編集。
 let viewingLib = null;
+// データファイルを編集中ならその名前（プレーンテキスト・変換対象外）。null=通常ソース編集。
+let viewingData = null;
+// エディタに「タブとして開いている」データファイル名の並び（ソースへ戻してもタブは残す＝両方表示）。
+let openDataTabs = [];
+const ensureDataTab = (name) => { if (!openDataTabs.includes(name)) openDataTabs.push(name); };
+// 同様に、開いているライブラリ(読み取り専用)タブの並び。
+let openLibTabs = [];
+const ensureLibTab = (path) => { if (!openLibTabs.includes(path)) openLibTabs.push(path); };
 
-// 現在の編集内容をアクティブファイルへ書き戻す（lib 表示中は書き戻さない）
+// 現在の編集内容をアクティブ対象へ書き戻す（lib 表示中は書き戻さない）
 function syncActiveFile() {
   if (viewingLib) return;
+  if (viewingData) {
+    if (project.data[viewingData] != null) project.data[viewingData] = srcEl.value;
+    return;
+  }
   if (project.active && project.files[project.active] != null) {
     project.files[project.active] = srcEl.value;
   }
@@ -2623,6 +2825,7 @@ function setReadOnly(on) {
 function openFile(name) {
   if (!(name in project.files)) return;
   syncActiveFile();
+  viewingData = null;
   setReadOnly(false);
   project.active = name;
   $("filename").value = name;
@@ -2631,9 +2834,25 @@ function openFile(name) {
   renderTree();
   saveProject();
 }
+// データファイル（テキスト・変換対象外）を編集用に開く。project.active(ソース)は変えない。
+function openDataFile(name) {
+  if (!(name in (project.data || {}))) return;
+  syncActiveFile();
+  setReadOnly(false);            // 本文は編集可（viewingLib もクリア）
+  ensureDataTab(name);           // タブとして開く（ソースへ戻しても残す）
+  viewingData = name;
+  $("filename").value = name;
+  $("filename").readOnly = true; // データ名の変更は「名前変更」操作で（誤編集防止）
+  setSource(project.data[name]);
+  activateTab("structured");
+  renderTree();
+  saveProject();
+}
 // ライブラリ(読み取り専用)を構造化タブで開く。line 指定でその行へジャンプ。
 function openLib(path, line) {
   syncActiveFile();
+  viewingData = null;
+  ensureLibTab(path); // タブとして開く（読み取り専用・ソースへ戻しても残す）
   setReadOnly(path);
   $("filename").value = path;
   setSource(LIBS[path] ?? LIBS[path.split("/").pop()] ?? "");
@@ -2651,30 +2870,131 @@ function openLib(path, line) {
 async function newFile() {
   const name = await sanitizeName(await showPrompt(t("proj.newfile"), t("proj.newfilemsg"), "untitled.msxb"));
   if (!name) return;
-  if (project.files[name] != null) { flash(t("proj.exists", name)); return; }
+  if (project.files[name] != null || (project.data && name in project.data)) { flash(t("proj.exists", name)); return; }
   syncActiveFile();
   project.files[name] = "";
+  unexclude(name);
   openFile(name);
 }
-async function renameFile(name) {
-  const next = await sanitizeName(await showPrompt(t("proj.rename"), t("proj.renamemsg"), name));
+// ソース名変更の実処理（next はサニタイズ済み前提）。
+async function doRenameFile(name, next) {
   if (!next || next === name) return;
-  if (project.files[next] != null) { flash(t("proj.exists", next)); return; }
+  if (project.files[next] != null || (project.data && next in project.data)) { flash(t("proj.exists", next)); return; }
   project.files[next] = project.files[name];
   delete project.files[name];
   if (project.active === name) project.active = next;
-  $("filename").value = project.active;
+  if (isDesktop() && project.dir) exclude(name); // 旧名の実体を再読込で復活させない（重複防止）
+  unexclude(next);
+  if (!viewingData) $("filename").value = project.active;
   renderTree();
   saveProject();
 }
-async function deleteFile(name) {
-  if (userFiles().length <= 1) { flash(t("proj.last")); return; }
+
+// ---- データファイル（同梱テキスト・変換対象外）----
+async function newDataFile() {
+  const name = await sanitizeDataName(await showPrompt(t("proj.newdata"), t("proj.newdatamsg"), "brain.txt"));
+  if (!name) return;
+  if ((project.data && name in project.data) || project.files[name] != null) { flash(t("proj.exists", name)); return; }
+  syncActiveFile();
+  project.data[name] = "";
+  unexclude(name);
+  if (isDesktop() && project.dir) { try { await saveDataFile(name); } catch (e) { logErr("save data", e); } }
+  openDataFile(name);
+}
+// データ名変更の実処理（next はサニタイズ済み前提）。
+async function doRenameDataFile(name, next) {
+  if (!next || next === name) return;
+  if ((project.data && next in project.data) || project.files[next] != null) { flash(t("proj.exists", next)); return; }
+  project.data[next] = project.data[name];
+  delete project.data[name];
+  if (isDesktop() && project.dir) {
+    exclude(name); unexclude(next);
+    try { await saveDataFile(next); } catch (e) { logErr("save data", e); }
+  }
+  openDataTabs = openDataTabs.map((n) => (n === name ? next : n)); // タブ名も更新
+  if (viewingData === name) { viewingData = next; $("filename").value = next; }
+  renderTree();
+  saveProject();
+}
+
+// サイドバー上でのインライン名前変更（ダブルクリック名 or ✎）。Enter 確定 / Esc 取消。
+function startInlineRename(row) {
+  if (!row || row.querySelector("input.ft-rename")) return; // 二重起動防止
+  const name = row.dataset.file || row.dataset.datafile;
+  if (!name) return;
+  const kind = row.dataset.datafile ? "data" : "source";
+  const nameEl = row.querySelector(".ft-name");
+  if (!nameEl) return;
+  const input = document.createElement("input");
+  input.className = "ft-rename";
+  input.value = name;
+  input.spellcheck = false;
+  nameEl.replaceWith(input);
+  input.focus();
+  const dot = name.lastIndexOf(".");
+  input.setSelectionRange(0, dot > 0 ? dot : name.length); // 拡張子の前まで選択
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    if (save) {
+      const next = kind === "data" ? await sanitizeDataName(input.value) : await sanitizeName(input.value);
+      if (kind === "data") await doRenameDataFile(name, next);
+      else await doRenameFile(name, next);
+    }
+    renderTree(); // 入力欄を span に戻す（rename 済みなら新名で再描画）
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // エディタのグローバルショートカットを抑止
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("click", (e) => e.stopPropagation()); // 行オープンを抑止
+}
+
+// ---- プロジェクトから外す（ディスクは残す） / ゴミ箱へ削除（実体を消す） ----
+const fileKind = (name) => (project.data && name in project.data ? "data" : "source");
+const exclude = (name) => { if (!project.excluded.includes(name)) project.excluded.push(name); };
+const unexclude = (name) => { const i = project.excluded.indexOf(name); if (i >= 0) project.excluded.splice(i, 1); };
+
+// プロジェクトから外す（非破壊: ディスクの実体は残す）。desktop は excluded で再読込復活を防ぐ。
+async function removeFromProject(name) {
+  const kind = fileKind(name);
+  if (kind === "source" && userFiles().length <= 1) { flash(t("proj.last")); return; }
+  if (kind === "data") delete project.data[name];
+  else { delete project.files[name]; delete project.baseline[name]; }
+  if (isDesktop() && project.dir) exclude(name);
+  afterRemoval(name, kind);
+  setStatus("ok", t("proj.removed", name));
+}
+// ゴミ箱へ移動して削除（desktop）。ブラウザは実体が無いので外すのと同義。
+async function deleteToTrash(name) {
+  const kind = fileKind(name);
+  if (kind === "source" && userFiles().length <= 1) { flash(t("proj.last")); return; }
   if (!(await showConfirm(t("proj.delete"), t("proj.deletemsg", name)))) return;
-  delete project.files[name];
-  if (project.active === name) {
-    const next = userFiles()[0];
+  if (isDesktop() && project.dir) {
+    try { await tauri().core.invoke("trash_file", { dir: project.dir, name }); }
+    catch (e) { logErr("trash_file", e); setStatus("err", t("save.err", e?.message ?? e)); return; }
+  }
+  if (kind === "data") delete project.data[name];
+  else { delete project.files[name]; delete project.baseline[name]; }
+  unexclude(name); // 実体を消したので excluded に残す必要はない（同名再作成の邪魔をしない）
+  afterRemoval(name, kind);
+  setStatus("ok", t("proj.trashed", name));
+}
+// 除去後: 表示中だったファイルなら別ファイルへ退避してツリー更新。
+function afterRemoval(name, kind) {
+  if (kind === "data") openDataTabs = openDataTabs.filter((n) => n !== name); // タブからも除去
+  const wasData = kind === "data" && viewingData === name;
+  const wasSrc = kind === "source" && !viewingData && project.active === name;
+  if (wasData || wasSrc) {
+    const next = (project.files[project.active] != null && !wasSrc) ? project.active : userFiles()[0];
+    viewingData = null;
     project.active = next;
+    setReadOnly(false);
     $("filename").value = next;
+    $("filename").readOnly = false;
     setSource(project.files[next]);
     activateTab("structured");
   }
@@ -2688,6 +3008,21 @@ async function sanitizeName(raw) {
   if (!n) return null;
   if (!/\.[a-z0-9]+$/i.test(n)) n += ".msxb";
   return n;
+}
+// データファイル名: パス区切り禁止・拡張子必須（未指定は .txt）。当面テキストのみ。
+async function sanitizeDataName(raw) {
+  if (raw == null) return null;
+  let n = raw.trim();
+  if (!n) return null;
+  if (n.includes("/") || n.includes("\\") || n.includes("..")) { flash(t("data.badname")); return null; }
+  if (!/\.[a-z0-9]+$/i.test(n)) n += ".txt";
+  return n;
+}
+async function saveDataFile(name) {
+  await tauri().core.invoke("save_source", { dir: project.dir, name, source: project.data[name] ?? "" });
+}
+async function saveAllData() {
+  for (const name of dataFiles()) await saveDataFile(name);
 }
 // ファイルが直接 INCLUDE するプロジェクトファイル（パス→basename 解決）。
 function includeChildren(f) {
@@ -2734,12 +3069,24 @@ function renderTree() {
       `<span class="ft-ico">${depth ? "↳" : "📄"}</span>${badge}<span class="ft-name">${esc(f)}</span>` +
       pin +
       `<button class="ft-act" data-ren="${esc(f)}" title="${esc(t("proj.rename"))}">✎</button>` +
+      `<button class="ft-act" data-rm="${esc(f)}" title="${esc(t("proj.remove"))}">⏏</button>` +
       `<button class="ft-act" data-del="${esc(f)}" title="${esc(t("proj.delete"))}">🗑</button></div>`;
     for (const c of includeChildren(f).sort()) h += nodeHtml(c, depth + 1);
     return h;
   };
   for (const f of roots) html += nodeHtml(f, 0);
   for (const f of files) if (!seen.has(f)) html += nodeHtml(f, 0); // 取りこぼし（循環等）
+  // データファイル（同梱テキスト・変換対象外）。ヘッダに「＋」で追加。常に表示（追加導線）。
+  html += `<div class="ft-group ft-group-act">${esc(t("proj.data"))}` +
+    `<button class="ft-act" data-newdata="" title="${esc(t("proj.newdata"))}">＋</button></div>`;
+  for (const d of dataFiles()) {
+    const a = viewingData === d ? " active" : "";
+    html += `<div class="ft-row${a}" data-datafile="${esc(d)}" title="${esc(pathTip(d))}" style="padding-left:12px">` +
+      `<span class="ft-ico">📄</span><span class="ft-name">${esc(d)}</span>` +
+      `<button class="ft-act" data-rendata="${esc(d)}" title="${esc(t("proj.rename"))}">✎</button>` +
+      `<button class="ft-act" data-rm="${esc(d)}" title="${esc(t("proj.remove"))}">⏏</button>` +
+      `<button class="ft-act" data-del="${esc(d)}" title="${esc(t("proj.delete"))}">🗑</button></div>`;
+  }
   const libs = libFiles();
   if (libs.length) {
     html += `<div class="ft-group">${esc(t("proj.libs"))}</div>`;
@@ -2758,17 +3105,32 @@ function renderTree() {
 fileTreeEl.addEventListener("click", (e) => {
   const mainBtn = e.target.closest("[data-main]");
   if (mainBtn) { e.stopPropagation(); setMain(mainBtn.dataset.main || null); return; }
+  const newData = e.target.closest("[data-newdata]");
+  if (newData) { e.stopPropagation(); newDataFile(); return; }
   const ren = e.target.closest("[data-ren]");
-  if (ren) { e.stopPropagation(); renameFile(ren.dataset.ren); return; }
+  if (ren) { e.stopPropagation(); startInlineRename(ren.closest(".ft-row")); return; }
+  const renD = e.target.closest("[data-rendata]");
+  if (renD) { e.stopPropagation(); startInlineRename(renD.closest(".ft-row")); return; }
+  const rm = e.target.closest("[data-rm]");
+  if (rm) { e.stopPropagation(); removeFromProject(rm.dataset.rm); return; }
   const del = e.target.closest("[data-del]");
-  if (del) { e.stopPropagation(); deleteFile(del.dataset.del); return; }
+  if (del) { e.stopPropagation(); deleteToTrash(del.dataset.del); return; }
   const row = e.target.closest(".ft-row");
   if (!row) return;
   if (row.dataset.file) openFile(row.dataset.file);
+  else if (row.dataset.datafile) openDataFile(row.dataset.datafile);
   else if (row.dataset.lib) openLib(row.dataset.lib);
   else if (row.dataset.node === "msx") openTab("msx");
   else if (row.dataset.node === "maptable") openTab("maptable");
   else if (row.dataset.node === "webmsx") openTab("webmsx");
+});
+// ファイル名のダブルクリックでインライン名前変更（.msxb・データ共通）。
+fileTreeEl.addEventListener("dblclick", (e) => {
+  const row = e.target.closest(".ft-row");
+  if (!row || !(row.dataset.file || row.dataset.datafile)) return;
+  if (!e.target.closest(".ft-name")) return; // 名前部分のダブルクリックのみ
+  e.preventDefault();
+  startInlineRename(row);
 });
 $("newFileBtn").addEventListener("click", newFile);
 
@@ -3668,14 +4030,14 @@ acEl.addEventListener("mousedown", (e) => {
 srcEl.addEventListener("blur", () => setTimeout(acHide, 120));
 
 srcEl.addEventListener("input", () => {
-  if (settings.autoIndent) electricDedent(); // closer/ELSE 行を自動で揃える
+  if (!viewingData && settings.autoIndent) electricDedent(); // closer/ELSE 行を自動で揃える（BASICのみ）
   commitHistory(false); // タイピングは一定時間で1グループに合体して記録
   scheduleHighlight(); // 即時（次フレーム）に見た目を反映＝入力遅延をなくす
   updateCurLine();
-  acShow(); // INCLUDE "… なら候補を出す
+  if (!viewingData) acShow(); // INCLUDE "… なら候補を出す（BASICのみ）
   if (findOpen()) recomputeFind();
   clearTimeout(timer);
-  timer = setTimeout(renderHeavy, 250); // 重い変換・診断は停止後に
+  timer = setTimeout(renderHeavy, 250); // 重い変換・診断は停止後に（データ時は renderHeavy 側で早期return）
 });
 srcEl.addEventListener("scroll", () => { syncScroll(); updateCurLine(); });
 // キャレット移動（クリック/矢印/選択）で現在行を追従＋対応MSX行をリンクハイライト
@@ -3941,10 +4303,20 @@ $("gfindList").addEventListener("click", (e) => {
 
 // タブ: クリックで選択、ドラッグで並べ替え／グループ間移動（分割・統合）
 $("tabstrips").addEventListener("click", (e) => {
+  const xd = e.target.closest(".tab-x[data-closedata]");
+  if (xd) { e.stopPropagation(); closeDataTab(xd.dataset.closedata); return; } // データタブを閉じる
+  const xl = e.target.closest(".tab-x[data-closelib]");
+  if (xl) { e.stopPropagation(); closeLibTab(xl.dataset.closelib); return; } // libタブを閉じる
   const x = e.target.closest(".tab-x");
   if (x) { e.stopPropagation(); closeTab(x.dataset.close); return; } // ×で閉じる
+  const dt = e.target.closest("[data-datatab]");
+  if (dt) { openDataFile(dt.dataset.datatab); return; } // データファイル専用タブを選択
+  const lt = e.target.closest("[data-libtab]");
+  if (lt) { openLib(lt.dataset.libtab); return; } // ライブラリ専用タブを選択
   const t = e.target.closest(".tab");
   if (!t) return;
+  // データ/lib 表示中に「構造化BASIC」タブを押す＝ソース(active)へ戻す。
+  if (t.dataset.tab === "structured" && (viewingData || viewingLib)) { openFile(project.active); return; }
   active[t.dataset.group] = t.dataset.tab;
   renderTabs();
 });

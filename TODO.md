@@ -135,6 +135,40 @@ P2 = medium, P3 = lower (risk or higher cost). Nothing here is committed yet.
   (prove overlay line count matches source) before landing. Defer until the Worker/cache
   wins are in and measured.
 
+## 次期機能提案 v2（提案書マージ・2026-09-07）
+
+外部AIからの提案書（リポジトリ照合済み）を反映。全文＝[`docs/next-features-v2-proposal.md`](docs/next-features-v2-proposal.md)（各提案の目的/仕様案/実装段階/制約/規模を詳述）。**net-new のみ下記に登録**し、既出は上の P1/P2/P3・FAST 設計ノート・同一オリジン WebMSX・BACON を参照（重複させない）。規模: S=数日 / M=1〜3週 / L=1ヶ月超。方針＝実行時コストゼロ・テキストが正・GUIは往復編集器・外部ツールは同梱せず在れば使う・診断は編集時。
+
+### net-new 提案
+- [ ] **1. `TILEMAP` ブロック＋マップエディタ** — `SPRITE` と同じ「見たまま」記法で背景/編隊データ。`AS DATASET|DATAFILE|RLE|MASK` で生成先切替（RLE は BASIC/ASM 双子）。`lower-tilemap.ts`。GUI は *Run→Map tool*。接点: `lower-sprite.ts`/`DATASET`/`FAST_TILES`/`FAST_TILEGRID`/データファイル。規模 S/M/M。
+- [ ] **2. 画像インポート（PNG→SCREEN2/5 パターン・パレット・`.BIN`）** — `.png` を「アセット」欄へ→ SCREEN2 色数診断（どのブロックで何色）/SCREEN5 量子化/フォント/スプライトは `SPRITE` 逆生成。PNGデコードは Rust `image` or Canvas。接点: `.BIN`同梱/`M2_PAL`/`M2_DEFSPR`/`check-screen.ts`。規模 S/M/M。
+- [ ] **3. スプライト行別色記法＋編集（MSX2）** — `SPRITE HERO SIZE 16 COLORS 15,9` ＋行末 `: 色`。`LAYER 2` で2枚重ね＋`HERO_PUT`(MACRO)。TODO P1「SPRITE ライブプレビュー」に**記法を足す**位置づけ。`lower-sprite.ts` 拡張。規模 S/S/M。
+- [ ] **4. 音: FM作曲経路 / `SFX` ブロック / SFX デザイナ** — (4a) `music.mjs export --target fm`＝`PLAY #2` 生成（作曲用途。**参照音源の再現は BIN+ASM のまま**＝上の OPLL 決定と非競合）。(4b) `SFX … END SFX`＝`SFX_DROP` を一般化しレジスタ列を `DATASET`＋feeder駆動、`M2_SE` を薄いラッパへ。(4c) *Run→SFX tool* GUI。規模 S/M/M。
+- [ ] **5. 変数インスペクタ（長名デバッガ）＋実測プロファイラ** — 段階0: `WATCH`/`ASSERT`（計装ビルド・リリースで消える。TODO P2 `ASSERT` を吸収）。段階1(本命): **openMSX に接続**（制御ソケット `debug read_block memory` で RAM 読み・`.map.json` で長名逆引き・STRUCT を1レコード再構成・`CURLIN` で現在行・実測プロファイラ）＝README ロードマップの「openMSX＋Tcl RUN」を包含。**ROM/エミュは同梱しない**。段階2(同一オリジン WebMSX)は推さない。規模 S/L/—。
+- [ ] **6. `TABLE` コンパイル時テーブル生成** — `TABLE SIN_T%(256) = INT(SIN(I*..)*256)`。`fold-expr.ts` 評価器を `I`＋`CONST` 式に拡張。`AS DATASET|DATAFILE|BIN`＋`SEED`、`WITH MACRO` で参照マクロ自動生成。重命令 `SIN`/`RND` を実行時から追い出す。規模 S/S。
+- [ ] **7. 言語小改善（TODO 未収録分のみ）** — ①STRUCT レコード丸ごと `REF` 渡し（v1制約解消）②inline ASM: ラベルへの絶対 `CALL`/`JP`＋`!`単精度参照（FAST拡張要望と一致）③構造化ASM（`REPEAT n…END`・レジスタ別名・`COPY src,dst,len`。TODO「Structured ASM #3」の言語仕様化）④`FORMAT$(値,桁,埋)` を標準 INCLUDE ⑤`DEBUG … END DEBUG`（提案5の一般形）。※`ENUM`/`ASSERT`/`+=`/`TRUE`/`FALSE`/`WITH`/`FOR`空範囲ガード は既出or方針外につき扱わない。規模 各 S〜M。
+- [ ] **8. `lib/game.msxb`（汎用ゲーム基盤）** — FAST(ASM) と MSX2(SCREEN5) の間の機種非依存「毎回書く層」。`G_INPUT`(STICK統合+エッジ)/`G_SYNC`/`G_SCENE`/`G_HISCORE_LOAD/SAVE`(データファイル経路)/`FX_MUL`(8.8固定小数)/`G_RND`/`G_TIMER`。`G_` 接頭辞・GLOBAL最小。接点: `M2_WAIT`/`M2_SE`/feeder/`STICK`/双子方針。規模 S/S。
+- [ ] **9. トークナイザ＋`.rom` エクスポート** — 段階0: MSX-BASIC トークナイザ(TS・依存ゼロ、機種別トークンは `builtins.ts` フラグ再利用)＝`.dsk`/`.sav` の読込高速化。段階1: BASIC-in-ROM 16/32KB `.rom`（openMSX `-cart` で検証・提案5の接続層流用）。段階2: 外部コンパイラ(MSXBAS2ROM)連携（同梱せず在れば）。規模 M/M/S。
+- [ ] **10'. `TASK`（コルーチン風ふるまい記述）** — 敵AI/ボス/演出を「上から順」に書き、`WAIT`/`YIELD` 位置で**状態番号に分割**→`SELECT CASE E.PC%` へ降下（`PC%`/`WAIT%` を STRUCT に自動追加）。`RUN_TASK ENEMY_PATROL, FOE(I)`。ゼロコスト・降下を隠さない。`lower-task.ts`。接点: `lower-select.ts`/STRUCT/`EVENT TIMER`/`ENUM`。規模 M/M/S。
+- [ ] **11. メモリ予算解析（静的 RAM 見積り）** — コスト解析の「容量」版。*Run→Memory budget*。機種別空きRAMから 本体/変数/配列/文字列(`CLEAR`)/`DATA`/ASMバッファ/`BLOAD`/再帰スタック を引いて残量表示、しきい値超過を Problems へ。「`AS DATAFILE`/`AS BIN` にすると n バイト空く」ヒント。TODO P2「生成サイズ/行予算」を RAM 全体へ拡張。規模 S/M。
+- [ ] **12. `TEST` ブロック＋内蔵ミニ BASIC インタプリタ** — ROM/エミュ不要のロジック検証。`TEST … ASSERT … END TEST`（リリースで削除）。**変換後**MSX-BASIC のサブセット(数値/文字列/配列/`IF/FOR/WHILE/GOSUB/DATA`・VDP/PSG/入力は非対応と診断)を TS で実行＝2文字名/GOSUB展開/再帰スタック/255B分割まで検証。`reverse/basic-reader.ts` に読取器あり＝式評価＋文実行を足す形。規模 M/M/S。
+
+### 進行中: 条件コンパイル `#IF`/`#IFDEF`（7-5 を格上げ）
+提案 7-5（debug/release トグル）を一般化。`DEBUG` は組込みシンボル1個の特殊形。設計＝[`docs/conditional-compilation-design.md`](docs/conditional-compilation-design.md)。確定判断: ①未定義値参照=0+警告 ②UI構成がソース `#DEFINE` を上書き ③`#DEFINE` と `CONST` は分離。
+- [x] **P0（エンジン）** — `src/preprocess/conditionals.ts`（`#DEFINE/#UNDEF/#IFDEF/#IFNDEF/#IF/#ELIF/#ELSE/#ENDIF`＋式評価 `DEFINED`/比較/論理）、`resolveIncludes` 統合（不採用枝の行・INCLUDE を除去・シンボル seed＋pinned）、診断 `E_PP_*`/`W_PP_UNDEFINED`。`test/conditionals.test.ts` 9件緑。ソース内 `#DEFINE/#IFDEF` は再バンドル後 in-editor で即動作。
+- [ ] **P1（UI・組込み）** — 設定→Transpile「ビルド構成」UI（シンボル一覧の追加/トグル/値・UI上書きの明示）、組込み `DEBUG`（ビルドモード）と `MACHINE`（対象機種→数値）を run/変換/エクスポート経路の `resolveIncludes(pp)` へ配線、`ASSERT`/`WATCH` を `DEBUG` ゲートで。
+- [ ] **P2** — ビルド情報の可視化（変換テーブルに有効シンボル＋採用枝）、任意「全構成まとめて検証」モード。
+
+### 提案書由来の doc/整合 タスク
+- [ ] **再帰の記述ドリフト修正** — `docs/00-msx-basic-diff.md`(英日)・`docs/01-language-spec.md` が「再帰不可 `E_RECURSION_UNSUPPORTED`」のままだが、実装は**再帰対応済み**（ソフトスタック、`README.md`・`test/recursion.test.ts` と一致）。docs を「対応（ソフトスタック・深さ設定可）」へ更新し、`E_RECURSION_UNSUPPORTED` が現在も emit されるか（デッド診断か）を確認して整理する。
+
+### ロードマップ案（提案書 §13）
+- **P1 言語の足場**: 6 `TABLE`-0 / 5-0(`WATCH`/`ASSERT`) / 7 `FORMAT$`・`DEBUG` / 11-0（TODO P1 の `ENUM`/`+=` と同時期）
+- **P2 ゲーム基盤**: 1 `TILEMAP`-0/1 / 8 game lib / 10' `TASK`-0 / 4a（Runner/Shooter を書き直して効果実証）
+- **P3 差別化**: 5-1（openMSX 接続）/ 12-0/1（ROM不要テスト）/ 9-0（トークナイザ）
+- **P4 アセットGUI**: 2 / 3-1/2 / 1-2 / 4b・4c（テキスト記法が固まってから）
+- **P5 配布**: 9-1/2（`.rom`）/ 11-1（需要を見て）
+
 ## FAST library — ASM-backed bulk speedups (design note + candidates)
 
 **Positioning (decided).** Performance is an **opt-in escape-hatch layer**, never the

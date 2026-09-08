@@ -205,6 +205,33 @@ See [`examples/strict-demo.msxb`](examples/strict-demo.msxb).
 
 Put `OPTION EXPLICIT` at the top to flag **reading a variable that is never assigned or declared** (`E_UNDECLARED_VAR`) — it catches the classic typo where a misspelled name (e.g. `RADUIS` for `RADIUS`) is silently read as `0`. Off by default. It is orthogonal to `STRICT`: `STRICT` is about *types*, `OPTION EXPLICIT` is about *undeclared reads*. "Declared" means assigned, or declared via `GLOBAL` / `DIM` / `CONST` / a parameter / a `FOR` variable / an `INPUT`/`READ` target (FunctionBASIC creates scalars on assignment). Scalars only — array/function typos are already caught by call resolution.
 
+### Conditional compilation (`#IF` / `#IFDEF`)
+
+Build-time variant selection: one source, many builds. `#`-prefixed directives choose which code is compiled in — **the branch you don't select never reaches the output, so it costs zero RAM and zero speed** on the MSX (perfect for its tiny memory). Useful for MSX1-vs-MSX2 builds, difficulty/region variants, demo-vs-full, and debug-vs-release.
+
+```basic
+#IFDEF DEBUG
+    PRINT "debug build"
+#ENDIF
+
+#IF MACHINE >= 2          ' 1=MSX1 2=MSX2 3=MSX2+ 4=turbo R
+    SCREEN 5
+#ELSE
+    SCREEN 2
+#ENDIF
+
+#IF START_LEVEL >= 3
+    HARD_INTRO()
+#ELIF START_LEVEL = 2
+    MID_INTRO()
+#ELSE
+    EASY_INTRO()
+#ENDIF
+```
+
+- Directives: `#DEFINE NAME [value]` / `#UNDEF NAME` / `#IFDEF` / `#IFNDEF` / `#IF <expr>` / `#ELIF` / `#ELSE` / `#ENDIF` (nestable). `#IF` expressions support `DEFINED(NAME)`, comparisons (`= == <> != < <= > >=`), logic (`AND OR NOT`, `&& || !`), parentheses, and integer/string literals; an undefined symbol used in a comparison is treated as `0` with a warning. Directives can wrap statements **or whole top-level constructs** (FUNCTION / STRUCT / DATASET / SPRITE / CONST / GLOBAL / `INCLUDE`), so a variant can swap an entire function or pull a different library.
+- **Symbols** come from three places: the **Settings → Build config** UI (a per-build symbol list you toggle/set — this **overrides** the source's `#DEFINE`, so you switch variants without editing code); built-ins **`DEBUG`** (defined when *Debug build* is on) and **`MACHINE`** (the target machine as `1`–`4`); and in-source `#DEFINE` defaults. `#DEFINE` is a preprocessor symbol (distinct from `CONST`, which is a runtime constant). Only the selected configuration is transpiled and validated.
+
 ---
 
 ## Transpiler & output
@@ -217,7 +244,7 @@ Put `OPTION EXPLICIT` at the top to flag **reading a variable that is never assi
 - **Arrays by reference** — passing the same array always reuses one block (zero copy); calling a function with *different* arrays duplicates the block per array (monomorphization), so there is no per-call array copy.
 - **255-byte line auto-split** — long generated lines are split safely, including long `DATA` lines (split at value/comma boundaries; `READ` sees a flat stream, so the values are unchanged).
 
-**Multi-file projects.** Split code with `INCLUDE`; the build/run uses a single **entry (main) file**, auto-detected (the file with top-level code that nothing else `INCLUDE`s) or pinned explicitly in the project tree. Library files (functions only) are never run standalone. MSX-BASIC has no linker, so everything merges into one program — matching the classic `$INCLUDE`/main-module model. A bundled MSX2 helper library ships too: `INCLUDE "lib/msx2.msxb"` gives high-level `M2_*` helpers (SCREEN 5 + 16×16 sprite setup, palette `M2_PAL`, sprite define/show, flicker-free double buffering `M2_FRAME`/`M2_SHOW`, frame timing `M2_WAIT`, channel-C SFX `M2_SE`); the browser editor resolves bundled libraries. See [`examples/lib/msx2.msxb`](examples/lib/msx2.msxb) and [`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb).
+**Multi-file projects.** Split code with `INCLUDE`; the build/run uses a single **entry (main) file**, auto-detected (the file with top-level code that nothing else `INCLUDE`s) or pinned explicitly in the project tree. Library files (functions only) are never run standalone. MSX-BASIC has no linker, so everything merges into one program — matching the classic `$INCLUDE`/main-module model. A bundled MSX2 helper library ships too: `INCLUDE "lib/msx2.msxb"` gives high-level `M2_*` helpers (SCREEN 5 + 16×16 sprite setup, palette `M2_PAL`, sprite define/show, flicker-free double buffering `M2_FRAME`/`M2_SHOW`, frame timing `M2_WAIT`, channel-C SFX `M2_SE`); the browser editor resolves bundled libraries. See [`examples/lib/msx2.msxb`](examples/lib/msx2.msxb) and [`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb). A tiny **formatting helper** ships as well: `INCLUDE "lib/fmt.msxb"` gives `FORMAT$(n%, w%, p$)` (right-justify a non-negative integer in a `w%`-wide field, left-padded with `p$` — `"0"` for scores) and `PADL$` / `PADR$` (left/right-justify a string in a fixed width), hiding the classic `RIGHT$("0000"+STR$(n),w)` idiom. See [`examples/lib/fmt.msxb`](examples/lib/fmt.msxb) and [`examples/fmt-demo.msxb`](examples/fmt-demo.msxb).
 
 **Opt-in optimizations** (Settings → *Transpile*) — constant folding + commutative reassociation (`1+X+2`→`X+3`), power strength reduction (`X^2`→`X*X`), jump-safe comment stripping, and **hot-function placement** (frequently-called functions get lower line numbers to shorten MSX's `GOSUB` line search). Off by default and guarded so runtime results never change.
 
@@ -649,6 +676,33 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 
 先頭に `OPTION EXPLICIT` を置くと、**一度も代入・宣言されていない変数の読み取り**をエラーにします（`E_UNDECLARED_VAR`）。綴り間違い（例：`RADIUS` を `RADUIS`）が黙って `0` になる典型的な事故を捕まえます。既定オフ。`STRICT` とは別軸で、`STRICT` は*型*、`OPTION EXPLICIT` は*未宣言の読み取り*。「宣言済み」＝代入、または `GLOBAL` / `DIM` / `CONST` / 引数 / `FOR` 変数 / `INPUT`・`READ` の対象（FunctionBASIC はスカラを代入で生成）。対象はスカラのみ（配列・関数名のタイポは呼び出し解決で既に捕捉）。
 
+### 条件コンパイル（`#IF` / `#IFDEF`）
+
+ビルド時に構成を選ぶ＝1ソースから複数ビルド。`#` で始まる指令でどのコードを取り込むかを選び、**採用しなかった枝は出力に一切入らない＝MSX 上で RAM も速度もゼロ**（少ないメモリに最適）。MSX1版/MSX2版、難易度・地域、デモ/製品、debug/release の出し分けに。
+
+```basic
+#IFDEF DEBUG
+    PRINT "debug build"
+#ENDIF
+
+#IF MACHINE >= 2          ' 1=MSX1 2=MSX2 3=MSX2+ 4=turbo R
+    SCREEN 5
+#ELSE
+    SCREEN 2
+#ENDIF
+
+#IF START_LEVEL >= 3
+    HARD_INTRO()
+#ELIF START_LEVEL = 2
+    MID_INTRO()
+#ELSE
+    EASY_INTRO()
+#ENDIF
+```
+
+- 指令：`#DEFINE NAME [値]` / `#UNDEF NAME` / `#IFDEF` / `#IFNDEF` / `#IF <式>` / `#ELIF` / `#ELSE` / `#ENDIF`（ネスト可）。`#IF` の式は `DEFINED(NAME)`・比較（`= == <> != < <= > >=`）・論理（`AND OR NOT`、`&& || !`）・括弧・整数/文字列リテラルに対応。未定義シンボルを比較に使うと `0` 扱い＋警告。指令は文だけでなく**トップレベル構造ごと**（FUNCTION / STRUCT / DATASET / SPRITE / CONST / GLOBAL / `INCLUDE`）を囲めるので、変種で関数を丸ごと差し替えたり別ライブラリを取り込めます。
+- **シンボルの供給元は3つ**：**設定→ビルド構成** UI（ビルドごとにトグル/値設定するシンボル一覧。これが**ソースの `#DEFINE` を上書き**＝コードを編集せず変種を切替）／組込みの **`DEBUG`**（「デバッグビルド」ON で定義）と **`MACHINE`**（対象機種を `1`〜`4`）／ソース内 `#DEFINE`（既定値）。`#DEFINE` はプリプロセッサ専用シンボル（実行時定数の `CONST` とは別物）。変換・検証は選択中の構成に対してのみ行われます。
+
 ---
 
 ## 変換と出力
@@ -661,7 +715,7 @@ AVG! = CSNG(TOTAL%) / 10        ' % → ! の明示変換
 - **配列の参照渡し** — 常に同じ配列ならブロック1個を共有（ゼロコピー）。異なる配列で呼ぶと配列ごとにブロックを複製（モノモーフィック化）し、呼び出しごとの配列コピーは発生しません。
 - **255バイト行の自動分割** — 生成された長い行は安全に分割されます。長い `DATA` 行も対象（値／カンマ境界で分割。`READ` は平坦なストリームとして読むので値は不変）。
 
-**複数ファイル対応。** `INCLUDE` でコードを分割。ビルド/実行は単一の**エントリ（main）ファイル**を起点にする。自動判定（トップレベルに実行コードがあり、他からINCLUDEされていないファイル）か、プロジェクトツリーで明示指定。関数だけのライブラリファイルは単体実行されない。MSX-BASICにリンカは無いので全て1本のプログラムへ統合される（古典の `$INCLUDE`/メインモジュール方式と同じ）。MSX2ヘルパライブラリも同梱：`INCLUDE "lib/msx2.msxb"` で高レベルな `M2_*` 関数（SCREEN 5＋16×16スプライト初期化、パレット `M2_PAL`、スプライト定義/表示、ちらつかないダブルバッファ `M2_FRAME`/`M2_SHOW`、フレーム待ち `M2_WAIT`、チャンネルCのSE `M2_SE`）が使え、ブラウザ版でも解決します。例：[`examples/lib/msx2.msxb`](examples/lib/msx2.msxb)・[`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb)。
+**複数ファイル対応。** `INCLUDE` でコードを分割。ビルド/実行は単一の**エントリ（main）ファイル**を起点にする。自動判定（トップレベルに実行コードがあり、他からINCLUDEされていないファイル）か、プロジェクトツリーで明示指定。関数だけのライブラリファイルは単体実行されない。MSX-BASICにリンカは無いので全て1本のプログラムへ統合される（古典の `$INCLUDE`/メインモジュール方式と同じ）。MSX2ヘルパライブラリも同梱：`INCLUDE "lib/msx2.msxb"` で高レベルな `M2_*` 関数（SCREEN 5＋16×16スプライト初期化、パレット `M2_PAL`、スプライト定義/表示、ちらつかないダブルバッファ `M2_FRAME`/`M2_SHOW`、フレーム待ち `M2_WAIT`、チャンネルCのSE `M2_SE`）が使え、ブラウザ版でも解決します。例：[`examples/lib/msx2.msxb`](examples/lib/msx2.msxb)・[`examples/msx2-lib-demo.msxb`](examples/msx2-lib-demo.msxb)。**文字列整形ヘルパ**も同梱：`INCLUDE "lib/fmt.msxb"` で `FORMAT$(n%, w%, p$)`（非負整数を幅 `w%` に右詰め・`p$` の先頭1文字で左埋め＝スコアは `"0"`）と `PADL$`/`PADR$`（文字列を固定幅に右/左詰め）が使え、定番の `RIGHT$("0000"+STR$(n),w)` を隠します。例：[`examples/lib/fmt.msxb`](examples/lib/fmt.msxb)・[`examples/fmt-demo.msxb`](examples/fmt-demo.msxb)。
 
 **オプトイン最適化**（設定→*変換*） — 定数畳み込み＋可換再結合（`1+X+2`→`X+3`）、べき乗の強度低減（`X^2`→`X*X`）、飛び先安全なコメント除去、**ホット関数の低行番号配置**（よく呼ぶ関数を低い行番号へ＝MSXの `GOSUB` 行番号探索を短縮）。いずれも既定OFFで、実行結果を変えないようガード。
 

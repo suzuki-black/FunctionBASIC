@@ -52,8 +52,8 @@ END FUNCTION
 - **SUB は存在しない。** すべて FUNCTION で表現する（仕様1-1）。
 - 戻り値を返さない処理も FUNCTION として定義し、`RETURN 0` 等で明示終了する。
 - **FUNCTION はトップレベルのみ**（ネスト不可、[§1.4](#14-ブロック構造とネスト仕様1-4ネスト許可へ改訂)）。
-- **再帰は未対応**。直接・間接を問わず呼び出しが循環するとエラー（`E_RECURSION_UNSUPPORTED`）。
-  GOSUB展開＋固定変数名のため再入で値が壊れるため（[03](03-lexer-parser.md)）。
+- **再帰に対応**（直接・間接とも）。`GOSUB`展開に加え、フレーム（ローカル・戻り値temp）をソフトウェアスタック配列へ push/pop して再入時の破壊を防ぐ（深さは `recursionDepth` 設定で可変、非再帰関数はスタック非生成。[03](03-lexer-parser.md)）。
+  ただし**再帰関数の `REF`（参照渡し）引数は非対応**（`E_RECURSION_REF_UNSUPPORTED`）＝値渡しにするか、ループ/明示スタックへ展開する。
 - **MSX-BASIC組み込み命令・関数**（`PRINT` `INPUT` `LOCATE` `CLS` `MID$` `CHR$` `RND` `PEEK` `POKE` 等）は
   ユーザFUNCTIONではなく**組み込みとして認識し、そのままパススルー**する。組み込み名はユーザ関数で再定義不可。
   未知の呼び出しは `E_UNKNOWN_FUNCTION`（[03](03-lexer-parser.md)）。

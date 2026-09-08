@@ -444,7 +444,7 @@ function transform(ast: Program): TransformResult {
   const transformErrors: SyntaxError[] = [];
 
   // 全変数 → 2文字MSX名アロケータ（§5.11、スコープ・型別・生存解析）。枯渇時 E_VAR_NAMES_EXHAUSTED
-  checkRecursion(ast, transformErrors);          // 再帰検出 → E_RECURSION_UNSUPPORTED
+  checkRecursion(ast, transformErrors);          // 再帰関数の REF 引数を検出 → E_RECURSION_REF_UNSUPPORTED（再帰自体はソフトスタックで対応）
   allocateNames(ast, map, transformErrors);
   if (transformErrors.some(e => e.severity === "error")) return { code: [], map, transformErrors };
 

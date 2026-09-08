@@ -155,7 +155,7 @@ AST から関数定義・呼び出し箇所・変数定義（初期化）・参�
 - 保存時に文法チェック＋変換時チェックを実行し、エラー行に印を付ける（[07 §7.3](07-editor-ui.md#73-エラー表示仕様5-2)）。
   - 行番号横に **×**、マウスオーバーでエラー内容（行:列・種別・メッセージ）。
   - **最初のエラー行へ自動スクロール**。
-- 対象エラー：文法（[03](03-lexer-parser.md)）＋変換時（`E_VAR_NAMES_EXHAUSTED` / `E_LINE_TOO_LONG` / `E_RECURSION_UNSUPPORTED` / `E_NON_SJIS`）。
+- 対象エラー：文法（[03](03-lexer-parser.md)）＋変換時（`E_VAR_NAMES_EXHAUSTED` / `E_LINE_TOO_LONG` / `E_RECURSION_REF_UNSUPPORTED` / `E_NON_SJIS`）。
 - 入力中はデバウンスで増分チェック（プレビュー更新）、保存時に確定（[07 §7.6](07-editor-ui.md)）。
 
 ---

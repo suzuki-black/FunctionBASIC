@@ -28,7 +28,7 @@
 - **変換段階のコンパイルエラーも同様に扱う** — 文法は正しくても変換時に
   `E_VAR_NAMES_EXHAUSTED`（2文字MSX名を使い切り、[05 §5.11](05-transformer.md#511-2文字msx名アロケータ全変数全型)）、
   `E_LINE_TOO_LONG`（1行255バイト超過、[05](05-transformer.md#512-1行255バイト制限の検査と自動分割)）、
-  `E_RECURSION_UNSUPPORTED`（再帰）、`E_NON_SJIS`（Shift-JISで表現できない文字、§8.6.4）が出た場合は、
+  `E_RECURSION_REF_UNSUPPORTED`（再帰関数の `REF` 引数）、`E_NON_SJIS`（Shift-JISで表現できない文字、§8.6.4）が出た場合は、
   文法エラーと同じく**変換前のみ保存**し「誤りがあります。確認してください」を表示する。
   （`W_*` 警告は保存をブロックしない。）
 

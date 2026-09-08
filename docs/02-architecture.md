@@ -146,7 +146,7 @@ async function onSave(name: string, source: string): Promise<SaveResult> {
   const { code, map, transformErrors } = transform(ast);
 
   // ③ severity=error のみブロック（E_VAR_NAMES_EXHAUSTED / E_LINE_TOO_LONG /
-  //    E_RECURSION_UNSUPPORTED / E_NON_SJIS 等）。warning（W_*）は止めない。
+  //    E_RECURSION_REF_UNSUPPORTED / E_NON_SJIS 等）。warning（W_*）は止めない。
   const hardErrors = transformErrors.filter(e => e.severity === "error");
   if (hardErrors.length > 0) {
     await saveSourceOnly(name, source);            // 変換前のみ保存（仕様6-2）

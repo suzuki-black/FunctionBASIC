@@ -179,7 +179,7 @@ function checkRefArgs(call: CallExpr, sig: FuncSig) {
 | `E_DUP_FUNCTION` | 同名 FUNCTION の重複定義 |
 | `E_UNKNOWN_FUNCTION` | 未定義関数の呼び出し（2パス目で検査。組み込み命令はパススルー） |
 | `E_PAREN` | 括弧不一致 |
-| `E_RECURSION_UNSUPPORTED` | **再帰**（直接/間接の呼び出し循環）。固定変数名のため非対応（2パス目/変換時に検出） |
+| `E_RECURSION_REF_UNSUPPORTED` | **再帰関数の `REF`（参照渡し）引数**。再帰自体はソフトスタックで対応するが、`REF` 引数のみ非対応（2パス目/変換時に検出） |
 | `E_VAR_NAMES_EXHAUSTED` | ある型の **2文字MSX名（約960個）を使い切った**（変換時検出。[05 §5.11](05-transformer.md#511-2文字msx名アロケータ全変数全型)） |
 | `E_LINE_TOO_LONG` | 変換後の1行が **MSX-BASICの255バイト制限を超過**（変換時検出。自動分割不能時） |
 | `E_NON_SJIS` | **Shift-JIS(JIS X 0201+0208)で表現できない文字**を含む（保存・変換時検出。[08 §8.6.4](08-file-save.md#864-shift-jis-表現不能文字の検査e_non_sjis)） |
@@ -194,7 +194,7 @@ function checkRefArgs(call: CallExpr, sig: FuncSig) {
 
 > `W_*` は **警告（severity=warning）**。`transformErrors` に積むが**保存・変換はブロックしない**（エラーのみブロック）。詳細は [08 §8.4](08-file-save.md#84-savecontroller-実装02-と整合)。
 
-> `E_VAR_NAMES_EXHAUSTED` / `E_LINE_TOO_LONG` / `E_RECURSION_UNSUPPORTED` は構文エラーではなく **変換段階** で検出するが、
+> `E_VAR_NAMES_EXHAUSTED` / `E_LINE_TOO_LONG` / `E_RECURSION_REF_UNSUPPORTED` は構文エラーではなく **変換段階** で検出するが、
 > ユーザにはコンパイルエラーとして同じ `SyntaxError` 形で報告する（[05](05-transformer.md)・[README §9](README.md#msx-basic-の-1-行-255-バイト制限絶対制限)）。
 
 ### 3.3.5 INCLUDE 解決（パース前処理）

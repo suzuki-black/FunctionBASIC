@@ -21,7 +21,7 @@ unchanged). Only *how you write it* differs.
 | Aspect | MSX-BASIC | Structured BASIC |
 | --- | --- | --- |
 | Control flow | line numbers + `GOTO`/`GOSUB` | `FUNCTION` / block `IF`·`FOR`·`WHILE` (freely nested) / `BREAK`·`CONTINUE` |
-| Subroutines | `GOSUB <line>` | `FUNCTION name(...)` + `RETURN value` (early return OK, top-level only, **no recursion**) |
+| Subroutines | `GOSUB <line>` | `FUNCTION name(...)` + `RETURN value` (early return OK, top-level only, **recursion OK** via a software stack) |
 | Variable scope | everything global | **local by default + `GLOBAL` to share** (PHP-style) |
 | Variable names | first 2 chars only, no `_` | **any length, `_` allowed** (`PLAYER_X%`) → auto-compressed to a unique 2-char name |
 | Constants | none (use variables) | `CONST` (inlined to a literal at compile time — no variable emitted) |
@@ -125,7 +125,7 @@ END FUNCTION
 ```
 
 - **Top-level only** (no nested functions — `E_NESTED_FUNCTION`).
-- **No recursion** (direct or indirect — `E_RECURSION_UNSUPPORTED`).
+- **Recursion is supported** (direct or indirect): frames are saved/restored automatically on a software stack (depth configurable via `recursionDepth`; non-recursive functions generate no stack). One limit — a **`REF` (by-reference) parameter in a recursive function is not supported** (`E_RECURSION_REF_UNSUPPORTED`): pass by value, or flatten to a loop / explicit stack.
 - The return type is the **function-name suffix**: `FUNCTION ADD%(...)` returns an integer,
   `FUNCTION GREET$(...)` returns a string. No suffix = single-precision.
 - **Call with or without the suffix**: `ADD(1,2)` and `ADD%(1,2)` call the same function.
@@ -270,7 +270,7 @@ Traps hit in practice. Follow these when generating code and it won't blow up.
 | `Illegal function call` (runtime) | `STRING$(300,0)` etc. > 255-byte string | keep strings ≤ 255 bytes; long machine code → `ASM` + HIMEM placement |
 | `Illegal function call` (`VARPTR`) | `VARPTR` on an unassigned variable | assign it first (`=0` etc.) before `VARPTR` |
 | `E_NAME_IS_BUILTIN` | function name equals a built-in (`DRAW` `SWAP` `PLAY` `LINE` …) | rename it (`RENDER`, `EXCHANGE`, …) |
-| `E_RECURSION_UNSUPPORTED` | a function calls itself directly/indirectly | flatten to a loop or an explicit stack array |
+| `E_RECURSION_REF_UNSUPPORTED` | a recursive function has a `REF` (by-reference) parameter | pass by value, or flatten the recursion to a loop / explicit stack array |
 | `E_REF_NOT_VARIABLE` | passed an expression/literal to `REF` | `REF` takes a variable name only |
 | `E_VAR_NAMES_EXHAUSTED` | more than ~960 live variables of one type | localize (split lifetimes so names reuse) / reduce variables |
 | `E_STRICT_UNTYPED` | no suffix under `STRICT` | give every variable/param/array/FOR var/CONST a `% ! # $` |

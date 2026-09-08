@@ -1,0 +1,18 @@
+' FMT library demo — uses INCLUDE "lib/fmt.msxb".
+' スコア/HUD の整形ヘルパ FORMAT$ / PADL$ / PADR$ の使用例。
+INCLUDE "lib/fmt.msxb"
+
+SCREEN 0
+WIDTH 40
+CLS
+GLOBAL SCORE%
+SCORE% = 1234
+' 非負整数を幅6にゼロ埋め → 001234
+PRINT "SCORE " + FORMAT$(SCORE%, 6, "0")
+' 幅2にゼロ埋め → 09
+PRINT "TIME  " + FORMAT$(9, 2, "0")
+' 文字列を幅10に左詰め（右をスペース埋め）
+PRINT "[" + PADR$("NAME", 10, " ") + "]"
+' 文字列を幅10に右詰め（左をドット埋め）
+PRINT "[" + PADL$("HI", 10, ".") + "]"
+END

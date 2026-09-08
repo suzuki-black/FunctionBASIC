@@ -1,0 +1,33 @@
+' ============================================================
+'  FMT library  (FunctionBASIC)   INCLUDE "lib/fmt.msxb"
+'
+'  文字列整形ヘルパ。スコア/HUD の定型 RIGHT$("0000"+STR$(N),4) を隠す。
+'  Formatting helpers that hide the classic RIGHT$("0000"+STR$(N),W) idiom.
+'  収録 / included:
+'    FORMAT$(N%, W%, P$) ... 非負整数 N% を幅 W% に右詰め・P$(先頭1文字)で左埋め
+'                            （P$="0" でゼロ埋め, " " で右寄せ）。STR$ の先頭空白は自動除去。
+'    PADL$(S$, W%, P$)   ... 文字列 S$ を幅 W% に右詰め（左を P$ で埋める）
+'    PADR$(S$, W%, P$)   ... 文字列 S$ を幅 W% に左詰め（右を P$ で埋める）
+'  ※ S$ が W% より長い場合は幅 W% に切り詰める（固定幅フィールド）。
+'  ※ FORMAT$ は非負整数向け（負値の符号は保持しない）。負値は STR$ を直接 PADL$ に渡す。
+' ============================================================
+
+' 非負整数 N% を幅 W% の右詰めフィールドにし、左を P$ の先頭1文字で埋める。
+' 例: FORMAT$(42, 5, "0") = "00042" / FORMAT$(42, 5, " ") = "   42"
+FUNCTION FORMAT$(N%, W%, P$)
+    S$ = STR$(N%)
+    IF LEFT$(S$, 1) = " " THEN
+        S$ = MID$(S$, 2)          ' STR$ が非負値に付ける先頭空白を除去
+    END IF
+    RETURN RIGHT$(STRING$(W%, P$) + S$, W%)
+END FUNCTION
+
+' 文字列を幅 W% に右詰め（左を P$ で埋める）。
+FUNCTION PADL$(S$, W%, P$)
+    RETURN RIGHT$(STRING$(W%, P$) + S$, W%)
+END FUNCTION
+
+' 文字列を幅 W% に左詰め（右を P$ で埋める）。
+FUNCTION PADR$(S$, W%, P$)
+    RETURN LEFT$(S$ + STRING$(W%, P$), W%)
+END FUNCTION

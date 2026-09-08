@@ -5,6 +5,14 @@
 // 注: 実ファイルI/Oはドライバが read() を渡す（テストは仮想FSを渡せる）。
 import type { Diagnostic } from "../core/diagnostics.ts";
 import { error } from "../core/diagnostics.ts";
+import { ppFilterFile, type PPSymbols } from "./conditionals.ts";
+
+// 条件コンパイルのビルド構成。defines = 初期シンボル（UI 構成＋組込み）。
+// pinned を省略すると defines のキー全てを「UI 固定（ソースの #DEFINE/#UNDEF より優先）」扱いにする。
+export interface PreprocessOptions {
+  defines?: Record<string, string>;
+  pinned?: string[];
+}
 
 export interface LineOrigin {
   file: string;
@@ -41,9 +49,13 @@ function normalize(p: string): string {
 export function resolveIncludes(
   entryPath: string,
   read: (path: string) => string | null,
+  pp?: PreprocessOptions,
 ): IncludeResult {
   const sources: string[] = [];
   const diagnostics: Diagnostic[] = [];
+  // 条件コンパイル用シンボル表（全ファイル共有・#DEFINE/#UNDEF で変異）。
+  const symbols: PPSymbols = new Map(Object.entries(pp?.defines ?? {}));
+  const pinned = new Set(pp?.pinned ?? Object.keys(pp?.defines ?? {}));
 
   const expand = (path: string, stack: string[]): { lines: string[]; map: LineOrigin[] } => {
     if (stack.includes(path)) {
@@ -59,7 +71,12 @@ export function resolveIncludes(
     sources.push(path);
     const lines: string[] = [];
     const map: LineOrigin[] = [];
-    content.split("\n").forEach((line, idx) => {
+    const raw = content.split("\n");
+    // 条件コンパイル: 指令行・不採用枝を除去（INCLUDE も不採用枝なら展開しない）。
+    const ppRes = ppFilterFile(raw, symbols, pinned);
+    diagnostics.push(...ppRes.diagnostics);
+    raw.forEach((line, idx) => {
+      if (!ppRes.keep[idx]) return; // 指令行 or 不採用枝
       const m = line.match(/^\s*INCLUDE\s+"([^"]+)"\s*$/i);
       if (m) {
         const child = expand(resolvePath(path, m[1]), [...stack, path]);

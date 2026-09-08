@@ -91,6 +91,42 @@ const CATALOG: Record<string, Entry> = {
     ja: (p) => `INCLUDE 先が見つかりません: ${p.path}`,
     en: (p) => `INCLUDE target not found: ${p.path}`,
   },
+  // --- 条件コンパイル（プリプロセッサ #IF/#IFDEF） ---
+  E_PP_UNMATCHED_ENDIF: {
+    code: "E_PP_UNMATCHED_ENDIF",
+    ja: () => `対応する #IF の無い #ENDIF です`,
+    en: () => `#ENDIF without a matching #IF`,
+  },
+  E_PP_UNMATCHED_ELSE: {
+    code: "E_PP_UNMATCHED_ELSE",
+    ja: (p) => `対応する #IF の無い ${p.what} です`,
+    en: (p) => `${p.what} without a matching #IF`,
+  },
+  E_PP_DUP_ELSE: {
+    code: "E_PP_DUP_ELSE",
+    ja: (p) => `#ELSE の後に ${p.what} は書けません`,
+    en: (p) => `${p.what} cannot follow #ELSE`,
+  },
+  E_PP_UNTERMINATED: {
+    code: "E_PP_UNTERMINATED",
+    ja: () => `#IF が #ENDIF で閉じられていません`,
+    en: () => `#IF is not closed with #ENDIF`,
+  },
+  E_PP_BAD_EXPR: {
+    code: "E_PP_BAD_EXPR",
+    ja: (p) => `#IF の式が不正です: ${p.expr}`,
+    en: (p) => `Invalid #IF expression: ${p.expr}`,
+  },
+  E_PP_BAD_DIRECTIVE: {
+    code: "E_PP_BAD_DIRECTIVE",
+    ja: (p) => `プリプロセッサ指令が不正です: ${p.text}`,
+    en: (p) => `Invalid preprocessor directive: ${p.text}`,
+  },
+  W_PP_UNDEFINED: {
+    code: "W_PP_UNDEFINED",
+    ja: (p) => `未定義のシンボル ${p.name} を値比較に使用（0 として扱う）`,
+    en: (p) => `Undefined symbol ${p.name} used in a comparison (treated as 0)`,
+  },
   // --- 構造化の制約 ---
   E_BREAK_OUTSIDE_LOOP: {
     code: "E_BREAK_OUTSIDE_LOOP",

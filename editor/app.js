@@ -92,6 +92,10 @@ const I18N = {
     "set.stripcomments": "コメント除去（速度/サイズ優先・飛び先は保持）",
     "set.hotplace": "よく呼ぶ関数を低い行番号へ（GOSUB探索を短縮＝高速化）",
     "set.recdepth": "再帰スタックの最大深さ",
+    "set.buildcfg": "ビルド構成（条件コンパイル #IF/#IFDEF）",
+    "set.builddebug": "デバッグビルド（シンボル DEBUG を定義）",
+    "set.builddefs": "構成シンボル（1行1個・NAME か NAME=値）",
+    "set.buildhint": "採用されない #IF 枝は出力に含まれません（RAM/速度ゼロ）。組込み: DEBUG（このトグル）・MACHINE（機種→1..4）。ここで定義した名前はソースの #DEFINE を上書きします。",
     "find.find": "検索", "find.replace": "置換後", "find.one": "置換", "find.all": "全置換",
     "find.case": "大文字小文字を区別", "find.regex": "正規表現", "find.prev": "前へ", "find.next": "次へ", "find.close": "閉じる (Esc)",
     "find.replaced": (n) => `${n} 件置換しました`,
@@ -293,6 +297,10 @@ const I18N = {
     "set.stripcomments": "Strip comments (size/speed build; jump targets kept)",
     "set.hotplace": "Place hot functions at low line numbers (shorter GOSUB search = faster)",
     "set.recdepth": "Max recursion stack depth",
+    "set.buildcfg": "Build config (conditional compilation #IF/#IFDEF)",
+    "set.builddebug": "Debug build (define the DEBUG symbol)",
+    "set.builddefs": "Config symbols (one per line: NAME or NAME=value)",
+    "set.buildhint": "Unselected #IF branches are not in the output (zero RAM/speed). Built-ins: DEBUG (this toggle), MACHINE (target → 1..4). Names set here override the source's #DEFINE.",
     "find.find": "Find", "find.replace": "Replace with", "find.one": "Replace", "find.all": "All",
     "find.case": "Match case", "find.regex": "Regular expression", "find.prev": "Previous", "find.next": "Next", "find.close": "Close (Esc)",
     "find.replaced": (n) => `Replaced ${n} occurrence(s)`,
@@ -457,6 +465,9 @@ const DEFAULT_SETTINGS = {
   stripComments: false, // コメント除去（オプトイン・既定OFF）
   hotPlacement: false, // 呼出頻度順に関数を低い行番号へ（GOSUB探索短縮・オプトイン・既定OFF）
   recursionDepth: 100, // 再帰スタックの最大深さ（DIMサイズ）
+  buildDebug: true, // デバッグビルド＝条件コンパイルのシンボル DEBUG を定義（既定ON）
+  buildDefines: {}, // ビルド構成シンボル（name→値文字列）。UI 指定はソース #DEFINE を上書き（pinned）
+
   findCase: false, // 検索の大文字小文字を区別
   findRegex: false, // 検索を正規表現として扱う（単純/全体で共有）
   watchExternal: true, // 外部ファイル変更の検出と整合（docs/14）。デスクトップのみ
@@ -472,6 +483,38 @@ function loadSettings() {
 let settings = loadSettings();
 function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+// ---- 条件コンパイルのビルド構成（設定→resolveIncludes の pp へ）----
+// ビルド構成シンボル object ⇄ テキスト（1行 "NAME" か "NAME=値"）。
+function defsToText(defs) {
+  return Object.entries(defs || {})
+    .map(([k, v]) => (v === "1" || v === true ? k : `${k}=${v}`))
+    .join("\n");
+}
+function textToDefs(text) {
+  const out = {};
+  for (const raw of String(text || "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^([A-Za-z_]\w*)\s*(?:=\s*(.*))?$/);
+    if (!m) continue; // 不正な行は無視
+    out[m[1]] = m[2] == null || m[2] === "" ? "1" : m[2];
+  }
+  return out;
+}
+// 対象機種 → MACHINE シンボル値（MSX1<MSX2<MSX2P<turbo R）。既定機は turbo R 相当。
+const MACHINE_LEVEL = { "": 4, MSX1: 1, MSX2: 2, MSX2P: 3, MSX2PA: 3, MSXTR: 4 };
+// 現在のビルド構成を resolveIncludes 用 { defines, pinned } に組み立てる。
+// 組込み DEBUG（ビルドモード）と MACHINE（機種）＋ UI 構成シンボル。全て pinned＝ソース #DEFINE を上書き。
+function buildConfigPP() {
+  const defines = {};
+  if (settings.buildDebug) defines.DEBUG = "1";
+  defines.MACHINE = String(MACHINE_LEVEL[settings.webmsxMachine] ?? 4);
+  for (const [k, v] of Object.entries(settings.buildDefines || {})) defines[k] = String(v);
+  // DEBUG/MACHINE は未定義時も pin（ソースの #DEFINE で誤って有効化されないように）。
+  const pinned = ["DEBUG", "MACHINE", ...Object.keys(settings.buildDefines || {})];
+  return { defines, pinned };
 }
 
 function t(key, ...args) {
@@ -591,6 +634,8 @@ function openSettings() {
   $("setStripComments").checked = settings.stripComments;
   $("setHotPlacement").checked = settings.hotPlacement;
   $("setRecDepth").value = settings.recursionDepth;
+  $("setBuildDebug").checked = settings.buildDebug;
+  $("setBuildDefines").value = defsToText(settings.buildDefines);
   $("setMachine").value = settings.webmsxMachine;
   $("setPresets").value = settings.webmsxPresets;
   $("setUrl").value = settings.webmsxUrl;
@@ -659,7 +704,7 @@ function costParseCurrent() {
   let source = srcEl.value;
   let incDiags = [];
   if (/\bINCLUDE\b/i.test(source)) {
-    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, source));
+    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, source), buildConfigPP());
     source = inc.source;
     incDiags = inc.diagnostics || [];
   }
@@ -831,6 +876,8 @@ function applySettingsFromForm() {
   settings.stripComments = $("setStripComments").checked;
   settings.hotPlacement = $("setHotPlacement").checked;
   settings.recursionDepth = Math.min(1000, Math.max(1, parseInt($("setRecDepth").value, 10) || 100));
+  settings.buildDebug = $("setBuildDebug").checked;
+  settings.buildDefines = textToDefs($("setBuildDefines").value);
   settings.webmsxMachine = $("setMachine").value;
   settings.webmsxPresets = $("setPresets").value.trim();
   settings.webmsxUrl = $("setUrl").value.trim() || DEFAULT_SETTINGS.webmsxUrl;
@@ -1035,7 +1082,7 @@ function compileSource(source, incDiags, prov, extraOpts) {
 // 単一ソース（＝そのテキストをエントリ扱い）のコンパイル。逆変換プレビュー等で使用。
 function compile(src) {
   if (/\bINCLUDE\b/i.test(src)) {
-    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, src));
+    const inc = resolveIncludes(MAIN_PATH, (p) => includeRead(p, src), buildConfigPP());
     return compileSource(inc.source, inc.diagnostics, { sources: inc.sources, lineMap: inc.lineMap });
   }
   return compileSource(src, []);
@@ -1105,7 +1152,7 @@ function autoEntry() {
 // プロジェクトのエントリから統合ビルド（編集中の未保存内容も反映）。
 function compileProject(extraOpts) {
   const entry = currentEntry();
-  const inc = resolveIncludes(entry, readForBuild);
+  const inc = resolveIncludes(entry, readForBuild, buildConfigPP());
   return compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap }, extraOpts);
 }
 
@@ -1190,7 +1237,7 @@ function projectDiagnostics() {
     list.push(e);
   };
   const build = (entry) => {
-    const inc = resolveIncludes(entry, readForBuild);
+    const inc = resolveIncludes(entry, readForBuild, buildConfigPP());
     const r = compileSource(inc.source, inc.diagnostics, { source: entry, sources: inc.sources, lineMap: inc.lineMap });
     if (entry === cur) current = r;
     for (const d of r.diags) {

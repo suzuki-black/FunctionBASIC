@@ -397,6 +397,12 @@ table.mt td { padding: 1px 20px 1px 0; vertical-align: top; }
   font-family: var(--mono); font-size: 13px;
 }
 .set-row input[type="number"] { flex: 0 0 80px; }
+.set-row-top { align-items: flex-start; }
+.set-row textarea {
+  flex: 1; background: #333; color: var(--fg);
+  border: 1px solid #555; border-radius: 4px; padding: 6px 8px;
+  font-family: var(--mono); font-size: 13px; resize: vertical; min-height: 3em;
+}
 .set-hint { margin: 4px 0 0 140px; color: #9a9a9a; font-size: 11px; }
 
 /* エラー箇所推測ダイアログ（#modal と同じオーバーレイ体裁を流用） */

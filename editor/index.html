@@ -272,6 +272,11 @@
       <label class="set-check"><input id="setHotPlacement" type="checkbox" /><span data-i18n="set.hotplace">よく呼ぶ関数を低い行番号へ（GOSUB探索を短縮＝高速化）</span></label>
       <label class="set-row"><span data-i18n="set.recdepth">再帰スタックの最大深さ</span><input id="setRecDepth" type="number" min="1" max="1000" step="1" /></label>
 
+      <div class="set-section" data-i18n="set.buildcfg">ビルド構成（条件コンパイル #IF/#IFDEF）</div>
+      <label class="set-check"><input id="setBuildDebug" type="checkbox" /><span data-i18n="set.builddebug">デバッグビルド（シンボル DEBUG を定義）</span></label>
+      <label class="set-row set-row-top"><span data-i18n="set.builddefs">構成シンボル（1行1個・NAME か NAME=値）</span><textarea id="setBuildDefines" rows="3" spellcheck="false" placeholder="HARD_MODE&#10;START_LEVEL=3"></textarea></label>
+      <div class="set-hint" data-i18n="set.buildhint"></div>
+
       <div class="set-section" data-i18n="set.webmsx">WebMSX 実行</div>
 
       <div class="set-row">

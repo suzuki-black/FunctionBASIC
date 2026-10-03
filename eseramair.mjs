@@ -74,7 +74,9 @@ const { promisify } = await import("node:util");
 const os = await import("node:os");
 const nodefs = await import("node:fs");
 const nodepath = await import("node:path");
+const { fileURLToPath } = await import("node:url");
 const execFileP = promisify(execFile);
+const SCRIPT_DIR = nodepath.dirname(fileURLToPath(import.meta.url)); // リポジトリルート基準で src/・examples/lib を解決
 const CURL_TIMEOUT = String(flags.timeout ?? 30);
 
 async function req(method, path, { body, binary } = {}) {
@@ -119,6 +121,42 @@ async function req(method, path, { body, binary } = {}) {
   } finally {
     if (tmp) try { nodefs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
+}
+
+// .msxb(FunctionBASIC) -> MSX ASCII BASIC(.bas) バイト列。
+//  - INCLUDE を解決(ライブラリは examples/lib へフォールバック)
+//  - stripComments で日本語コメントを除去し純ASCII化＋サイズ縮小（FAST圧縮と併せ実機RAMに収める）
+//  - MSX ASCII 形式: CRLF 改行 ＋ 末尾 Ctrl-Z(0x1A)
+//  - 非ASCIIが残る場合(文字列/DATA に日本語等)は SJIS 変換が要るためここでは中断しエディタ保存を案内
+async function buildBas(msxbPath) {
+  const { tokenize } = await import("./src/lexer/lexer.ts");
+  const { parse } = await import("./src/parser/parser.ts");
+  const { transform, renderMsx } = await import("./src/transform/transformer.ts");
+  const { resolveIncludes } = await import("./src/preprocess/include.ts");
+  const read = (p) => {
+    const cands = [p, nodepath.join(SCRIPT_DIR, "examples/lib", p.split("/").pop())];
+    for (const c of cands) { try { return nodefs.readFileSync(c, "utf8"); } catch {} }
+    return null;
+  };
+  if (read(msxbPath) == null) die(`.msxb が読めません: ${msxbPath}`);
+  const inc = resolveIncludes(msxbPath, read);
+  const { tokens, diagnostics: ld } = tokenize(inc.source);
+  const { program, diagnostics: pd } = parse(tokens);
+  const r = transform(program, { stripComments: true });
+  const diags = [...inc.diagnostics, ...ld, ...pd, ...r.diagnostics];
+  const errs = diags.filter((d) => d.severity === "error");
+  if (errs.length) {
+    for (const d of errs) console.error(`  [E] ${d.code} ${JSON.stringify(d.params ?? {})}`);
+    die(`変換エラー ${errs.length}件: ${msxbPath}`);
+  }
+  const msx = renderMsx(r.code).replace(/\r/g, "");
+  const nonascii = [...msx].filter((c) => c.charCodeAt(0) > 0x7e);
+  if (nonascii.length) {
+    die(`非ASCII文字が ${nonascii.length}個 残っています(例: ${[...new Set(nonascii)].slice(0, 10).join("")})。\n` +
+        `  このツールは SJIS 変換を行いません。文字列/DATA を ASCII にするか、エディタの保存(write_sjis)経由で配信してください。`);
+  }
+  const bas = Buffer.from(msx.replace(/\n+$/, "\n").replace(/\n/g, "\r\n") + "\x1a", "latin1");
+  return { bytes: bas, lines: msx.split("\n").length };
 }
 
 async function main() {
@@ -237,6 +275,31 @@ async function main() {
       console.log('    (BASIC なら例: LOAD"A:' + name + '",R / DOS なら名前を入力)');
       break;
     }
+    case "build": {
+      // .msxb -> .bas をローカル生成のみ(実機に触れない)。確認/オフライン用。
+      const src = pos[0] || die(".msxb ファイルが必要です");
+      const out = pos[1] || "GAME.BAS";
+      const { bytes, lines } = await buildBas(src);
+      nodefs.writeFileSync(out, bytes);
+      console.log(`build: ${src} -> ${out} (${bytes.length}B, ${lines}行, MSX ASCII/CRLF+Ctrl-Z)`);
+      break;
+    }
+    case "deploy": {
+      // ワンコマンド: .msxb -> .bas(stripComments/CRLF/Ctrl-Z) -> ディスクへ put。
+      const src = pos[0] || die(".msxb ファイルが必要です");
+      const name = pos[1] || "GAME.BAS";
+      process.stdout.write(`1) 変換 ${src} -> ${name}... `);
+      const { bytes, lines } = await buildBas(src);
+      console.log(`ok (${bytes.length}B, ${lines}行)`);
+      process.stdout.write(`2) ディスクへ配置 (${name})... `);
+      await req("POST", `/fat/files/${encodeURI(name)}`, { body: bytes });
+      console.log("ok");
+      console.log(`\n==> 配信完了。MSX 側で実行してください:`);
+      console.log(`    ・起動したまま差し替えた場合: Ctrl-STOP で Ok に戻し  RUN"${name}"`);
+      console.log(`    ・RESET 後(Nextor/Disk BASIC): RUN"${name}"`);
+      console.log(`    ※put 中に MSX がディスクアクセス中でないこと(ゲームはRAM実行中ならOK)。`);
+      break;
+    }
     default:
       console.log(readHelp());
       if (cmd && cmd !== "help") process.exit(2);
@@ -255,6 +318,8 @@ function readHelp() {
   format ※--yes
   deploy-rom <rom> [--no-clear]             クリア+書込+照合+RESET案内 ※--yes
   deploy-file <file> [name]                 ディスク配置+案内
+  build <file.msxb> [out.bas]               .msxb->MSX ASCII(.bas) ローカル生成のみ(実機不要)
+  deploy <file.msxb> [name=GAME.BAS]        ★ワンコマンド: .msxb変換(stripComments)->ディスクへput
 host 既定: ${HOST}:${PORT} (ESERAMAIR_HOST/PORT か --host/--port で変更)
 注意: MSXリセットはRESTに無いため手動(物理RESET/電源)。破壊的操作は --yes 必須。`;
 }

@@ -1265,7 +1265,8 @@ function finishTransform(ctx: any): TransformResult {
   // だけ（そのパッチも初回のみ）。毎フレーム呼んでも軽い。
   interface AsmBlk { addrVar: string; guardVar: string; bytes: number[]; patches: { offset: number; name: string }[]; relocs: { offset: number; target: number }[] }
   const asmReg = new Map<any, AsmBlk>();
-  let asmPT = "", asmQ = "", asmLo = "", asmHi = "", asmBase = "";
+  let asmPT = "", asmQ = "", asmLo = "", asmHi = "", asmBase = "", asmRi = "", asmRv = "";
+  let asmDataLabel = 0; // 機械語バイトを末尾 DATA へ出すときのラベル(READ ループが RESTORE する)
   const registerAsm = (s: any) => {
     if (asmReg.has(s)) return;
     const r = assembleZ80(s.lines, ctx.asmVars);
@@ -1327,20 +1328,25 @@ function finishTransform(ctx: any): TransformResult {
     const HM = `(PEEK(&HFC4A)+PEEK(&HFC4B)*256)`;
     out.push({ kind: "line", text: `CLEAR 1024,${HM}-${asmTotal + 8}` });
     out.push({ kind: "line", text: `${asmBase}=${HM}+1` }); // 予約領域の先頭（新 HIMEM+1）
+    // 各ブロックの固定アドレス（DEFUSR/再配置で参照）。
     let off = 0;
     for (const [, b] of asmReg) {
-      out.push({ kind: "line", text: `${b.addrVar}=${asmBase}+${off}` }); // このブロックの固定アドレス
-      for (let i = 0; i < b.bytes.length; i += 8) {
-        const seg: string[] = [];
-        for (let j = i; j < Math.min(i + 8, b.bytes.length); j++) seg.push(`POKE ${b.addrVar}+${j},${b.bytes[j]}`);
-        out.push({ kind: "line", text: seg.join(":") });
-      }
-      // JP ラベルの再配置: 実行時の絶対アドレス(基点+ラベルオフセット)を JP オペランドへ書く。
-      // 基点(addrVar)は固定なのでプロローグで1回だけ。位置独立コードでも長距離 JP が使える。
+      out.push({ kind: "line", text: `${b.addrVar}=${asmBase}+${off}` });
+      off += b.bytes.length;
+    }
+    // 機械語バイトは「1バイト=1 POKE」の羅列でなく DATA + READ ループで一括配置する（プログラム
+    // サイズを大幅圧縮: 1 バイト ~15 文字 → ~4.5 文字）。バイト列は末尾へ DATA として出し（asmDataLabel）、
+    // ここで RESTORE して読み、読み終えたら RESTORE で既定（先頭 DATA）へ戻す（ユーザの通常 READ を壊さない）。
+    if (asmTotal > 0) {
+      asmDataLabel = newLabel();
+      out.push({ kind: "line", text: `RESTORE @@L:${asmDataLabel}@@:FOR ${asmRi}=0 TO ${asmTotal - 1}:READ ${asmRv}:POKE ${asmBase}+${asmRi},${asmRv}:NEXT:RESTORE` });
+    }
+    // JP ラベルの再配置: 実行時の絶対アドレス(基点+ラベルオフセット)を JP オペランドへ書く（実行時
+    // アドレス依存なので DATA 化せず従来どおり POKE）。バイト配置後に適用する。
+    for (const [, b] of asmReg) {
       for (const rc of b.relocs) {
         out.push({ kind: "line", text: `${asmPT}=${b.addrVar}+${rc.target}:POKE ${b.addrVar}+${rc.offset},${asmPT}-INT(${asmPT}/256)*256:POKE ${b.addrVar}+${rc.offset + 1},INT(${asmPT}/256)` });
       }
-      off += b.bytes.length;
     }
     // ---- VARPTR 安定化: 全単純変数を DIM より前に生成しておく ----
     // MSX は新しい単純変数を作るたびに配列をメモリ上で後ろへ押し出す。ASM に VARPTR(配列)
@@ -1621,7 +1627,7 @@ function finishTransform(ctx: any): TransformResult {
   // 丸ごと載る主因）。variantKeys は scanCalls（全文種＋ネスト式を網羅）が確定した
   // 「1回でも呼ばれる関数」集合＝安全な到達判定。
   for (const f of program.functions) if (variantKeys.has(f.name)) collectAsm(f.body);
-  if (asmReg.size) { asmPT = ctx.pool.next("!"); asmQ = ctx.pool.next("!"); asmLo = ctx.pool.next("%"); asmHi = ctx.pool.next("%"); asmBase = ctx.pool.next("!"); }
+  if (asmReg.size) { asmPT = ctx.pool.next("!"); asmQ = ctx.pool.next("!"); asmLo = ctx.pool.next("%"); asmHi = ctx.pool.next("%"); asmBase = ctx.pool.next("!"); asmRi = ctx.pool.next("%"); asmRv = ctx.pool.next("%"); }
 
   const mainItems: Item[] = [{ kind: "line", text: "' === MAIN ===" }];
   emitInto(program.toplevel, { func: undefined }, mainItems);
@@ -1689,19 +1695,33 @@ function finishTransform(ctx: any): TransformResult {
     }
   }
 
-  // DATASET の DATA 行を末尾にまとめて出力。各ブロック先頭にラベルを置き、READ/RESTORE の
-  // @@L がその先頭 DATA 行へ解決される（RESTORE はリテラル行のみ可という MSX 制約に適合）。
-  if (datasets.size) {
-    const dsItems: Item[] = [];
+  // DATASET の DATA 行と、インライン ASM の機械語バイトを末尾にまとめて DATA 出力する。
+  // 各ブロック先頭にラベルを置き、READ/RESTORE の @@L がその先頭 DATA 行へ解決される
+  // （RESTORE はリテラル行のみ可という MSX 制約に適合）。ASM バイトは「1バイト=1 POKE」の
+  // 羅列を避けるため DATA 化し、プロローグの READ ループが RESTORE して読む（サイズ大幅圧縮）。
+  {
+    const tailItems: Item[] = [];
     for (const [, d] of datasets) {
-      dsItems.push({ kind: "label", id: d.labelId });
+      tailItems.push({ kind: "label", id: d.labelId });
       for (const st of d.data) {
         if (st.type === "Comment" && /^\s*'@/.test(st.text)) continue; // ニーモニック注釈は除去
         const text = simpleStmtText(st, { func: undefined });
-        if (text != null) dsItems.push({ kind: "line", text, src: st.pos?.line != null ? [st.pos.line] : undefined });
+        if (text != null) tailItems.push({ kind: "line", text, src: st.pos?.line != null ? [st.pos.line] : undefined });
       }
     }
-    out.push(...numberBlock(dsItems, seg));
+    if (asmDataLabel) {
+      tailItems.push({ kind: "label", id: asmDataLabel });
+      const allBytes: number[] = [];
+      for (const [, b] of asmReg) for (const by of b.bytes) allBytes.push(by);
+      let cur: string[] = [];
+      const flush = () => { if (cur.length) { tailItems.push({ kind: "line", text: "DATA " + cur.join(",") }); cur = []; } };
+      for (const by of allBytes) {
+        if (cur.length && ("DATA " + [...cur, String(by)].join(",")).length > LINE_TEXT_BUDGET) flush();
+        cur.push(String(by));
+      }
+      flush();
+    }
+    if (tailItems.length) out.push(...numberBlock(tailItems, seg));
   }
 
   // プレースホルダ解決（GOSUB entry / ラベル）

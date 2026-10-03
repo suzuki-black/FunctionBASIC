@@ -429,7 +429,9 @@ test("ASM ブロック: HIMEM直下へコード配置＋VARPTRパッチ＋DEFUSR
   assert.match(msx, /CLEAR 1024,\(PEEK\(&HFC4A\)\+PEEK\(&HFC4B\)\*256\)-\d+/);
   assert.doesNotMatch(msx, /STRING\$/); // コードを文字列に入れない（255B超で Illegal function call）
   assert.match(msx, /VARPTR\(A%\)/); // PX% → A%（2文字名）のアドレスをパッチ
-  assert.match(msx, /POKE .+,58\b/); // LD A,(nn) の opcode 0x3A=58 を配置
+  // 機械語バイトは「1バイト=1 POKE」の羅列でなく DATA + READ ループで一括配置する（サイズ圧縮）。
+  assert.match(msx, /RESTORE \d+:FOR \S+?=0 TO \d+:READ \S+?:POKE \S+?,\S+?:NEXT:RESTORE/);
+  assert.match(msx, /DATA [\d,]*\b58\b/); // LD A,(nn) の opcode 0x3A=58 を DATA に持つ
   assert.match(msx, /DEFUSR=/);
   assert.match(msx, /=USR\(0\)/);
 });

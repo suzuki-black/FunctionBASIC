@@ -1,0 +1,739 @@
+' ============================================================
+'  fast-stg.msxb  ---  汎用 縦スクロールSTG フレームエンジン (FAST)
+'  設計: docs/fast-scroll-primitives-design.md
+'  対象: SCREEN 5 (MSX2/2+/turbo R, V9938 VDPコマンド + R#23 縦スクロール)
+' ------------------------------------------------------------
+'  何をするか:
+'   毎フレームの重い処理を「1関数=全ASM(1 USR/frame)」に畳んだフレームエンジン。
+'   BASIC は入力/発射/再出現だけを担い、FAST_STGFRAME() を1回呼ぶ。
+'   細かい primitive を毎フレーム何個も呼ぶ設計は MSX BASIC の GOSUB 行番号
+'   線形探索で ~25fps が天井になる(プログラムが大きいほど遅い)。1本に畳むと
+'   turbo R で ~48fps を実測(9fps から 5.3倍)。これが汎用縦STGの本命。
+'
+'  何が汎用か / 何がお約束(前提)か:
+'   汎用: タイル絵柄・マップ・スプライト絵柄/色・自機/弾/敵の数はゲーム側が自由に決める。
+'         フレームエンジンは SoA 配列(SX/SY/SP/ACT/SV/TMAP)を駆動するだけで
+'         「戦艦STG専用」ではない。plane 数や当たり範囲もグローバルで指定。
+'   前提(このv1の構成): SCREEN 5, 16x16タイル, マップ16列/縦32行ラップ,
+'         背景リング=page0 / 絵柄バンク=page1, スプライト表を page1(OAM=&HF600)へ退避,
+'         スプライトは16x16(mode2 相当,色テーブルはゲーム側で用意)。
+'
+'  ===== 呼び出し側が用意する契約(SoA + グローバル) =====
+'  配列(トップレベルで DIM。要素0..NSPR%-1 が有効plane):
+'    TMAP%(>=512) : タイルマップ(row*16+col, 値=タイル番号, 負値=供給スキップ=海/透明)
+'    SY%()  : 各plane の画面Y(この関数が SV で毎フレ更新)
+'    SX%()  : 各plane の画面X
+'    SP%()  : 各plane のOAMパターン番号(16x16は pattern_index*4 を入れる)
+'    ACT%() : 各plane の生存フラグ(1=表示/更新, 0=非表示)
+'    SV%()  : 各plane のY速度(負=上へ. 弾=負, 敵=正, 自機=0)
+'  plane 配置の約束(当たり判定用の連続領域):
+'    自機=0 / 弾=1..CSN% / 敵=(弾の次)..  ... 弾群と敵群がそれぞれ連続していること。
+'  起動時に1回だけ設定する数値グローバル(VARPTR/定数):
+'    F_TMP% = VARPTR(TMAP%(0))
+'    QY0%=VARPTR(SY%(0)) QX0%=VARPTR(SX%(0)) QP0%=VARPTR(SP%(0))
+'    QA0%=VARPTR(ACT%(0)) QV0%=VARPTR(SV%(0))            ' plane0 起点(全plane走査用)
+'    PSX%=VARPTR(SX%(弾先頭)) PSY%=VARPTR(SY%(弾先頭)) PSA%=VARPTR(ACT%(弾先頭))
+'    PEX%=VARPTR(SX%(敵先頭)) PEY%=VARPTR(SY%(敵先頭))   ' 当たり判定の弾群/敵群起点
+'    CSN% = 弾の数 : CEN% = 敵の数
+'    NSPR% = 使用plane総数(OAMへ書く数)
+'    SPEED% = 1フレームのスクロール量(px)
+'    VOFS% = 0 : LR% = 0 : FR% = 16 : FC% = 16   ' 内部状態の初期値
+'    ' 作業用(確保のため0代入しておくだけ): WSX/WSY/WSA/WEX/WEY/CSC/CEC/SXV/SYV = 0
+'  さらに:
+'    ・スプライト表を page1 へ退避(R#5=&HEC, R#6=&H1F, R#11=1)し、
+'      色テーブル/パターン/plane停止マーカ(Y=216)をゲーム側で書く。
+'    ・可視16行はゲーム側で FEED1(R,C) を先に敷いておく(prefill)。
+'    ・フレーム同期(EI:HALT)はゲームループの責務(このライブラリは持たない)。
+'
+'  ===== 背景破壊(opt-in・汎用フック): 弾が背景タイルを破壊 =====
+'  RTP%<>0 のとき有効。弾(弾群)が触れたリングセルのタイルが DTILE% 以上なら、
+'  そのセルを BGCLR% で HMMV 塗り消去し、弾を消滅、命中件数(戻り値)に加算する。
+'  ゲーム側で用意:
+'    DIM RTILE%(255)                 ' リング各セル(16x16)の現タイル影(FEED1/供給時に自動記録)
+'    RTP% = VARPTR(RTILE%(0))        ' 0 なら破壊フック自体を無効(従来動作)
+'    DTILE% = 破壊可能になる最小タイル番号(例: 4=戦艦タイル以上)
+'    BGCLR% = 消去色を両ニブルに複製した値(例: 海色4 なら &H44)
+'  ※RTILE% は prefill 前に RTP% を設定しておくと、初期表示ぶんも記録され破壊可能になる。
+'  ※破壊は tile 番号ベースの汎用機能(戦艦専用でない)。破壊は影と VRAM のみ変更し、
+'    TMAP%() は不変なので、そのマップ行が一周して再供給されると復活する(必要ならゲーム側で TMAP も消す)。
+'
+'  返り値: FAST_STGFRAME() は「この1フレームの命中件数(弾x敵 + 背景破壊)」を返す。
+'          >0 なら敵X=248(=撃破マーク)を見て再出現処理をゲーム側で行う。
+' ============================================================
+
+' ------------------------------------------------------------
+'  FEED1(ROW%, COL%): タイルマップ(ROW,COL)の1タイルを絵柄バンク(page1)から
+'  背景リング(page0)へ HMMM で供給。全ASM1本(3段ネスト呼びを排除)。prefill と
+'  フレームエンジン内の増分供給で使う同一ロジック。負値セルはスキップ(海/透明)。
+'  前提: 16x16タイル, 絵柄バンク=page1縦ストリップ((0, T*16)), F_TMP% を先に設定。
+' ------------------------------------------------------------
+FUNCTION FEED1(ROW%, COL%)
+    GLOBAL F_ROW%
+    GLOBAL F_COL%
+    GLOBAL F_TMP%
+    GLOBAL F_SYL%
+    GLOBAL F_VY%
+    GLOBAL F_DXL%
+    GLOBAL RTP%
+    F_ROW% = ROW%
+    F_COL% = COL%
+    ASM
+      DI
+      LD   A,(F_ROW%)
+      LD   L,A
+      LD   H,0
+      ADD  HL,HL
+      ADD  HL,HL
+      ADD  HL,HL
+      ADD  HL,HL              ' HL = ROW*16
+      LD   A,(F_COL%)
+      LD   E,A
+      LD   D,0
+      ADD  HL,DE             ' HL = ROW*16+COL = index
+      ADD  HL,HL             ' *2 (int配列)
+      LD   DE,(F_TMP%)
+      ADD  HL,DE             ' &TMAP[index]
+      LD   A,(HL)
+      BIT  7,A
+      JP   NZ,FEEDDONE       ' 負値(空)はスキップ
+      PUSH AF                ' T退避
+      LD   HL,(RTP%)         ' RTILE 記録(opt-in: RTP<>0) = このリングセルの現タイル
+      LD   A,H
+      OR   L
+      JR   Z,F1RTSK
+      LD   A,(F_ROW%)
+      AND  15
+      LD   C,A               ' ringrow = ROW mod 16
+      LD   A,(F_COL%)
+      LD   B,A               ' col
+      LD   A,C
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,B               ' idx = ringrow*16 + col
+      LD   L,A
+      LD   H,0
+      ADD  HL,HL             ' *2 (int配列)
+      LD   DE,(RTP%)
+      ADD  HL,DE             ' &RTILE[idx]
+      POP  AF                ' A = T
+      LD   (HL),A            ' low = T
+      INC  HL
+      LD   (HL),0            ' high = 0
+      JR   F1CONT
+F1RTSK:
+      POP  AF                ' A = T (RTP=0 経路)
+F1CONT:
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A               ' A = T*16 = バンクY(source Y low, page1)
+      LD   (F_SYL%),A
+      LD   A,(F_ROW%)
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A               ' A = ROW*16 = VY (dest DY, リング line)
+      LD   (F_VY%),A
+      LD   A,(F_COL%)
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A               ' A = COL*16 = DX
+      LD   (F_DXL%),A
+FWCE:
+      LD   A,2
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      IN   A,(&H99)
+      LD   C,A
+      LD   A,0
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      BIT  0,C
+      JR   NZ,FWCE
+      LD   A,32
+      OUT  (&H99),A
+      LD   A,&H91
+      OUT  (&H99),A
+      LD   A,0
+      OUT  (&H9B),A          ' SXL
+      LD   A,0
+      OUT  (&H9B),A          ' SXH
+      LD   A,(F_SYL%)
+      OUT  (&H9B),A          ' SYL = T*16
+      LD   A,1
+      OUT  (&H9B),A          ' SYH = 1 (page1)
+      LD   A,(F_DXL%)
+      OUT  (&H9B),A          ' DXL = COL*16
+      LD   A,0
+      OUT  (&H9B),A          ' DXH
+      LD   A,(F_VY%)
+      OUT  (&H9B),A          ' DYL = VY
+      LD   A,0
+      OUT  (&H9B),A          ' DYH (page0)
+      LD   A,16
+      OUT  (&H9B),A          ' NXL
+      LD   A,0
+      OUT  (&H9B),A          ' NXH
+      LD   A,16
+      OUT  (&H9B),A          ' NYL
+      LD   A,0
+      OUT  (&H9B),A          ' NYH
+      LD   A,0
+      OUT  (&H9B),A          ' CLR
+      LD   A,0
+      OUT  (&H9B),A          ' ARG
+      LD   A,&HD0
+      OUT  (&H9B),A          ' CMD HMMM
+FEEDDONE:
+      EI
+    END ASM
+    RETURN 0
+END FUNCTION
+
+' ============================================================
+'  FAST_STGFRAME(): 1フレーム全処理を1本のASM(1 USR/frame)。
+'   A) R#23 で背景を SPEED% ライン縦スクロール(VOFS 更新)
+'   B) 16px境界を跨いだら新行を開始し、毎フレーム1タイルずつ HMMM 増分供給
+'      (行一括はVSYNC取りこぼしの原因。1タイル/frame=~511us で予算内)
+'   C) 弾群x敵群 の AABB 当たり(+-15/box31)。当たった弾は非表示+Y=216、
+'      当たった敵は X=248(撃破マーク)、当たり件数を CHIT% に加算
+'   D) 全plane 移動(SY+=SV) + スクロールY補正 + OAM(&HF600) 描画
+'      ・弾(SV<0)が上端(<8)で自動非表示、敵(SV>0)が下端(>200)で Y=0 に折返し
+'      ・スプライトも R#23 で一緒に流れるので attrY=(screenY+VOFS) AND 255 で補正
+'      ・非表示planeは画面外(220+VOFS)へ退避
+'  返り値: この1フレームの当たり件数(CHIT%)。
+' ============================================================
+FUNCTION FAST_STGFRAME()
+    GLOBAL VOFS%
+    GLOBAL SPEED%
+    GLOBAL LR%
+    GLOBAL FR%
+    GLOBAL FC%
+    GLOBAL F_TMP%
+    GLOBAL F_SYL%
+    GLOBAL F_VY%
+    GLOBAL F_DXL%
+    GLOBAL F_ROWX%
+    GLOBAL F_COLX%
+    GLOBAL NSPR%
+    GLOBAL QY%
+    GLOBAL QX%
+    GLOBAL QP%
+    GLOBAL QA%
+    GLOBAL QV%
+    GLOBAL QY0%
+    GLOBAL QX0%
+    GLOBAL QP0%
+    GLOBAL QA0%
+    GLOBAL QV0%
+    GLOBAL PSX%
+    GLOBAL PSY%
+    GLOBAL PSA%
+    GLOBAL PEX%
+    GLOBAL PEY%
+    GLOBAL CSN%
+    GLOBAL CEN%
+    GLOBAL CHIT%
+    GLOBAL WSX%
+    GLOBAL WSY%
+    GLOBAL WSA%
+    GLOBAL WEX%
+    GLOBAL WEY%
+    GLOBAL CSC%
+    GLOBAL CEC%
+    GLOBAL SXV%
+    GLOBAL SYV%
+    GLOBAL RTP%
+    GLOBAL DTILE%
+    GLOBAL BGCLR%
+    GLOBAL SFTV%
+    CHIT% = 0
+    ASM
+      DI
+      ' ===== A: SCROLL (R#23) =====
+      LD   A,(SPEED%)
+      LD   B,A
+      LD   A,(VOFS%)
+      ADD  A,B
+      LD   (VOFS%),A
+      OUT  (&H99),A
+      LD   A,&H97
+      OUT  (&H99),A
+      ' ===== B: FEED timing =====
+      LD   A,(VOFS%)
+      RRCA
+      RRCA
+      RRCA
+      RRCA
+      AND  15
+      LD   B,A               ' CB = VOFS\16
+      LD   A,(LR%)
+      CP   B
+      JR   Z,SFNB
+      LD   A,B
+      LD   (LR%),A
+      XOR  A
+      LD   (FC%),A           ' 新境界: FC=0
+SFNB:
+      LD   A,(FC%)
+      CP   16
+      JP   NC,SFFEEDSKIP
+      LD   A,(FR%)
+      AND  31
+      LD   (F_ROWX%),A       ' ROWX = FR mod 32
+      LD   A,(FC%)
+      LD   (F_COLX%),A
+      LD   A,(F_ROWX%)
+      LD   L,A
+      LD   H,0
+      ADD  HL,HL
+      ADD  HL,HL
+      ADD  HL,HL
+      ADD  HL,HL
+      LD   A,(F_COLX%)
+      LD   E,A
+      LD   D,0
+      ADD  HL,DE
+      ADD  HL,HL
+      LD   DE,(F_TMP%)
+      ADD  HL,DE
+      LD   A,(HL)
+      BIT  7,A
+      JP   NZ,SFFEEDADV
+      PUSH AF                ' T退避
+      LD   HL,(RTP%)         ' RTILE 記録(opt-in) = このリングセルの現タイル
+      LD   A,H
+      OR   L
+      JR   Z,SFRTSK
+      LD   A,(F_ROWX%)
+      AND  15
+      LD   C,A               ' ringrow = ROWX mod 16
+      LD   A,(F_COLX%)
+      LD   B,A               ' col
+      LD   A,C
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,B               ' idx = ringrow*16 + col
+      LD   L,A
+      LD   H,0
+      ADD  HL,HL
+      LD   DE,(RTP%)
+      ADD  HL,DE             ' &RTILE[idx]
+      POP  AF                ' A = T
+      LD   (HL),A            ' low = T
+      INC  HL
+      LD   (HL),0            ' high = 0
+      JR   SFRTC
+SFRTSK:
+      POP  AF                ' A = T (RTP=0 経路)
+SFRTC:
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      LD   (F_SYL%),A        ' T*16 = バンクY(page1)
+      LD   A,(F_ROWX%)
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      LD   (F_VY%),A         ' ROWX*16 = VY
+      LD   A,(F_COLX%)
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      LD   (F_DXL%),A        ' COL*16 = DX
+SFFWCE:
+      LD   A,2
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      IN   A,(&H99)
+      LD   C,A
+      LD   A,0
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      BIT  0,C
+      JR   NZ,SFFWCE
+      LD   A,32
+      OUT  (&H99),A
+      LD   A,&H91
+      OUT  (&H99),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,(F_SYL%)
+      OUT  (&H9B),A
+      LD   A,1
+      OUT  (&H9B),A
+      LD   A,(F_DXL%)
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,(F_VY%)
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,16
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,16
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,0
+      OUT  (&H9B),A
+      LD   A,&HD0
+      OUT  (&H9B),A
+SFFEEDADV:
+      LD   A,(FC%)
+      INC  A
+      LD   (FC%),A
+      CP   16
+      JP   C,SFFEEDSKIP
+      LD   A,(FR%)
+      INC  A
+      LD   (FR%),A
+SFFEEDSKIP:
+      ' ===== C: COLLISION (弾x敵) =====
+      LD   HL,(PSX%)
+      LD   (WSX%),HL
+      LD   HL,(PSY%)
+      LD   (WSY%),HL
+      LD   HL,(PSA%)
+      LD   (WSA%),HL
+      LD   A,(CSN%)
+      LD   (CSC%),A
+SFCCSHOT:
+      LD   A,(CSC%)
+      OR   A
+      JP   Z,SFCCDONE
+      LD   HL,(WSA%)
+      LD   A,(HL)
+      OR   A
+      JP   Z,SFCCNXTS
+      LD   HL,(PEX%)
+      LD   (WEX%),HL
+      LD   HL,(PEY%)
+      LD   (WEY%),HL
+      LD   A,(CEN%)
+      LD   (CEC%),A
+      LD   HL,(WSX%)
+      LD   A,(HL)
+      LD   (SXV%),A
+      LD   HL,(WSY%)
+      LD   A,(HL)
+      LD   (SYV%),A
+SFCCENE:
+      LD   A,(CEC%)
+      OR   A
+      JP   Z,SFCCNXTS
+      LD   HL,(WEX%)
+      LD   A,(HL)
+      LD   B,A
+      LD   A,(SXV%)
+      SUB  B
+      ADD  A,15
+      CP   31
+      JP   NC,SFCCNXTE
+      LD   HL,(WEY%)
+      LD   A,(HL)
+      LD   B,A
+      LD   A,(SYV%)
+      SUB  B
+      ADD  A,15
+      CP   31
+      JP   NC,SFCCNXTE
+      LD   HL,(WSA%)
+      LD   (HL),0
+      LD   HL,(WSY%)
+      LD   (HL),216
+      LD   HL,(WEX%)
+      LD   (HL),248
+      LD   A,(CHIT%)
+      INC  A
+      LD   (CHIT%),A
+      JP   SFCCNXTS
+SFCCNXTE:
+      LD   HL,(WEX%)
+      INC  HL
+      INC  HL
+      LD   (WEX%),HL
+      LD   HL,(WEY%)
+      INC  HL
+      INC  HL
+      LD   (WEY%),HL
+      LD   A,(CEC%)
+      DEC  A
+      LD   (CEC%),A
+      JP   SFCCENE
+SFCCNXTS:
+      LD   HL,(WSX%)
+      INC  HL
+      INC  HL
+      LD   (WSX%),HL
+      LD   HL,(WSY%)
+      INC  HL
+      INC  HL
+      LD   (WSY%),HL
+      LD   HL,(WSA%)
+      INC  HL
+      INC  HL
+      LD   (WSA%),HL
+      LD   A,(CSC%)
+      DEC  A
+      LD   (CSC%),A
+      JP   SFCCSHOT
+SFCCDONE:
+      ' ===== E: DESTRUCTIBLE BG (弾 vs 背景タイル, opt-in: RTP<>0) =====
+      ' RTILE[ringcell] >= DTILE% の背景タイルに弾が触れたら HMMV で塗り消去+加点+弾消滅。
+      LD   HL,(RTP%)
+      LD   A,H
+      OR   L
+      JP   Z,SFDDONE
+      LD   HL,(PSX%)
+      LD   (WSX%),HL
+      LD   HL,(PSY%)
+      LD   (WSY%),HL
+      LD   HL,(PSA%)
+      LD   (WSA%),HL
+      LD   A,(CSN%)
+      LD   (CSC%),A
+SFDSH:
+      LD   A,(CSC%)
+      OR   A
+      JP   Z,SFDDONE
+      LD   HL,(WSA%)
+      LD   A,(HL)
+      OR   A
+      JP   Z,SFDNXT          ' 非アクティブ弾はスキップ
+      LD   HL,(WSY%)
+      LD   A,(HL)
+      ADD  A,8               ' 弾中心Y
+      LD   E,A
+      LD   A,(VOFS%)
+      ADD  A,E               ' (by+8+VOFS) mod 256 = ring line
+      AND  &HF0
+      LD   (F_VY%),A         ' DY = ringrow*16
+      RRCA
+      RRCA
+      RRCA
+      RRCA
+      LD   C,A               ' ringrow
+      LD   HL,(WSX%)
+      LD   A,(HL)
+      ADD  A,8               ' 弾中心X
+      AND  &HF0
+      LD   (F_DXL%),A        ' DX = col*16
+      RRCA
+      RRCA
+      RRCA
+      RRCA
+      LD   B,A               ' col
+      LD   A,C
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,A
+      ADD  A,B               ' idx = ringrow*16 + col
+      LD   L,A
+      LD   H,0
+      ADD  HL,HL
+      LD   DE,(RTP%)
+      ADD  HL,DE             ' &RTILE[idx]
+      LD   (WEX%),HL
+      LD   A,(HL)            ' tile (low byte)
+      LD   E,A
+      LD   A,(DTILE%)
+      LD   B,A
+      LD   A,E
+      CP   B
+      JP   C,SFDNXT          ' tile < DTILE -> 破壊不可
+SFDWCE:
+      LD   A,2
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      IN   A,(&H99)
+      LD   C,A
+      LD   A,0
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      BIT  0,C
+      JR   NZ,SFDWCE
+      LD   A,32
+      OUT  (&H99),A
+      LD   A,&H91
+      OUT  (&H99),A
+      LD   A,0
+      OUT  (&H9B),A          ' SXL
+      LD   A,0
+      OUT  (&H9B),A          ' SXH
+      LD   A,0
+      OUT  (&H9B),A          ' SYL
+      LD   A,0
+      OUT  (&H9B),A          ' SYH
+      LD   A,(F_DXL%)
+      OUT  (&H9B),A          ' DXL = col*16
+      LD   A,0
+      OUT  (&H9B),A          ' DXH
+      LD   A,(F_VY%)
+      OUT  (&H9B),A          ' DYL = ringrow*16
+      LD   A,0
+      OUT  (&H9B),A          ' DYH (page0)
+      LD   A,16
+      OUT  (&H9B),A          ' NXL
+      LD   A,0
+      OUT  (&H9B),A          ' NXH
+      LD   A,16
+      OUT  (&H9B),A          ' NYL
+      LD   A,0
+      OUT  (&H9B),A          ' NYH
+      LD   A,(BGCLR%)
+      OUT  (&H9B),A          ' CLR = 塗り色(両ニブル)
+      LD   A,0
+      OUT  (&H9B),A          ' ARG
+      LD   A,&HC0
+      OUT  (&H9B),A          ' CMD HMMV
+      LD   HL,(WEX%)
+      LD   (HL),0            ' RTILE[idx]=0(海)
+      INC  HL
+      LD   (HL),0
+      LD   HL,(WSA%)
+      LD   (HL),0            ' 弾 ACT=0
+      LD   HL,(WSY%)
+      LD   (HL),216          ' 弾を画面外へ
+      LD   A,(CHIT%)
+      INC  A
+      LD   (CHIT%),A         ' 命中として加算
+SFDNXT:
+      LD   HL,(WSX%)
+      INC  HL
+      INC  HL
+      LD   (WSX%),HL
+      LD   HL,(WSY%)
+      INC  HL
+      INC  HL
+      LD   (WSY%),HL
+      LD   HL,(WSA%)
+      INC  HL
+      INC  HL
+      LD   (WSA%),HL
+      LD   A,(CSC%)
+      DEC  A
+      LD   (CSC%),A
+      JP   SFDSH
+SFDDONE:
+      ' ===== D: SPRITES 移動+Y補正+OAM描画 =====
+      LD   HL,(QY0%)
+      LD   (QY%),HL
+      LD   HL,(QX0%)
+      LD   (QX%),HL
+      LD   HL,(QP0%)
+      LD   (QP%),HL
+      LD   HL,(QA0%)
+      LD   (QA%),HL
+      LD   HL,(QV0%)
+      LD   (QV%),HL
+      LD   A,3
+      OUT  (&H99),A
+      LD   A,&H8E
+      OUT  (&H99),A
+      LD   A,&H00
+      OUT  (&H99),A
+      LD   A,&H76
+      OUT  (&H99),A
+      LD   A,(NSPR%)
+      LD   B,A
+SFSSL:
+      LD   HL,(QA%)
+      LD   A,(HL)
+      OR   A
+      JP   Z,SFSSHIDE
+      LD   HL,(QV%)
+      LD   A,(HL)
+      LD   E,A
+      LD   HL,(QY%)
+      LD   A,(HL)
+      ADD  A,E
+      LD   (HL),A
+      LD   D,A
+      LD   A,E
+      OR   A
+      JP   Z,SFSSDRAW
+      BIT  7,E
+      JR   Z,SFSSENE
+      LD   A,D
+      CP   8
+      JP   NC,SFSSDRAW
+      LD   HL,(QA%)
+      LD   (HL),0
+      JP   SFSSHIDE
+SFSSENE:
+      LD   A,D
+      CP   201
+      JP   C,SFSSDRAW
+      LD   HL,(QY%)
+      LD   (HL),0
+      LD   D,0
+SFSSDRAW:
+      LD   A,(VOFS%)
+      ADD  A,D
+      JP   SFSSOUT
+SFSSHIDE:
+      LD   A,(VOFS%)
+      ADD  A,220
+SFSSOUT:
+      OUT  (&H98),A
+      LD   HL,(QX%)
+      LD   A,(HL)
+      OUT  (&H98),A
+      LD   HL,(QP%)
+      LD   A,(HL)
+      OUT  (&H98),A
+      LD   A,0
+      OUT  (&H98),A
+      LD   HL,(QY%)
+      INC  HL
+      INC  HL
+      LD   (QY%),HL
+      LD   HL,(QX%)
+      INC  HL
+      INC  HL
+      LD   (QX%),HL
+      LD   HL,(QP%)
+      INC  HL
+      INC  HL
+      LD   (QP%),HL
+      LD   HL,(QA%)
+      INC  HL
+      INC  HL
+      LD   (QA%),HL
+      LD   HL,(QV%)
+      INC  HL
+      INC  HL
+      LD   (QV%),HL
+      DEC  B
+      JP   NZ,SFSSL
+      LD   A,0
+      OUT  (&H99),A
+      LD   A,&H8E
+      OUT  (&H99),A
+      EI
+    END ASM
+    RETURN CHIT%
+END FUNCTION

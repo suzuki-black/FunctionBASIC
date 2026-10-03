@@ -58,6 +58,18 @@ test("例: starters/fast-sprites.msxb（FAST_SPRITES/FAST_MOVE 見本・ASM節�
   assert.deepEqual(errorsOf("starters/fast-sprites.msxb"), []);
 });
 
+// 縦スクロール系の公開ライブラリ（関数のみ・インライン ASM 節）は単体で無エラー変換・
+// SJIS 安全でなければならない。README/デモから INCLUDE される公開デリバラブルの回帰保護。
+test("ライブラリ: lib/fast-scroll.msxb（3肝・HMMM/HMMV/R#23 ASM節）は単体で無エラー変換", () => {
+  assert.deepEqual(errorsOf("lib/fast-scroll.msxb"), []);
+});
+
+test("ライブラリ: lib/fast-stg.msxb（FAST_STGFRAME/FEED1 フレームエンジン・全ASM）は単体で無エラー変換", () => {
+  const { msx, diagnostics } = compileExample("lib/fast-stg.msxb");
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
+  assert.match(msx, /HMMM|&HD0/i); // タイル供給の HMMM コマンド発行が残る
+});
+
 test("例: recursion.msxb（自己/二重/相互再帰）はエラーなしで変換される", () => {
   const { msx, diagnostics } = compileExample("recursion.msxb");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);

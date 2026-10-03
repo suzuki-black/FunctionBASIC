@@ -1,0 +1,222 @@
+' ============================================================
+'  fast-scroll.msxb  ---  縦スクロール3肝プリミティブ (R&D / research only)
+'  設計: docs/fast-scroll-primitives-design.md
+'  対象: SCREEN 5 (MSX2+/V9938 VDPコマンド, R#23). 安全版 = CE(コマンド終了)まで待つ.
+'  これは research 試作。実測(JSミラー正しさ/純Z80タイミング)で揉んでから
+'  examples/lib/fast.msxb へ昇格する。ゲーム専用概念は一切持たない(汎用)。
+' ============================================================
+
+' ------------------------------------------------------------
+'  FAST_VSCROLL(DELTA%): 表示を DELTA% ライン縦に流す(256ライン リング)。
+'  R#23 で統一(MSX2/2+/turbo R 共通。SET SCROLL は turbo R 専用なので使わない)。
+'  VOFS% を更新して返す。行送り判断は呼び側(直交)。
+' ------------------------------------------------------------
+FUNCTION FAST_VSCROLL(DELTA%)
+    GLOBAL VOFS%
+    GLOBAL VSREG%
+    VOFS% = (VOFS% + DELTA%) AND 255
+    VSREG% = VOFS%
+    ASM
+      DI
+      LD   A,(VSREG%)
+      OUT  (&H99),A
+      LD   A,&H97               ' R#23 = 縦スクロール(表示開始ライン)
+      OUT  (&H99),A
+      EI
+    END ASM
+    RETURN VOFS%
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_COPY(SPG,SX,SY,W,H,DPG,DX,DY): VRAM->VRAM 矩形ブロック転送(HMMM=高速バイト転送)。
+'  引数はドット(px)だが内部でバイト(SC5=2px/byte)へ変換。X/W は偶数前提(タイルは常に偶数)。
+'  実測: 16x16=511us(LMMM 1871us の3.7倍速)。不透明コピーの正解。透明が要る時のみ LMMM。
+'  ページは縦Y上位(SC5: 1ページ=256ライン)。CE待ち安全版。肝2 FAST_TILEFEED の土台。
+' ------------------------------------------------------------
+FUNCTION FAST_COPY(SPG%, SX%, SY%, W%, H%, DPG%, DX%, DY%)
+    GLOBAL VC_SXL%
+    GLOBAL VC_SXH%
+    GLOBAL VC_SYL%
+    GLOBAL VC_SYH%
+    GLOBAL VC_DXL%
+    GLOBAL VC_DXH%
+    GLOBAL VC_DYL%
+    GLOBAL VC_DYH%
+    GLOBAL VC_NXL%
+    GLOBAL VC_NXH%
+    GLOBAL VC_NYL%
+    GLOBAL VC_NYH%
+    GLOBAL VC_CLR%
+    GLOBAL VC_ARG%
+    GLOBAL VC_CMD%
+    SYF% = SPG% * 256 + SY%
+    DYF% = DPG% * 256 + DY%
+    ' HMMM の座標/サイズは「ドット(px)」指定(高速コマンドは内部がバイト粒度なだけ)。X/W は偶数前提。
+    VC_SXL% = SX% AND 255
+    VC_SXH% = (SX% \ 256) AND 1
+    VC_SYL% = SYF% AND 255
+    VC_SYH% = (SYF% \ 256) AND 3
+    VC_DXL% = DX% AND 255
+    VC_DXH% = (DX% \ 256) AND 1
+    VC_DYL% = DYF% AND 255
+    VC_DYH% = (DYF% \ 256) AND 3
+    VC_NXL% = W% AND 255
+    VC_NXH% = (W% \ 256) AND 1
+    VC_NYL% = H% AND 255
+    VC_NYH% = (H% \ 256) AND 3
+    VC_CLR% = 0
+    VC_ARG% = 0                  ' DIX=right, DIY=down, main VRAM
+    VC_CMD% = &HD0               ' HMMM(高速転送・座標はドット)
+    R% = FSC_ISSUE()
+    RETURN 0
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FAST_VFILL(DPG,DX,DY,W,H,COL): 矩形塗り(HMMV=高速バイト塗り)。FAST CLS / 面切替クリア相当。
+'  引数はドット(px)だが内部でバイト変換。実測: 全画面38ms(毎フレーム不可・面切替専用)。
+' ------------------------------------------------------------
+FUNCTION FAST_VFILL(DPG%, DX%, DY%, W%, H%, COL%)
+    GLOBAL VC_SXL%
+    GLOBAL VC_SXH%
+    GLOBAL VC_SYL%
+    GLOBAL VC_SYH%
+    GLOBAL VC_DXL%
+    GLOBAL VC_DXH%
+    GLOBAL VC_DYL%
+    GLOBAL VC_DYH%
+    GLOBAL VC_NXL%
+    GLOBAL VC_NXH%
+    GLOBAL VC_NYL%
+    GLOBAL VC_NYH%
+    GLOBAL VC_CLR%
+    GLOBAL VC_ARG%
+    GLOBAL VC_CMD%
+    DYF% = DPG% * 256 + DY%
+    ' HMMV も座標/サイズはドット(px)指定。X/W は偶数前提。
+    VC_SXL% = 0
+    VC_SXH% = 0
+    VC_SYL% = 0
+    VC_SYH% = 0
+    VC_DXL% = DX% AND 255
+    VC_DXH% = (DX% \ 256) AND 1
+    VC_DYL% = DYF% AND 255
+    VC_DYH% = (DYF% \ 256) AND 3
+    VC_NXL% = W% AND 255
+    VC_NXH% = (W% \ 256) AND 1
+    VC_NYL% = H% AND 255
+    VC_NYH% = (H% \ 256) AND 3
+    VC_CLR% = (COL% AND 15) OR ((COL% AND 15) * 16)  ' 1バイト=2px 分に複製
+    VC_ARG% = 0
+    VC_CMD% = &HC0               ' HMMV(高速塗り・座標はドット)
+    R% = FSC_ISSUE()
+    RETURN 0
+END FUNCTION
+
+' ------------------------------------------------------------
+'  肝2 FAST_TILEFEED(ROW%, C0%, NCELL%): 露出行 ROW% のタイルを列 C0% から NCELL% 枚だけ
+'  絵柄バンクからリングページ(TF_PAGE%)へ HMMM 供給する。行一括でなく毎フレーム少数(1-4枚)を
+'  呼ぶ増分供給が前提(実測: HMMM 16x16=511us なので数枚/frame で予算内)。負値セルは海/透明で
+'  スキップ。少数供給なので薄い BASIC ループ(FAST_COPY を回す)で十分=ASM 再実装は過剰。
+'  呼ぶ前に設定グローバル(TF_*)と TMAP%() を用意。列カーソル/行送りは呼び側が保持(直交)。
+'  タイル index -> バンク座標: TF_BANKCOLS% 列のグリッド(=1 で縦ストリップ)。
+' ------------------------------------------------------------
+FUNCTION FAST_TILEFEED(ROW%, C0%, NCELL%)
+    GLOBAL TF_PAGE%
+    GLOBAL TF_TW%
+    GLOBAL TF_TH%
+    GLOBAL TF_COLS%
+    GLOBAL TF_BANKPG%
+    GLOBAL TF_BANKCOLS%
+    GLOBAL TMAP%
+    ' 空範囲FORは1回実行される(MSX仕様)ので NCELL<=0 を明示ガード
+    IF NCELL% <= 0 THEN
+        RETURN 0
+    END IF
+    VY% = (ROW% * TF_TH%) AND 255
+    BASE% = ROW% * TF_COLS%
+    FOR I% = 0 TO NCELL% - 1
+        CC% = C0% + I%
+        T% = TMAP%(BASE% + CC%)
+        IF T% >= 0 THEN
+            TQ% = T% \ TF_BANKCOLS%
+            BX% = (T% - TQ% * TF_BANKCOLS%) * TF_TW%
+            BY% = TQ% * TF_TH%
+            R% = FAST_COPY(TF_BANKPG%, BX%, BY%, TF_TW%, TF_TH%, TF_PAGE%, CC% * TF_TW%, VY%)
+        END IF
+    NEXT I%
+    RETURN 0
+END FUNCTION
+
+' ------------------------------------------------------------
+'  FSC_ISSUE(): R#32..R#46 の15バイトを間接オートインクリメント(R#17)で流し込み、
+'  コマンド発行。発行前に CE=0 まで待つ(安全版)。VC_* を埋めてから呼ぶ(内部専用)。
+' ------------------------------------------------------------
+FUNCTION FSC_ISSUE()
+    GLOBAL VC_SXL%
+    GLOBAL VC_SXH%
+    GLOBAL VC_SYL%
+    GLOBAL VC_SYH%
+    GLOBAL VC_DXL%
+    GLOBAL VC_DXH%
+    GLOBAL VC_DYL%
+    GLOBAL VC_DYH%
+    GLOBAL VC_NXL%
+    GLOBAL VC_NXH%
+    GLOBAL VC_NYL%
+    GLOBAL VC_NYH%
+    GLOBAL VC_CLR%
+    GLOBAL VC_ARG%
+    GLOBAL VC_CMD%
+    ASM
+      DI
+FSC_WCE:
+      LD   A,2                  ' S#2 を読むため R#15=2
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      IN   A,(&H99)             ' S#2: bit0 = CE(コマンド実行中)
+      LD   C,A
+      LD   A,0                  ' 状態ポインタを R#15=0 に戻す
+      OUT  (&H99),A
+      LD   A,&H8F
+      OUT  (&H99),A
+      BIT  0,C
+      JR   NZ,FSC_WCE
+      LD   A,32                 ' 間接アクセスを R#32 から(bit7=0でオートインクリメントON)
+      OUT  (&H99),A
+      LD   A,&H91               ' R#17 | &H80
+      OUT  (&H99),A
+      LD   A,(VC_SXL%)
+      OUT  (&H9B),A
+      LD   A,(VC_SXH%)
+      OUT  (&H9B),A
+      LD   A,(VC_SYL%)
+      OUT  (&H9B),A
+      LD   A,(VC_SYH%)
+      OUT  (&H9B),A
+      LD   A,(VC_DXL%)
+      OUT  (&H9B),A
+      LD   A,(VC_DXH%)
+      OUT  (&H9B),A
+      LD   A,(VC_DYL%)
+      OUT  (&H9B),A
+      LD   A,(VC_DYH%)
+      OUT  (&H9B),A
+      LD   A,(VC_NXL%)
+      OUT  (&H9B),A
+      LD   A,(VC_NXH%)
+      OUT  (&H9B),A
+      LD   A,(VC_NYL%)
+      OUT  (&H9B),A
+      LD   A,(VC_NYH%)
+      OUT  (&H9B),A
+      LD   A,(VC_CLR%)
+      OUT  (&H9B),A
+      LD   A,(VC_ARG%)
+      OUT  (&H9B),A
+      LD   A,(VC_CMD%)          ' R#46 書込でコマンド発行
+      OUT  (&H9B),A
+      EI
+    END ASM
+    RETURN 0
+END FUNCTION

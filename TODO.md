@@ -234,6 +234,111 @@ of *understanding* (納得感). Comments alone are not enough. Three layers to b
   + structured/annotated ASM), drop it into the T2 template, and measure the before/after.
   This establishes the "納得感" pattern that the other FAST primitives copy.
 
+## 縦スクロールSTG（3肝スクロール primitive の実証 → 公開サンプル）
+
+設計: [docs/fast-scroll-primitives-design.md](docs/fast-scroll-primitives-design.md)。3肝＝
+`FAST_VSCROLL`(R#23) / `FAST_TILEFEED`(増分供給) / `FAST_COPY`+`FAST_VFILL`(HMMM/HMMV)。
+research 試作 `research/fast-scroll.msxb` ＋ `research/vstg-demo.msxb`（gitignored）で
+WebMSX 実機挙動まで確認済み（フル幅・VSYNC・1タイル/frame 増分供給で滑らかスクロール実証）。
+
+- [x] 3肝を実装・VDP実測（HMMM 511us/LMMM 1871us・座標はドット・増分供給必須）・WebMSXで目視確認。
+- [x] **(1) INCLUDE版の修正反映**：`examples/lib/fast-scroll.msxb`（ドット座標修正版）を `build.mjs` で
+  LIBS 同梱済。※`.app` 再インストールは未（都度ユーザー確認・反復はブラウザ版優先の方針）。
+- [x] **(2) フルSTG化**：`research/vstg-game.msxb`（gitignored）で自機/弾/敵/当たり＋背景に大きい戦艦
+  （tile を2x3で配置）を実装。**毎フレ複数GOSUB=9fps → 統合ASM `FAST_STGFRAME`=~48fps**（turbo R/MSXPen 実測）。
+  重要実測則: 細かい primitive を毎フレ多数呼ぶと GOSUB 線形探索で ~25fps 天井 → memory `msx-gosub-linear-search-fast-perf`。
+- [x] **(3) 公開昇格**：3肝を `examples/lib/fast-scroll.msxb`、統合フレームエンジン `FAST_STGFRAME`＋`FEED1` を
+  `examples/lib/fast-stg.msxb` へ昇格（SoA契約を先頭に文書化）。`build.mjs` で LIBS 同梱、設計メモ
+  ([docs/fast-scroll-primitives-design.md](docs/fast-scroll-primitives-design.md)) 確定、単体変換の回帰テスト2件追加（test/examples.test.ts）。
+- [ ] **(完成時) README にサンプル追加＋零の咆哮リンク**：英日README にこの縦STGサンプルを載せ、
+  「これが **零の咆哮** の元となったゲームを公開用に改良したものです」と明記し、**零の咆哮へのリンク**を張る
+  （元リポジトリ候補: https://github.com/suzuki-black/BattleshipProtoR ／公開URLは着手時にユーザー確認）。
+  ※デモ本体は research/（gitignored・TAITO系IP同様に非公開素材）なので、公開用の縦STGサンプルを
+  `examples/` に別途用意するか要判断（ライブラリ=fast-stg/fast-scroll は公開済、サンプルゲームは未公開）。
+
+## ESERAMair 連携（WiFi付き似非RAMディスク実機へ curl 配信）
+
+**同人ハード（交換不能・壊れやすい）。** 取扱いは [[eseramair-fragile-irreplaceable-hw]] と
+グローバル `~/.claude/CLAUDE.md`「物理ハードウェア・実機の取扱い」を厳守: curl相当・keep-alive無し・
+連打しない・破壊操作はバックアップ付き。REST(http:8080): `/ram`・`/ram/fill`・`/fat/*`、reset非対応(物理)。
+
+- [x] **解析＋curlクライアント**：`eseramair.mjs`（依存ゼロ・**curl subprocess**で keep-alive無し＝
+  `--http1.1 -H "Connection: close"`、POSTは`--data-binary @file`）。ローカルモックで connections==requests 検証済。
+- [x] **FAST出力圧縮（コア）**：ASM を 1バイトPOKE羅列 → DATA+READ一括（34KB→20.8KB、トークン化25151→18302）。
+  これで実機turboRのBASIC空きRAMに収まり起動可能に（openMSX My_FS-A1ST_512K で実証）。
+- [x] **実機デプロイ成功**：Nextor ROM復元(`ram-write`)→`format`→`put GAME.BAS`→RESET→`RUN"GAME.BAS"`で
+  縦STGが実機turboRで起動（2026-10-03）。SRAM全体バックアップ `~/turbor_dump/eseram_current_1M.bin`。
+- [x] **自動起動プロトタイプ（openMSX）**：ブートセクタ(sector0 @0x1E)でKEYBUFへ`RUN"GAME.BAS"`注入→
+  boot時に自動実行、を小プログラムで実証（R0=6=SCREEN5到達）。
+- [ ] **ワンコマンド化**：`.msxb → GAME.BAS（stripComments＋CRLF＋Ctrl-Z）→ eseramair put` を1発に。
+- [ ] **(重要) 転送前の安全確認UI**：FunctionBASICに取り込む際、転送ボタン押下時に
+  「**MSXがディスクにアクセス中でないことを確認しましたか？**」の注意文言を出し、「続行」で転送開始。
+  公式注意（Introduction.md: MSXアクセス中のPC操作は競合でデータ破損/暴走の恐れ）に対応。
+- [ ] **(任意) 実機で自動起動**：Nextorディスクのブートセクタに注入コードを仕込む。※Nextor独自の起動
+  コードを壊さぬよう慎重に。`/fat` APIでは書けず生SRAM書き込み＝リスク高。まず手打ち`RUN"GAME.BAS"`運用で可。
+  また大プログラムはRAMが逼迫気味（自作.dsk構成では Out of memory 実例）＝さらなる縮小も検討。
+- [ ] **運用フロー（リセット不要の反復）**：ゲーム中はRAM実行なので、PCから`put`で差し替え→MSX側
+  Ctrl-STOP→`RUN"GAME.BAS"`で新版再ロード（ESERAMair公式ユースケース＝.BAS転送して実行）。
+
+## FunctionBASIC Runtime 連携（別プロジェクト: BasicPureInterpreter）
+
+`~/work/BasicPureInterpreter`（remote `git@github.com:suzuki-black/FunctionBasicRuntime.git`）は
+**webMSX の代替**となる純 MSX-BASIC＋最小マシン語インタプリタ（TS・依存ゼロ・Tauri アプリ、v0.0.1）。
+本体（このリポジトリ＝トランスパイラ＋エディタ）から**別エンジンとして駆動**する連携が予定されている。
+現状把握（2026-09-19 調査、Runtime 側 commit `8fffd11` 時点）に基づくタスク。
+
+> **方針（確定・2026-09-19）**：**Runtime は FunctionBASIC＋FAST が生成するものを「全て動く」ように
+> していくのが目標**。実 MSX/webMSX との後方互換は**一切気にしない**（Runtime が実装追従先＝
+> FunctionBASIC＋FAST の出力が事実上の仕様）。動かなければ**Runtime 側を何度でも直す**。
+> ＝下記「FAST の穴」は基本すべて **Runtime 側に実装する**課題であり、本体側にフォールバックや
+> 互換分岐を入れる方向では**ない**（本体は Runtime に合わせて劣化させない）。連携チャネル(IPC)の
+> 作法だけは両者ですり合わせる。実装は Runtime リポジトリで行うが、追従漏れ防止に本体側からも列挙する。
+
+### 連携チャネル（IPC。Runtime 側 `docs/IPC-DESIGN.md` で設計・一部実装済）
+
+- [ ] **本体→Runtime のクライアント実装（macOS 先行）**。Unix domain socket / named pipe ＋
+  **JSON Lines** で `run` リクエスト（`source`=**平文 MSX-BASIC テキスト** ≤1MiB、`name?`/`debug?`/
+  `machineProbe?`(sealed|allow)/`charset?`/`focus?`）を送り、`subscribe` で状態イベントを受ける。
+  **`.msxb` は渡さない**（トランスパイル後の MSX-BASIC 文字列を送る）。Runtime 起動は Tauri アプリ
+  id `dev.functionbasic.runtime`（`fbrun://open` は前面化のみ・ソースは載せない）。
+- [ ] **エディタからの起動導線**：既存の「WebMSX で実行」の隣に「Runtime で実行」を用意。
+  旧 iframe 埋め込み案は Runtime 側で**廃案**（socket アプリに一本化）。埋め込みたい場合は
+  Runtime の `createRuntime()`/`load`/`run`/`step` API を直接叩く選択肢もあるが、当面は socket。
+- [ ] **protocol-2 のデバッガ連携（Runtime 側 未実装・要すり合わせ）**：本体の
+  `MsxLine.src`（変換後行→構造化ソース file+line）と変数名マップを **line-map / varNameMap** として
+  添付し、Runtime のブレーク位置・エラーを**構造化ソース側の行/名前**へ逆写像する。`setBreakpoints`、
+  仮想ディスク送信もこのフェーズ。→ 本体側で line-map/varName を IPC 用に serialize する口が要る。
+- [ ] **共有フォーマットは `.dsk`**（FAT12 720KB）。Runtime の `virtualDiskToDsk` は本体の
+  `build_dsk_files` を移植したもの。相互運用（本体で作った .dsk を Runtime で開く等）を確認。
+- [ ] Windows / ブラウザ起動（Runtime の I-4/I-6）は Runtime 側で保留中。macOS 連携が固まってから。
+
+### Runtime 側で実装すべき FAST（ASM）対応（＝Runtime を追従させる項目）
+
+Runtime は実 Z80 を実行し（USR/DEFUSR/POKE→CALL、ZEXDOC/ZEXALL 通過）、VDP **ポート I/O の一部**
+（`&H98`/`&H99`/`&H9A`）、**R#23 縦スクロール**、**OAM `&H7600` 直書き（SC5/6）**、PSG、一部 BIOS を解釈する。
+以下は現状未対応で **FAST 系が Runtime で動かない箇所＝すべて Runtime 側に実装して追従させる**
+（本体は変えない）。実装は Runtime リポジトリ、ここは追従漏れ防止の対向リスト：
+
+- [ ] **VDP コマンドエンジン（HMMM/HMMV/LMMM/LMMC/YMMM …）を Runtime に実装**。今は R#32-46 が
+  「格納するだけで無反応」。R#46 書込を検出し、R#32-45（SX/SY/DX/DY/NX/NY/CLR/ARG）から state 画面へ
+  矩形 copy/fill/move を実行する command executor を追加する。→ これが無いと新設の縦スクロール肝
+  ([[docs/fast-scroll-primitives-design.md]] の FAST_COPY=HMMM / FAST_VFILL=HMMV / FAST_TILEFEED) と
+  既存 `COPY` 相当が Runtime で無反応。**最優先**（縦STG系の要）。
+- [ ] **ポート `&H9B`（VDP 間接レジスタ）を Runtime に実装**。今は `OUT`/`IN &H9B` が fault。
+  R#17 ポインタ＋オートインクリメントで R#32-46 をストリームする FAST の発行経路を通す。
+- [ ] **テーブルベースレジスタ R#2-6/10/11 を実効化**（今は格納のみ無視）。FAST/例が pattern/name/
+  sprite テーブルを VRAM 内で移動したら state 側レイアウトも追従させる。
+- [ ] **割り込み/`HALT` を Runtime に実装**（今は `EI`/`HALT` がエラー、S#0 は常に vblank）。VBLANK 同期
+  ASM（`EI`+`HALT` 待ち）が通るようにする。当面 busy-poll で回避可能だが、最終的には Runtime 側対応。
+- [ ] **任意 VRAM アドレスの読み書きを実 VRAM 化 or マップ拡張**（今は state ベースで `vram-map.ts` 外は
+  fault）。FAST/ASM が触る領域が増えたら Runtime のマップを広げる（＝バイト単位 VRAM に寄せる検討）。
+- [ ] **回帰の当て方**：FAST 例を昇格するたびに Runtime で実行して「無反応/ fault」が出ないことを確認し、
+  出たら Runtime 側に不足機能として起票→実装。FAST が Runtime の対応範囲を牽引する運用にする。
+
+> まとめ：**純 BASIC＋ポート I/O/R#23/OAM 直書きレベルの FAST は Runtime で動く見込み**。
+> **VDP コマンドエンジン依存（＝今回の縦スクロール3肝）は Runtime 拡張かフォールバックが要る**。
+> 縦スクロール肝を公開ライブラリへ昇格する際は、この Runtime 制約を昇格条件に含める。
+
 ## Future option (low priority): whole-program compilation via BACON
 
 De-risked 2026-08-01 and **kept as a future escape valve only** (not the primary path).
@@ -281,6 +386,27 @@ and a "compile the whole thing" button becomes worth the dependency.
   machine-detect vs `CALL TURBO` choice above is still open for that sample.
   Also revisit `examples/turbo-r.msxb`, which uses `_TURBO ON/OFF` (Basic-kun
   form) and whose test only asserts the transpiled text, not a real run.
+- [ ] **`examples/runner-turbor.msxb` (SCROLL RUNNER): keep or revert the
+  uncommitted `SETUP_TILES` edit** (made 2026-09-17 while getting it to run on
+  BasicPureInterpreter; decision pending). The edit:
+  - writes the tile shapes to `BASE(7)` (SCREEN 1 pattern generator) instead of
+    `BASE(5)` (the name table — the original wrote into the screen text, not the
+    tile shape);
+  - also redefines the ground tile 219 as solid, so both tiles look the same on
+    the Japanese (katakana) and international (graphic) character sets.
+  Reverting still runs without errors, but the obstacle tile is not drawn solid.
+
+## MSX0 (IoT BASIC) support: TBD
+
+- [ ] **MSX0 IoT statements (`_IOTGET` / `_IOTPUT` / `_IOTFIND`) in
+  BasicPureInterpreter.** Found in the OSS corpus (hra1129 `test_iot.asc`:
+  `_IOTGET("host/battery/level",L)`). The runtime now stops them with an explicit
+  reason ("MSX0 の IoT 命令です。まだ対応していません", decision N-67) instead of a
+  generic sealed error. To support them we need the MSX0 device-path semantics
+  (value types, missing paths, errors) — confirm from MSX0 documentation or a real
+  MSX0 before implementing; decide whether the host supplies fake/real values.
+  (Basic-kun extensions such as `_SCOLOR` / `_LSTYLE` are deliberately **not**
+  supported — they need the compiler.)
 
 ## Roadmap (see README for the full list)
 

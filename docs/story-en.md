@@ -320,7 +320,7 @@ The line-numbering rule is fixed: top-level (MAIN) starts at 100; each function 
 
 `REF IDX` has become `D`. The comment `1000 ' === FUNCTION FIND_ZERO (IDX->D) ===` is inserted automatically, making the mapping explicit. The caller's `FOUND_AT` is also `D`, so writing `D=E` inside the function updates the caller. That is pass-by-reference. By hand, a human has to remember "we share variable D"; here the machine does.
 
-`1030 NEXT` — the `NEXT` is emitted without its variable. In MSX-BASIC a bare `NEXT` is slightly faster and smaller than `NEXT D`. A tiny detail, but it reproduces a hand-optimisation trick.
+`1030 NEXT` — the `NEXT` is emitted without its variable. In MSX-BASIC a bare `NEXT` is slightly faster and smaller than `NEXT E`. A tiny detail, but it reproduces a hand-optimisation trick.
 
 The comment (line 110) survives. The generated code is still readable.
 

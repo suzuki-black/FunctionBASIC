@@ -459,10 +459,12 @@ const I18N = {
     "sc.body": `  Save:                 Ctrl/Cmd + S\n  Run in WebMSX:        Ctrl/Cmd + Enter\n  Undo / Redo:          Ctrl/Cmd + Z / Shift + Z\n  Find (toggle):        Ctrl/Cmd + F\n  Replace:              Ctrl/Cmd + R\n  Find everywhere:      Ctrl/Cmd + Shift + F\n  Next / Prev match:    F3 / Shift + F3\n  Duplicate line:       Ctrl/Cmd + D\n  Move line up/down:    Alt + ↑ / ↓\n  Format (uppercase):   Ctrl/Cmd + Alt + L\n  Go to definition:     Ctrl/Cmd + B\n  Rename symbol:        Shift + F6\n  Find usages (cycle):  Alt + F7\n  Back / Forward:       Ctrl/Cmd + Alt + ← / →\n  Go to line:           Ctrl/Cmd + G\n  Bookmark toggle/next: F11 / Shift + F11\n  Snippets:             fn/for/if/while + Tab at line start\n  Indent:               Tab`,
   },
 };
-// 言語の初期値: URL の ?lang=en|ja を最優先（記事など外部リンクからの誘導用。保存はしない＝
-// 既定設定を上書きしない）。無ければ保存値、無ければ日本語。
+// 言語の初期値: URL の ?lang=en|ja が最優先。指定時は localStorage(fbe-lang) に保存し以後も踏襲する
+// （記事など外部リンクからの誘導で言語を切り替え・固定できるように。保存しないと前回値が残り続けて
+//  「?lang=ja にしても bare URL では en のまま」になるため保存する）。指定が無ければ保存値→既定(ja)。
 const _urlLang = new URLSearchParams(location.search).get("lang");
-let lang = _urlLang === "en" ? "en" : _urlLang === "ja" ? "ja" : (localStorage.getItem("fbe-lang") === "en" ? "en" : "ja");
+if (_urlLang === "en" || _urlLang === "ja") localStorage.setItem("fbe-lang", _urlLang);
+let lang = localStorage.getItem("fbe-lang") === "en" ? "en" : "ja";
 
 // ---- 設定（言語は fbe-lang、その他は fbe-settings に永続化）----
 const SETTINGS_KEY = "fbe-settings";

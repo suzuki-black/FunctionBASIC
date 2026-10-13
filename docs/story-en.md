@@ -14,6 +14,7 @@ I can still remember the thrill of carrying that box home from a small-town came
 
 > The tool described in this article, FunctionBASIC, is here:
 > https://github.com/suzuki-black/FunctionBASIC
+> Or try it right now in your browser (no install): https://suzuki-black.github.io/FunctionBASIC/?lang=en
 
 The excitement did not last long. The moment I sat in front of the MSX-BASIC prompt, I hit a wall.
 
@@ -490,4 +491,6 @@ If you are at all curious, please try it. And look at the converted MSX-BASIC. T
 
 A language for taking revenge, decades later, on the MSX-BASIC that defeated me as a kid — it is here.
 
-https://github.com/suzuki-black/FunctionBASIC
+**Try it now in your browser (no install):** https://suzuki-black.github.io/FunctionBASIC/?lang=en
+
+Source on GitHub: https://github.com/suzuki-black/FunctionBASIC

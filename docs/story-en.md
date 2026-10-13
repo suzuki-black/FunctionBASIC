@@ -282,6 +282,10 @@ FUNCTION FIND_ZERO(REF IDX)
 END FUNCTION
 
 DIM A(10)
+' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+FOR I = 1 TO 10
+    A(I) = I
+NEXT I
 A(3) = 0
 RESULT = FIND_ZERO(FOUND_AT)
 PRINT "FOUND="; RESULT; " AT "; FOUND_AT
@@ -293,24 +297,28 @@ converts to:
 100 ' === MAIN ===
 110 ' Return the index of the first 0 in the array
 120 DIM A(10)
-130 A(3)=0
-140 GOSUB 1000: B=E
-150 PRINT "FOUND=";B;" AT ";C
-160 END
-1000 ' === FUNCTION FIND_ZERO (IDX->C) ===
-1010 FOR D=1 TO 10
-1020 IF A(D)=0 THEN C=D: E=1: RETURN
+130 ' arrays start all-zero on DIM, so fill 1..10 first, then plant one 0
+140 FOR B=1 TO 10
+150 A(B)=B
+160 NEXT
+170 A(3)=0
+180 GOSUB 1000: C=F
+190 PRINT "FOUND=";C;" AT ";D
+200 END
+1000 ' === FUNCTION FIND_ZERO (IDX->D) ===
+1010 FOR E=1 TO 10
+1020 IF A(E)=0 THEN D=E: F=1: RETURN
 1030 NEXT
-1040 E=0: RETURN
+1040 F=0: RETURN
 ```
 
 Reading it is fun.
 
 The line-numbering rule is fixed: top-level (MAIN) starts at 100; each function gets its own 1000-step segment (1000, 2000, 3000…). Adding a function never shifts existing numbers. RENUM hell is structurally impossible.
 
-`140 GOSUB 1000: B=E` — this is what a function call really is. `GOSUB` jumps, and immediately on return the internal return-value variable `E` is copied to `B` (= `RESULT`). The convention I used to write by hand is now generated mechanically.
+`180 GOSUB 1000: C=F` — this is what a function call really is. `GOSUB` jumps, and immediately on return the internal return-value variable `F` is copied to `C` (= `RESULT`). The convention I used to write by hand is now generated mechanically.
 
-`REF IDX` has become `C`. The comment `1000 ' === FUNCTION FIND_ZERO (IDX->C) ===` is inserted automatically, making the mapping explicit. The caller's `FOUND_AT` is also `C`, so writing `C=D` inside the function updates the caller. That is pass-by-reference. By hand, a human has to remember "we share variable C"; here the machine does.
+`REF IDX` has become `D`. The comment `1000 ' === FUNCTION FIND_ZERO (IDX->D) ===` is inserted automatically, making the mapping explicit. The caller's `FOUND_AT` is also `D`, so writing `D=E` inside the function updates the caller. That is pass-by-reference. By hand, a human has to remember "we share variable D"; here the machine does.
 
 `1030 NEXT` — the `NEXT` is emitted without its variable. In MSX-BASIC a bare `NEXT` is slightly faster and smaller than `NEXT D`. A tiny detail, but it reproduces a hand-optimisation trick.
 

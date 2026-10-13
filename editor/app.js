@@ -212,6 +212,12 @@ const I18N = {
     "run.noerr": "エラーがあるため実行できません",
     "run.starting": "WebMSX を起動中…（main を実行）",
     "run.starting.ext": "外部ブラウザで WebMSX を起動中…",
+    "run.big.title": "アプリ内 WebMSX で起動できません",
+    "run.big.body": (kb) => `このプログラムは大きすぎて（約${kb}KB）、アプリ内 WebMSX の URL 上限を超えるため自動起動できません。どの方法で起動しますか？\n\n・外部ブラウザ: そのまま自動起動できます（推奨）\n・.dsk 保存: ディスクに書き出し、WebMSX へドラッグして起動`,
+    "run.big.ext": "外部ブラウザで実行（推奨）",
+    "run.big.dsk": ".dsk に保存して起動",
+    "run.big.dskonly": (kb) => `このプログラムは大きすぎて（約${kb}KB）外部ブラウザでも自動起動できません。.dsk に保存しますか？（WebMSX へドラッグして起動）`,
+    "run.canceled": "実行をキャンセルしました",
     "run.ok": (name, note) => `アプリ内WebMSXで実行（RUN"${name}"）${note}`,
     "run.ext.ok": "外部ブラウザでWebMSXを開きました（音を出すには画面を1回クリック）",
     "run.note": (n) => `（日本語等${n}字は実行用に除去）`, "run.open.err": "WebMSXを開けませんでした",
@@ -417,6 +423,12 @@ const I18N = {
     "run.noerr": "Cannot run: there are errors.",
     "run.starting": "Starting WebMSX… (running main)",
     "run.starting.ext": "Starting WebMSX in the external browser…",
+    "run.big.title": "Can't launch in the embedded WebMSX",
+    "run.big.body": (kb) => `This program is too large (~${kb}KB) to fit in the embedded WebMSX auto-run URL. How do you want to launch it?\n\n• External browser: runs automatically as-is (recommended)\n• Save .dsk: write a disk image and drag it into WebMSX`,
+    "run.big.ext": "Run in external browser (recommended)",
+    "run.big.dsk": "Save as .dsk and launch",
+    "run.big.dskonly": (kb) => `This program is too large (~${kb}KB) to auto-run even in an external browser. Save it as a .dsk? (drag it into WebMSX to launch)`,
+    "run.canceled": "Run canceled",
     "run.ok": (name, note) => `Running in the embedded WebMSX (RUN"${name}")${note}`,
     "run.ext.ok": "Opened WebMSX in the external browser (click the screen once to enable sound)",
     "run.note": (n) => ` (${n} non-ASCII char(s) stripped for run)`, "run.open.err": "Could not open WebMSX.",
@@ -447,7 +459,10 @@ const I18N = {
     "sc.body": `  Save:                 Ctrl/Cmd + S\n  Run in WebMSX:        Ctrl/Cmd + Enter\n  Undo / Redo:          Ctrl/Cmd + Z / Shift + Z\n  Find (toggle):        Ctrl/Cmd + F\n  Replace:              Ctrl/Cmd + R\n  Find everywhere:      Ctrl/Cmd + Shift + F\n  Next / Prev match:    F3 / Shift + F3\n  Duplicate line:       Ctrl/Cmd + D\n  Move line up/down:    Alt + ↑ / ↓\n  Format (uppercase):   Ctrl/Cmd + Alt + L\n  Go to definition:     Ctrl/Cmd + B\n  Rename symbol:        Shift + F6\n  Find usages (cycle):  Alt + F7\n  Back / Forward:       Ctrl/Cmd + Alt + ← / →\n  Go to line:           Ctrl/Cmd + G\n  Bookmark toggle/next: F11 / Shift + F11\n  Snippets:             fn/for/if/while + Tab at line start\n  Indent:               Tab`,
   },
 };
-let lang = localStorage.getItem("fbe-lang") === "en" ? "en" : "ja";
+// 言語の初期値: URL の ?lang=en|ja を最優先（記事など外部リンクからの誘導用。保存はしない＝
+// 既定設定を上書きしない）。無ければ保存値、無ければ日本語。
+const _urlLang = new URLSearchParams(location.search).get("lang");
+let lang = _urlLang === "en" ? "en" : _urlLang === "ja" ? "ja" : (localStorage.getItem("fbe-lang") === "en" ? "en" : "ja");
 
 // ---- 設定（言語は fbe-lang、その他は fbe-settings に永続化）----
 const SETTINGS_KEY = "fbe-settings";
@@ -551,6 +566,7 @@ function setLang(l) {
   applyI18n();
   renderTabs(); // タブ名
   renderHeavy(); // ステータス・プレビュー注記
+  renderTree(); // サイドバーのツリーは t() で描画済み＝言語切替時に再描画して再ローカライズ
   if (isDesktop()) {
     try {
       tauri().core.invoke("set_menu_lang", { lang });
@@ -2231,9 +2247,6 @@ async function onPlayWebMSX() {
     setStatus("err", t("run.noerr"));
     return;
   }
-  // 押した瞬間のフィードバック: Run(WebMSX)タブへ即切替＋「起動中…」表示（データ編集中でも分かる）。
-  revealRun();
-  setStatus("", t("run.starting"));
   // MSX の ASCII セーブ形式に合わせ CRLF＋EOF(0x1A)
   const body = r.msx.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const { out, stripped } = asciiForWebMSX(body);
@@ -2248,23 +2261,33 @@ async function onPlayWebMSX() {
   const url = await webmsxAutorunUrlFiles(name, files);
   log(`WebMSX 実行: URL長=${url.length} name=${name} stripped=${stripped} bins=${bins.length}`);
 
-  // URL長が WebView 上限を超えると「URI Too Long」で失敗する。超過時は壊れURLを出さず
-  // .dsk フォールバック（デスクトップのみ保存可・ドラッグ/openMSX 案内）。
+  // URL長が WebView 上限(~7800)を超えるとアプリ内 iframe では起動できない。
+  // 無言で保存ダイアログを出さず、起動方法を尋ねる（外部ブラウザなら上限 1.8M で自動起動できる）。
+  const kb = Math.round(url.length / 1024);
   if (url.length > WEBMSX_URL_MAX) {
-    if (isDesktop()) {
-      await saveDskBundle(baseName(), r.msx, t("run.toobig.dsk", Math.round(url.length / 1024)));
-    } else {
-      setStatus("err", t("run.toobig", Math.round(url.length / 1024)));
-    }
+    if (!isDesktop()) { setStatus("err", t("run.toobig", kb)); return; }
+    const choice = await openModal({
+      title: t("run.big.title"),
+      body: t("run.big.body", kb),
+      buttons: [
+        { label: t("run.big.ext"), value: "ext" },   // 外部ブラウザで実行（推奨・自動起動できる）
+        { label: t("run.big.dsk"), value: "dsk" },    // .dskに保存して起動（ドラッグ）
+        { label: t("cancel"), value: "cancel" },
+      ],
+    });
+    if (choice === "ext") { await onPlayWebMSXExternal(); return; }
+    if (choice === "dsk") { await saveDskBundle(baseName(), r.msx, ""); return; }
+    setStatus("", t("run.canceled"));
     return;
   }
 
-  // アプリ内 iframe の src を差し替えて同一画面で再実行（新タブ/別ウィンドウを開かない）。
+  // 収まった: アプリ内 iframe で自動実行。押下フィードバック（Runタブ＋起動中）はここで。
+  revealRun();
+  setStatus("", t("run.starting"));
   // src を毎回付け替えることで WebMSX がリロード→自動ロード→自動RUN する。
   const frame = $("webmsxFrame");
   frame.src = "about:blank"; // 同一URLでも確実にリロードさせる
   frame.src = url;
-  revealRun();
 
   const miss = missing.length ? " " + t("dsk.missing", missing.join(", ")) : "";
   const note = stripped > 0 ? t("run.note", stripped) : "";
@@ -2302,11 +2325,11 @@ async function onPlayWebMSXExternal() {
 
   // 外部ブラウザはURLが長くても通るが、極端に大きい時のみ .dsk へ逃がす。
   if (url.length > 1_800_000) {
-    if (isDesktop()) {
-      await saveDskBundle(baseName(), r.msx, t("run.toobig.dsk", Math.round(url.length / 1024)));
-    } else {
-      setStatus("err", t("run.toobig", Math.round(url.length / 1024)));
-    }
+    const kb = Math.round(url.length / 1024);
+    if (!isDesktop()) { setStatus("err", t("run.toobig", kb)); return; }
+    // 外部ブラウザでも載らない極端サイズ。無言保存せず確認してから .dsk 化。
+    if (await showConfirm(t("run.big.title"), t("run.big.dskonly", kb))) await saveDskBundle(baseName(), r.msx, "");
+    else setStatus("", t("run.canceled"));
     return;
   }
 

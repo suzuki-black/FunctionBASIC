@@ -48,9 +48,9 @@ jobs:
             echo '<title>Getting Revenge on the MSX-BASIC That Defeated Me — FunctionBASIC</title>'
             echo '<style>body{max-width:760px;margin:2rem auto;padding:0 1rem;font:16px/1.7 system-ui,sans-serif;color:#222}img{max-width:100%}pre{background:#f4f4f4;padding:.8rem;overflow:auto}code{font-size:.92em}</style>'
             echo '</head><body>'
-            echo '<p><a href="../">← Try FunctionBASIC in your browser</a></p>'
+            echo '<p><a href="../?lang=en">← Try FunctionBASIC in your browser</a></p>'
             cat /tmp/story.html
-            echo '<hr><p><a href="../">▶ Try it now — write, convert, run, all in the browser</a></p>'
+            echo '<hr><p><a href="../?lang=en">▶ Try it now — write, convert, run, all in the browser</a></p>'
             echo '</body></html>'
           } > editor/story/index.html
 

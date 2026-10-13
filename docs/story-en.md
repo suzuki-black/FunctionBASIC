@@ -1,6 +1,6 @@
 # Getting Revenge on the MSX-BASIC That Defeated Me
 
-*Originally published in Japanese on [note](https://note.com/hot_daphne8758/n/n99d41099ee6e), 19 July 2026. Translated by the author.*
+> **About this translation.** This is an English translation, by the author, of my own Japanese essay first published on [note](https://note.com/hot_daphne8758/n/n99d41099ee6e) on **19 July 2026**. FunctionBASIC has kept evolving since that post, so some details below may differ from the current version — please check the [repository](https://github.com/suzuki-black/FunctionBASIC) for the latest, or try the live editor at <https://suzuki-black.github.io/FunctionBASIC/?lang=en>.
 
 ![An orange tabby cat asleep on a wooden bench](images/story-hero.jpg)
 <!-- Download from https://unsplash.com/photos/aE-iTwRA4oQ (Unsplash License) and save as docs/images/story-hero.jpg -->

@@ -475,6 +475,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 - **MSX** is a trademark of its respective rights holder. This project is **unofficial** and is not affiliated with, endorsed by, or sponsored by the MSX trademark holder.
 - **webMSX** is an **external service / third-party emulator**. FunctionBASIC merely links to and embeds it via an iframe; it does not bundle or redistribute webMSX, and it is **not an official webMSX product**.
 - We use these technologies with **gratitude and respect** for the MSX trademark holder and for the author of webMSX, whose work makes projects like this possible.
+- Emulation by [WebMSX](https://webmsx.org) — the in-editor player loads WebMSX from webmsx.org; WebMSX is not bundled with this repository.
 
 ---
 ---
@@ -946,3 +947,4 @@ MIT © 2026 suzuki-black
 - **MSX** は各権利者の商標です。本プロジェクトは**非公式**であり、MSX商標権者と提携・承認・後援の関係はありません。
 - **webMSX** は**外部サービス／サードパーティのエミュレータ**です。FunctionBASIC は iframe 経由でリンク・埋め込みをしているだけで、webMSX を同梱・再配布しておらず、**公式の webMSX 製品ではありません**。
 - これらの技術を、MSX商標権者および webMSX 作者への**感謝と敬意**をもって利用しています。彼らの仕事が、このようなプロジェクトを可能にしています。
+- エミュレーションは [WebMSX](https://webmsx.org) によるものです。エディタ内蔵プレイヤーは webmsx.org から WebMSX を読み込んでおり、本リポジトリには同梱していません。

@@ -1,0 +1,69 @@
+# .github/workflows/pages.yml
+# Publishes the browser editor (editor/) to GitHub Pages on every push to main.
+# Result: https://suzuki-black.github.io/FunctionBASIC/
+#
+# One-time setup in the repo: Settings → Pages → "Build and deployment" → Source: "GitHub Actions"
+
+name: Deploy editor to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # 依存ゼロ（package.json の dependencies/devDependencies とも空）なので install 不要。
+      # build.yml と同じく install ステップは置かない（npm ci は lock 無しで失敗する）。
+      # Bundles src/** into editor/core/ (same step CI already runs in build.yml)
+      - run: node build.mjs
+
+      # Optional: a /story/ page next to the editor. Remove this step if you
+      # publish the article elsewhere. Needs docs/story-en.md and docs/images/.
+      - name: Render story page
+        run: |
+          npx --yes marked --gfm -i docs/story-en.md -o /tmp/story.html
+          mkdir -p editor/story/images
+          cp docs/images/story-hero.jpg editor/story/images/ 2>/dev/null || true
+          {
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            echo '<title>Getting Revenge on the MSX-BASIC That Defeated Me — FunctionBASIC</title>'
+            echo '<style>body{max-width:760px;margin:2rem auto;padding:0 1rem;font:16px/1.7 system-ui,sans-serif;color:#222}img{max-width:100%}pre{background:#f4f4f4;padding:.8rem;overflow:auto}code{font-size:.92em}</style>'
+            echo '</head><body>'
+            echo '<p><a href="../">← Try FunctionBASIC in your browser</a></p>'
+            cat /tmp/story.html
+            echo '<hr><p><a href="../">▶ Try it now — write, convert, run, all in the browser</a></p>'
+            echo '</body></html>'
+          } > editor/story/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: editor
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

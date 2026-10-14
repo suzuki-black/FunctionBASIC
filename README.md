@@ -8,7 +8,7 @@
 
 Write modern, block-structured BASIC, transpile it to authentic MSX-BASIC, and run it instantly in webMSX — all inside one editor.
 
-**[日本語](#functionbasic日本語)** · **[⬇ Download the desktop app](https://github.com/suzuki-black/FunctionBASIC/releases/latest)**
+**[日本語](#functionbasic日本語)** · **[▶ Try it in your browser](https://suzuki-black.github.io/FunctionBASIC/)** · **[⬇ Download the desktop app](https://github.com/suzuki-black/FunctionBASIC/releases/latest)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
@@ -44,7 +44,7 @@ It also goes the other way: FunctionBASIC can *decompile* plain, line-numbered M
 2. **Convert** — the *MSX-BASIC (output)* tab shows the generated line-numbered BASIC live as you type; **Convert & Save** writes it to disk as Shift-JIS.
 3. **Run** — press **▶ WebMSX** (or Ctrl/Cmd+Enter). The program is packaged and loaded into the embedded webMSX, which boots and `RUN`s it automatically. For real hardware or openMSX, use **Save Disk (.dsk)** instead.
 
-Prefer a prebuilt app? Grab it from **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — see [Run & export](#run--export) and [Building from source](#building-from-source). Or run the browser editor with `npm run serve`.
+Nothing to install? **Try it right now in your browser at [suzuki-black.github.io/FunctionBASIC](https://suzuki-black.github.io/FunctionBASIC/)** — the full editor, convert, and webMSX run, hosted. Prefer a prebuilt app? Grab it from **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** — see [Run & export](#run--export) and [Building from source](#building-from-source). Or run the browser editor locally with `npm run serve`.
 
 ---
 
@@ -486,7 +486,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 
 モダンなブロック構造の構造化BASICを書き、本物のMSX-BASICへ変換し、そのまま webMSX で即実行 — すべて1つのエディタの中で。
 
-**[English](#functionbasic)** · **[⬇ デスクトップ版をダウンロード](https://github.com/suzuki-black/FunctionBASIC/releases/latest)**
+**[English](#functionbasic)** · **[▶ ブラウザで試す](https://suzuki-black.github.io/FunctionBASIC/)** · **[⬇ デスクトップ版をダウンロード](https://github.com/suzuki-black/FunctionBASIC/releases/latest)**
 
 > ⚠️ **これは実験的かつ発展途上のツールです。** 言語・変換器・エディタはいずれも進化の途中で、粗削りな部分・破壊的変更・未実装機能があります。フィードバックと貢献を歓迎します。
 
@@ -516,7 +516,7 @@ You may use, copy, modify, and distribute this software freely, including for co
 2. **変換** — *MSX-BASIC変換後* タブに、入力に追従して行番号付きBASICがライブ表示されます。**変換して保存** で Shift-JIS として書き出します。
 3. **実行** — **▶ WebMSX**（または Ctrl/Cmd+Enter）。プログラムが梱包されて内蔵 webMSX に読み込まれ、自動で起動・`RUN` します。実機や openMSX 向けには **ディスク(.dsk)を保存** を使います。
 
-ビルド済みアプリが欲しい方は **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** から（[実行・書き出し](#実行書き出し)、[ソースからのビルド](#ソースからのビルド)参照）。ブラウザ版（`npm run serve`）だけでも使えます。
+インストール不要で今すぐ試すなら **ブラウザ版（ホスト済み）: [suzuki-black.github.io/FunctionBASIC](https://suzuki-black.github.io/FunctionBASIC/)** — エディタ・変換・webMSX 実行までそのまま動きます。ビルド済みアプリが欲しい方は **[Releases](https://github.com/suzuki-black/FunctionBASIC/releases/latest)** から（[実行・書き出し](#実行書き出し)、[ソースからのビルド](#ソースからのビルド)参照）。ローカルで動かすなら `npm run serve` でも使えます。
 
 ---
 

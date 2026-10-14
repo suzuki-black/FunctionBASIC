@@ -5,6 +5,8 @@ editor/core/
 src-tauri/target/
 
 editor/core/
+# Pages 用に CI が docs/story-en.md から生成する成果物（コミットしない）
+editor/story/
 src-tauri/gen/
 .claude/
 
